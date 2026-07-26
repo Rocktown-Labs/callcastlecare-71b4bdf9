@@ -1,11 +1,12 @@
-import { Sparkles } from "lucide-react";
+import { Clock } from "lucide-react";
 
+import { serviceHoursLabel } from "@/lib/scheduling";
 import { serviceOptions } from "@/lib/service-catalog";
 
 const services = [
-  { always: false, hours: "6am-8pm", id: "lawncare" },
-  { always: true, hours: "24/7", id: "laundry" },
-  { always: false, hours: "7am-7pm", id: "window-washing" },
+  { hours: serviceHoursLabel, id: "lawncare" },
+  { hours: serviceHoursLabel, id: "laundry" },
+  { hours: serviceHoursLabel, id: "window-washing" },
 ] as const;
 
 export default function ServiceAvailability() {
@@ -14,9 +15,9 @@ export default function ServiceAvailability() {
   return (
     <div className="flex flex-wrap gap-3">
       {services.map((service) => {
-        const open = service.always || (currentHour >= 6 && currentHour < 20);
+        const open = currentHour >= 6 && currentHour < 20;
         const option = serviceOptions.find(({ id }) => id === service.id);
-        const Icon = option?.icon ?? Sparkles;
+        const Icon = option?.icon ?? Clock;
 
         return (
           <div

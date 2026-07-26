@@ -52,6 +52,7 @@ CastleCare is being rewritten from a previous Next.js application into a simpler
 - Keep booking forms multi-step, rounded, mobile-friendly, and validated with Zod at each step.
 - Prefer TanStack Form for durable form implementation work; the public route may also use TanStack Router search params for prefilled service, address, date, and time state.
 - Booking data should collect selected services, address, date/time, contact name, phone, email, SMS consent, service-specific questions, selected products, subscription intent, and checkout preference.
+- Every scheduled service should reserve a 2-hour appointment window. Public time slots currently run from 6am to 8pm.
 - Service-specific questions:
   - Lawn care: grass height (`low`, `medium`, `tall`).
   - Laundry: with or without bedding.

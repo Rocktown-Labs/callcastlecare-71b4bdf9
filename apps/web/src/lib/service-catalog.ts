@@ -1,4 +1,4 @@
-import { Droplets, Home, Ruler, Shirt, Sparkles, Sprout } from "lucide-react";
+import { Grid2x2, Home, Ruler, Shirt, Sprout } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { z } from "zod";
 
@@ -105,7 +105,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
       "Multi-story ladder and safety handling",
       "Screen cleaning and photo verification",
     ],
-    icon: Sparkles,
+    icon: Grid2x2,
     id: "window-washing",
     image: "/callcastlecare/media/premium-home-services-poster.png",
     included: [
@@ -162,7 +162,7 @@ export const comboSubscriptions = [
 export const serviceQuestionIcons = {
   bedding: Home,
   grass: Ruler,
-  windows: Droplets,
+  windows: Grid2x2,
 } as const;
 
 export const getService = (serviceId: string) =>

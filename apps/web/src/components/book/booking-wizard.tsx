@@ -21,6 +21,7 @@ import type { ChangeEvent } from "react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
+import { bookingTimeSlots, bookingWindowHours } from "@/lib/scheduling";
 import {
   comboSubscriptions,
   serviceCatalog,
@@ -31,17 +32,9 @@ import type { ServiceId } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "../home/radar-address-input";
 import type { RadarAddressSuggestion } from "../home/use-radar-address-autocomplete";
+import LiveClock from "../live-clock";
 
 const storageKey = "callcastlecare.booking-draft.v1";
-
-const timeSlots = [
-  "8:00 AM",
-  "10:00 AM",
-  "12:00 PM",
-  "2:00 PM",
-  "4:00 PM",
-  "6:00 PM",
-] as const;
 
 const grassHeights = [
   {
@@ -222,7 +215,7 @@ const emptyDraft = ({
   initialAddress = "",
   initialDate = "",
   initialServices,
-  initialTimeSlot = "10:00 AM",
+  initialTimeSlot = bookingTimeSlots[2],
 }: BookingWizardProps): BookingDraft => ({
   address: initialAddress,
   contact: {
@@ -500,17 +493,18 @@ const ProductAccordion = ({
 };
 
 const BookingWizard = (props: BookingWizardProps) => {
+  const storedDraft = parseStoredDraft();
   const [draft, setDraft] = useState<BookingDraft>(() => ({
     ...emptyDraft(props),
-    ...parseStoredDraft(),
-    address: props.initialAddress || parseStoredDraft()?.address || "",
-    date: props.initialDate || parseStoredDraft()?.date || "",
+    ...storedDraft,
+    address: props.initialAddress || storedDraft?.address || "",
+    date: props.initialDate || storedDraft?.date || "",
     services:
       props.initialServices.length > 0
         ? props.initialServices
-        : parseStoredDraft()?.services || ["lawncare"],
+        : storedDraft?.services || ["lawncare"],
     timeSlot:
-      props.initialTimeSlot || parseStoredDraft()?.timeSlot || "10:00 AM",
+      props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
   }));
   const [activeStep, setActiveStep] = useState<WizardStep>(0);
   const [openProductService, setOpenProductService] = useState<ServiceId>(
@@ -652,6 +646,13 @@ const BookingWizard = (props: BookingWizardProps) => {
         title="Services and schedule"
       >
         <div className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+            <LiveClock label="Live clock" />
+            <span className="rounded-full bg-lime-300/10 px-3 py-2 text-xs font-semibold text-lime-200">
+              Every appointment reserves {bookingWindowHours} hours
+            </span>
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-3">
             {serviceCatalog.map((service) => {
               const Icon = service.icon;
@@ -720,7 +721,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                   }
                   value={draft.timeSlot}
                 >
-                  {timeSlots.map((timeSlot) => (
+                  {bookingTimeSlots.map((timeSlot) => (
                     <option key={timeSlot}>{timeSlot}</option>
                   ))}
                 </select>

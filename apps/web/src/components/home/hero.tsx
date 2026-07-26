@@ -8,20 +8,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import LiveClock from "@/components/live-clock";
+import { bookingTimeSlots, bookingWindowHours } from "@/lib/scheduling";
 import { serviceIdSchema, serviceOptions } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "./radar-address-input";
 import ServiceAvailability from "./service-availability";
 import type { RadarAddressSuggestion } from "./use-radar-address-autocomplete";
-
-const timeSlots = [
-  "8:00 AM",
-  "10:00 AM",
-  "12:00 PM",
-  "2:00 PM",
-  "4:00 PM",
-  "6:00 PM",
-] as const;
 
 const bookingSchema = z.object({
   address: z.string().min(5, "Enter a service address."),
@@ -42,7 +35,7 @@ export default function HeroSection() {
   ]);
   const [address, setAddress] = useState("");
   const [date, setDate] = useState("");
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState(timeSlots[1]);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState(bookingTimeSlots[2]);
   const [isAddressValidated, setIsAddressValidated] = useState(false);
   const [errors, setErrors] = useState<BookingErrors>({});
 
@@ -136,6 +129,12 @@ export default function HeroSection() {
           onSubmit={handleSubmit}
         >
           <h2 className="text-lg font-semibold text-white">Book a service</h2>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <LiveClock />
+            <span className="rounded-full bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/45">
+              {bookingWindowHours}-hour booking windows
+            </span>
+          </div>
 
           <div className="mt-5 space-y-3">
             <Label className="text-white/70">Services</Label>
@@ -212,7 +211,7 @@ export default function HeroSection() {
                   onChange={(event) => setSelectedTimeSlot(event.target.value)}
                   value={selectedTimeSlot}
                 >
-                  {timeSlots.map((timeSlot) => (
+                  {bookingTimeSlots.map((timeSlot) => (
                     <option key={timeSlot}>{timeSlot}</option>
                   ))}
                 </select>
