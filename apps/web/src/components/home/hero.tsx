@@ -99,7 +99,7 @@ export default function HeroSection() {
           alt=""
           aria-hidden="true"
           className="size-full object-cover object-center opacity-90"
-          src="/callcastlecare/media/hero-workers-bg.png"
+          src="/callcastlecare/media/hero-workers-bg.jpg"
         />
         <div className="absolute inset-0 bg-slate-950/35" />
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/58 to-slate-950/20" />
