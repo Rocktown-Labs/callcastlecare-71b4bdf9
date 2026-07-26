@@ -227,7 +227,7 @@ export const Route = createFileRoute("/services/$serviceId")({
 
     if (!service) {
       return {
-        meta: [{ title: "Service not found | CallCastleCare" }],
+        meta: [{ title: "Service not found | CastleCare" }],
       };
     }
 
@@ -236,10 +236,10 @@ export const Route = createFileRoute("/services/$serviceId")({
     return {
       links: [{ href: url, rel: "canonical" }],
       meta: [
-        { title: `${service.shortName} in Central Arkansas | CallCastleCare` },
+        { title: `${service.shortName} in Central Arkansas | CastleCare` },
         { content: service.seoDescription, name: "description" },
         {
-          content: `${service.shortName} in Central Arkansas | CallCastleCare`,
+          content: `${service.shortName} in Central Arkansas | CastleCare`,
           property: "og:title",
         },
         { content: service.seoDescription, property: "og:description" },
@@ -255,7 +255,7 @@ export const Route = createFileRoute("/services/$serviceId")({
             areaServed: centralArkansasArea,
             brand: {
               "@type": "Brand",
-              name: "CallCastleCare",
+              name: "CastleCare",
             },
             description: service.seoDescription,
             name: service.shortName,
@@ -267,7 +267,7 @@ export const Route = createFileRoute("/services/$serviceId")({
             },
             provider: {
               "@type": "LocalBusiness",
-              name: "CallCastleCare",
+              name: "CastleCare",
               url: siteUrl,
             },
           }),

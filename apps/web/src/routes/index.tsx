@@ -16,11 +16,11 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       {
-        title: "CallCastleCare | Premium Home Services On Demand",
+        title: "CastleCare | Premium Home Services On Demand",
       },
       {
         content:
-          "Book premium lawn care, laundry, and window washing with CallCastleCare in Central Arkansas.",
+          "Book premium lawn care, laundry, and window washing with CastleCare in Central Arkansas.",
         name: "description",
       },
     ],

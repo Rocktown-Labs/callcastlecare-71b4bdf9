@@ -56,7 +56,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "service",
     seoDescription:
-      "Book lawncare in Central Arkansas with CallCastleCare. Mowing, edging, cleanup, and recurring lawn maintenance plans.",
+      "Book lawncare in Central Arkansas with CastleCare. Mowing, edging, cleanup, and recurring lawn maintenance plans.",
     shortName: "Lawn care",
     startingPrice: 75,
     subscriptionInfo: "Bi-weekly care plans available",
@@ -86,7 +86,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "load",
     seoDescription:
-      "Schedule laundry pickup and delivery in Central Arkansas with CallCastleCare. Wash and fold, bedding, and recurring laundry plans.",
+      "Schedule laundry pickup and delivery in Central Arkansas with CastleCare. Wash and fold, bedding, and recurring laundry plans.",
     shortName: "Laundry",
     startingPrice: 40,
     subscriptionInfo: "Weekly laundry care plans available",
@@ -116,7 +116,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "pane",
     seoDescription:
-      "Book window washing in Central Arkansas with CallCastleCare. Exterior panes, inside-and-out cleaning, screens, and recurring glass care.",
+      "Book window washing in Central Arkansas with CastleCare. Exterior panes, inside-and-out cleaning, screens, and recurring glass care.",
     shortName: "Window washing",
     startingPrice: 10,
     subscriptionInfo: "Monthly and bi-annual plans available",

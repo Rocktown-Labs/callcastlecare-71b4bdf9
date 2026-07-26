@@ -102,10 +102,10 @@ export const Route = createFileRoute("/book")({
   component: BookPage,
   head: () => ({
     meta: [
-      { title: "Book Home Services | CallCastleCare" },
+      { title: "Book Home Services | CastleCare" },
       {
         content:
-          "Book lawn care, laundry, and window washing in Central Arkansas with CallCastleCare.",
+          "Book lawn care, laundry, and window washing in Central Arkansas with CastleCare.",
         name: "description",
       },
       { content: "noindex,follow", name: "robots" },

@@ -20,11 +20,11 @@ export const Route = createFileRoute("/earn")({
   head: () => ({
     meta: [
       {
-        title: "Earn with CallCastleCare",
+        title: "Earn with CastleCare",
       },
       {
         content:
-          "Join CallCastleCare as a service provider for lawn care, laundry, and home services.",
+          "Join CastleCare as a service provider for lawn care, laundry, and home services.",
         name: "description",
       },
     ],
