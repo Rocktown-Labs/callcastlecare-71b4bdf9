@@ -8,6 +8,7 @@
     "dev": "vite dev"
   },
   "dependencies": {
+    "@callcastlecare/api": "workspace:*",
     "@callcastlecare/env": "workspace:*",
     "@callcastlecare/ui": "workspace:*",
     "@tailwindcss/vite": "^4.3.2",
@@ -25,6 +26,7 @@
     "nitro": "^3.0.260610-beta",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "server": "workspace:*",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
     "zod": "catalog:"

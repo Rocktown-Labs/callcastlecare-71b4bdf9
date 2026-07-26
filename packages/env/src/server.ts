@@ -36,6 +36,14 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
+    RADAR_API_KEY: z.string().min(1).optional(),
+    RAPIDAPI_KEY: z.string().min(1).optional(),
+    RAPIDAPI_ZILLOW_HOST: z.string().min(1).optional(),
+    RESEND_API_KEY: z.string().min(1).optional(),
+    STRIPE_PRICE_BASIC_MONTHLY: z.string().min(1).optional(),
+    STRIPE_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+    VERCEL_BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
 });
