@@ -1,5 +1,5 @@
 import { Button } from "@callcastlecare/ui/components/button";
-import { ArrowRight, Box, HardHat, Scissors } from "lucide-react";
+import { ArrowRight, Box, Grid2x2, Scissors } from "lucide-react";
 
 const services = [
   {
@@ -23,14 +23,14 @@ const services = [
     title: "Lawn care professional",
   },
   {
-    color: "text-amber-300",
+    color: "text-cyan-300",
     description:
-      "Handle premium home service calls for customers who need trusted, well-documented work.",
-    icon: HardHat,
-    id: "homes",
-    image: "/callcastlecare/media/home-technician-control-panel.png",
-    requirements: ["Trade experience", "Apprentices welcome", "Tools of trade"],
-    title: "Home services and trades",
+      "Clean exterior glass, inside-and-out upgrades, and screens with clear photo documentation.",
+    icon: Grid2x2,
+    id: "window-washing",
+    image: "/callcastlecare/media/premium-home-services-poster.png",
+    requirements: ["Reliable vehicle", "Window tools", "Ladder safety"],
+    title: "Window washing professional",
   },
 ] as const;
 
@@ -60,7 +60,7 @@ export default function EarnServices() {
               title,
             }) => (
               <article
-                className="flex w-[84vw] shrink-0 snap-center flex-col overflow-hidden border border-white/10 bg-slate-950/70 md:w-auto"
+                className="flex w-[84vw] shrink-0 snap-center flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950/70 md:w-auto"
                 key={id}
               >
                 <div className="relative aspect-[4/3] border-b border-white/10 bg-slate-950">
@@ -74,7 +74,7 @@ export default function EarnServices() {
 
                 <div className="flex flex-1 flex-col p-6">
                   <div className="mb-4 flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center border border-white/10 bg-white/[0.04]">
+                    <div className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
                       <Icon className={`size-5 ${color}`} />
                     </div>
                     <h3 className="text-xl font-bold text-white">{title}</h3>
@@ -94,14 +94,14 @@ export default function EarnServices() {
                           className="flex items-center gap-2"
                           key={requirement}
                         >
-                          <span className="size-1.5 bg-lime-300" />
+                          <span className="size-1.5 rounded-full bg-lime-300" />
                           {requirement}
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  <Button className="mt-6 h-11 w-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/10">
+                  <Button className="mt-6 h-11 w-full rounded-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/10">
                     Apply now
                     <ArrowRight className="ml-2 size-4" />
                   </Button>

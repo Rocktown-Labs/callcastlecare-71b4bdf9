@@ -14,8 +14,8 @@ export default function EarnHero() {
       <div className="mx-auto grid min-h-[calc(100svh-49px)] max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_0.92fr] lg:px-8">
         <div className="max-w-3xl space-y-8">
           <div className="space-y-4">
-            <div className="inline-flex items-center border border-lime-400/30 bg-lime-400/10 px-3 py-1 text-sm font-medium text-lime-300">
-              <span className="mr-2 size-2 bg-lime-400" />
+            <div className="inline-flex items-center rounded-full border border-lime-400/30 bg-lime-400/10 px-3 py-1 text-sm font-medium text-lime-300">
+              <span className="mr-2 size-2 rounded-full bg-lime-400" />
               Now hiring partners
             </div>
             <h1 className="text-4xl font-bold text-white sm:text-5xl lg:text-7xl">
@@ -61,7 +61,7 @@ export default function EarnHero() {
           </div>
         </div>
 
-        <figure className="relative min-h-[360px] overflow-hidden border border-white/10 bg-slate-950 md:min-h-[520px]">
+        <figure className="relative min-h-[360px] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 shadow-2xl shadow-slate-950/40 md:min-h-[520px]">
           <img
             alt="CallCastleCare provider standing by a service van"
             className="absolute inset-0 size-full object-cover"

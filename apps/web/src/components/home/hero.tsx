@@ -85,6 +85,7 @@ export default function HeroSection() {
         address: result.data.address,
         date: result.data.date,
         services: result.data.services.join(","),
+        step: "contact",
         timeSlot: result.data.timeSlot,
       },
       to: "/book",
@@ -125,13 +126,13 @@ export default function HeroSection() {
         </div>
 
         <form
-          className="rounded-3xl border border-white/20 bg-white p-5 text-slate-950 shadow-2xl shadow-slate-950/30"
+          className="rounded-3xl border border-white/15 bg-slate-950/80 p-5 text-white shadow-2xl shadow-slate-950/50 backdrop-blur-xl"
           onSubmit={handleSubmit}
         >
-          <h2 className="text-lg font-bold text-slate-950">Book a service</h2>
+          <h2 className="text-lg font-bold text-white">Book a service</h2>
 
-          <div className="mt-5 space-y-3">
-            <Label className="text-slate-600">Services</Label>
+          <div className="mt-5 flex flex-col gap-3">
+            <Label className="text-white/60">Services</Label>
             <div className="grid grid-cols-3 gap-2">
               {serviceOptions.map(({ icon: Icon, id, name }) => {
                 const isSelected = selectedServices.includes(id);
@@ -141,8 +142,8 @@ export default function HeroSection() {
                     className={cn(
                       "flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border p-3 text-sm transition-colors",
                       isSelected
-                        ? "border-lime-500 bg-lime-100 text-slate-950"
-                        : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
+                        ? "border-lime-400 bg-lime-400/15 text-lime-200"
+                        : "border-white/10 bg-white/[0.04] text-white/55 hover:border-white/20 hover:bg-white/[0.08]"
                     )}
                     key={id}
                     onClick={() => toggleService(id)}
@@ -161,10 +162,9 @@ export default function HeroSection() {
             ) : null}
           </div>
 
-          <div className="mt-5 space-y-2">
-            <Label className="text-slate-600">Address</Label>
+          <div className="mt-5 flex flex-col gap-2">
+            <Label className="text-white/60">Address</Label>
             <RadarAddressInput
-              className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
               error={errors.address}
               isValidated={isAddressValidated}
               onChange={handleAddressChange}
@@ -177,12 +177,12 @@ export default function HeroSection() {
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-slate-600">Date</Label>
+            <div className="flex flex-col gap-2">
+              <Label className="text-white/60">Date</Label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
                 <input
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-950 outline-none focus:border-lime-500"
+                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
                   min={new Date().toISOString().slice(0, 10)}
                   onChange={(event) => {
                     setDate(event.target.value);
@@ -197,12 +197,12 @@ export default function HeroSection() {
               ) : null}
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-slate-600">Time</Label>
+            <div className="flex flex-col gap-2">
+              <Label className="text-white/60">Time</Label>
               <div className="relative">
-                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
                 <select
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-950 outline-none focus:border-lime-500"
+                  className="h-11 w-full rounded-2xl border border-white/10 bg-slate-950 pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
                   onChange={(event) => setSelectedTimeSlot(event.target.value)}
                   value={selectedTimeSlot}
                 >

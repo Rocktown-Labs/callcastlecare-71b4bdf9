@@ -48,10 +48,10 @@ export default function EarnBenefits() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {benefits.map(({ color, description, icon: Icon, title }) => (
             <article
-              className="border border-white/10 bg-white/[0.04] p-6 transition-colors hover:border-lime-300/40"
+              className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 transition-colors hover:border-lime-300/40"
               key={title}
             >
-              <div className="mb-5 inline-flex size-12 items-center justify-center border border-white/10 bg-slate-950">
+              <div className="mb-5 inline-flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-950">
                 <Icon className={`size-6 ${color}`} />
               </div>
               <h3 className="text-lg font-semibold text-white">{title}</h3>

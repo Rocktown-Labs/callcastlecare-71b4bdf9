@@ -1,8 +1,10 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Menu, X } from "lucide-react";
+import { ChevronDown, Menu, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+
+import { serviceCatalog } from "@/lib/service-catalog";
 
 const sectionLinks = [
   { href: "/#services", label: "Services", sectionId: "services" },
@@ -60,20 +62,48 @@ export default function Navbar() {
           </Link>
 
           <nav className="hidden items-center gap-7 md:flex">
-            {sectionLinks.map(({ href, label, sectionId }) => (
+            <div className="group relative">
               <a
                 className={cn(
-                  "text-sm font-medium text-white/75 transition-colors hover:text-lime-300",
-                  pathname === "/" &&
-                    activeSection === sectionId &&
-                    "text-lime-300"
+                  "inline-flex items-center gap-1.5 text-sm font-medium text-white/75 transition-colors hover:text-lime-300 focus-visible:text-lime-300",
+                  pathname.startsWith("/services") ||
+                    (pathname === "/" &&
+                      activeSection === sectionLinks[0].sectionId)
+                    ? "text-lime-300"
+                    : ""
                 )}
-                href={href}
-                key={sectionId}
+                href={sectionLinks[0].href}
               >
-                {label}
+                Services
+                <ChevronDown className="size-3.5 transition-transform group-hover:rotate-180" />
               </a>
-            ))}
+              <div className="invisible absolute left-1/2 top-full z-50 w-64 -translate-x-1/2 pt-4 opacity-0 transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 p-2 shadow-2xl shadow-slate-950/50 backdrop-blur">
+                  {serviceCatalog.map((service) => {
+                    const Icon = service.icon;
+
+                    return (
+                      <Link
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/70 transition-colors hover:bg-white/[0.06] hover:text-white"
+                        key={service.id}
+                        params={{ serviceId: service.id }}
+                        to="/services/$serviceId"
+                      >
+                        <Icon className="size-4 text-lime-300" />
+                        <span>
+                          <span className="block font-semibold">
+                            {service.shortName}
+                          </span>
+                          <span className="text-xs text-white/40">
+                            {service.badge}
+                          </span>
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
             <Link
               className={cn(
                 "text-sm font-medium text-white/75 transition-colors hover:text-lime-300",
@@ -120,15 +150,23 @@ export default function Navbar() {
         {isMenuOpen ? (
           <div className="border-t border-white/10 py-4 md:hidden">
             <nav className="grid gap-3">
-              {sectionLinks.map(({ href, label }) => (
-                <a
-                  className="text-base font-medium text-white/80"
-                  href={href}
-                  key={label}
+              <a
+                className="text-base font-medium text-white/80"
+                href={sectionLinks[0].href}
+                onClick={closeMenu}
+              >
+                Services
+              </a>
+              {serviceCatalog.map((service) => (
+                <Link
+                  className="rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70"
+                  key={service.id}
                   onClick={closeMenu}
+                  params={{ serviceId: service.id }}
+                  to="/services/$serviceId"
                 >
-                  {label}
-                </a>
+                  {service.shortName}
+                </Link>
               ))}
               <Link
                 className="text-base font-medium text-white/80"

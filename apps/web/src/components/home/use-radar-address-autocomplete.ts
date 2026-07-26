@@ -1,3 +1,4 @@
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface RadarAddressSuggestion {
@@ -117,20 +118,12 @@ export const reverseGeocodeAddress = async (
 };
 
 export const useRadarAddressAutocomplete = (query: string) => {
-  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const [debouncedQuery] = useDebouncedValue(query, { wait: DEBOUNCE_MS });
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<RadarAddressSuggestion[]>([]);
   const requestIdRef = useRef(0);
 
   const isEnabled = useMemo(() => Boolean(getRadarPublishableKey()), []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuery(query);
-    }, DEBOUNCE_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [query]);
 
   useEffect(() => {
     if (!isEnabled) {

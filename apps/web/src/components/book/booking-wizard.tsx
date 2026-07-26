@@ -2,6 +2,7 @@ import { Button } from "@callcastlecare/ui/components/button";
 import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { cn } from "@callcastlecare/ui/lib/utils";
+import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
@@ -59,7 +60,7 @@ const productsByService = {
       description: "Wash and fold pickup for standard weekly laundry.",
       id: "royal_wash_basic",
       name: "Royal Wash Basic",
-      priceCents: 3500,
+      priceCents: 4000,
       recurring: false,
     },
     {
@@ -151,6 +152,14 @@ const paymentOptions = [
 
 const insideGlassFeePerPaneCents = 500;
 const screenWashFeePerScreenCents = 250;
+const stepKeys = [
+  "schedule",
+  "contact",
+  "details",
+  "products",
+  "plans",
+  "invoice",
+] as const;
 
 const basicsSchema = z.object({
   address: z.string().min(5, "Enter a service address."),
@@ -176,6 +185,7 @@ interface ProductOption {
 
 type PaymentOptionId = (typeof paymentOptions)[number]["id"];
 type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
+type WizardStepKey = (typeof stepKeys)[number];
 
 interface BookingDraft {
   address: string;
@@ -191,12 +201,15 @@ interface BookingDraft {
   serviceDetails: {
     laundry: {
       bedding: "none" | "with-bedding" | "";
+      photoNames: string[];
     };
     lawncare: {
       grassHeight: "low" | "medium" | "tall" | "";
+      photoNames: string[];
     };
     "window-washing": {
       cleaningScope: "exterior" | "both" | "";
+      finalizeOnSite: boolean;
       photoNames: string[];
       screenCount: string;
       stories: "1" | "2" | "3" | "";
@@ -213,6 +226,7 @@ interface BookingWizardProps {
   initialAddress?: string;
   initialDate?: string;
   initialServices: ServiceId[];
+  initialStep?: WizardStepKey;
   initialTimeSlot?: string;
 }
 
@@ -233,10 +247,11 @@ const emptyDraft = ({
   paymentOption: "",
   products: {},
   serviceDetails: {
-    laundry: { bedding: "" },
-    lawncare: { grassHeight: "" },
+    laundry: { bedding: "", photoNames: [] },
+    lawncare: { grassHeight: "", photoNames: [] },
     "window-washing": {
       cleaningScope: "",
+      finalizeOnSite: false,
       photoNames: [],
       screenCount: "",
       stories: "",
@@ -301,6 +316,10 @@ const getWindowAddOns = (draft: BookingDraft) => {
   }
 
   const windowDetails = draft.serviceDetails["window-washing"];
+  if (windowDetails.finalizeOnSite) {
+    return [];
+  }
+
   const paneCount = parsePositiveCount(windowDetails.windowEstimate);
   const screenCount = parsePositiveCount(windowDetails.screenCount);
   const addOns: {
@@ -335,6 +354,9 @@ const getWindowAddOns = (draft: BookingDraft) => {
 const getServiceLabel = (serviceId: ServiceId) =>
   serviceCatalog.find(({ id }) => id === serviceId)?.shortName ?? serviceId;
 
+const stepKeyToIndex = (step?: WizardStepKey): WizardStep =>
+  step ? (stepKeys.indexOf(step) as WizardStep) : 0;
+
 const addServiceDetailErrors = (
   draft: BookingDraft,
   nextErrors: Record<string, string>
@@ -363,15 +385,92 @@ const addServiceDetailErrors = (
   if (!windowDetails.stories) {
     nextErrors.stories = "Choose the number of stories.";
   }
-  if (!windowDetails.windowEstimate) {
+  if (!(windowDetails.finalizeOnSite || windowDetails.windowEstimate)) {
     nextErrors.windowEstimate = "Estimate the number of windows.";
   }
   if (
     windowDetails.washScreens &&
+    !windowDetails.finalizeOnSite &&
     parsePositiveCount(windowDetails.screenCount) === 0
   ) {
     nextErrors.screenCount = "Enter the number of screens.";
   }
+};
+
+const buildInitialDraft = (
+  props: BookingWizardProps,
+  storedDraft: BookingDraft | null
+) => {
+  const initialDraft = emptyDraft(props);
+
+  return {
+    ...initialDraft,
+    ...storedDraft,
+    address: props.initialAddress || storedDraft?.address || "",
+    date: props.initialDate || storedDraft?.date || "",
+    serviceDetails: {
+      ...initialDraft.serviceDetails,
+      ...storedDraft?.serviceDetails,
+      laundry: {
+        ...initialDraft.serviceDetails.laundry,
+        ...storedDraft?.serviceDetails?.laundry,
+      },
+      lawncare: {
+        ...initialDraft.serviceDetails.lawncare,
+        ...storedDraft?.serviceDetails?.lawncare,
+      },
+      "window-washing": {
+        ...initialDraft.serviceDetails["window-washing"],
+        ...storedDraft?.serviceDetails?.["window-washing"],
+      },
+    },
+    services:
+      props.initialServices.length > 0
+        ? props.initialServices
+        : storedDraft?.services || ["lawncare"],
+    timeSlot:
+      props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
+  };
+};
+
+const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
+  const nextErrors: Record<string, string> = {};
+
+  if (step === 0) {
+    const result = basicsSchema.safeParse(draft);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        nextErrors[String(issue.path[0])] = issue.message;
+      }
+    }
+  }
+
+  if (step === 1) {
+    const result = contactSchema.safeParse(draft.contact);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        nextErrors[`contact.${String(issue.path[0])}`] = issue.message;
+      }
+    }
+  }
+
+  if (step === 2) {
+    addServiceDetailErrors(draft, nextErrors);
+  }
+
+  if (step === 3) {
+    for (const serviceId of draft.services) {
+      if (!draft.products[serviceId]) {
+        nextErrors[`product.${serviceId}`] = "Select an item for this service.";
+      }
+    }
+  }
+
+  if (step === 5 && !draft.paymentOption) {
+    nextErrors.paymentOption = "Choose a checkout option.";
+  }
+
+  return nextErrors;
 };
 
 const wizardSteps = [
@@ -427,7 +526,7 @@ const StepProgress = ({
   activeStep: WizardStep;
   onStepSelect: (step: WizardStep) => void;
 }) => (
-  <div className="mb-6 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+  <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
     {wizardSteps.map((label, index) => (
       <button
         className={cn(
@@ -449,13 +548,19 @@ const StepProgress = ({
   </div>
 );
 
-const StepButton = ({ onClick }: { onClick: () => void }) => (
+const StepButton = ({
+  children = "Continue",
+  onClick,
+}: {
+  children?: React.ReactNode;
+  onClick: () => void;
+}) => (
   <Button
     className="mt-4 h-11 rounded-full bg-lime-300 px-5 font-bold text-slate-950 hover:bg-lime-200"
     onClick={onClick}
     type="button"
   >
-    Continue
+    {children}
     <ArrowRight className="size-4" />
   </Button>
 );
@@ -489,23 +594,50 @@ const RoundedField = ({
   </div>
 );
 
-const QuestionBlock = ({
+const QuestionAccordion = ({
   children,
   icon: Icon,
+  isComplete,
+  isOpen,
+  onOpen,
   title,
 }: {
   children: React.ReactNode;
   icon: LucideIcon;
+  isComplete: boolean;
+  isOpen: boolean;
+  onOpen: () => void;
   title: string;
 }) => (
   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-    <div className="mb-4 flex items-center gap-3">
-      <div className="flex size-10 items-center justify-center rounded-2xl bg-white text-lime-600 shadow-sm">
-        <Icon className="size-5" />
+    <button
+      className="flex w-full items-center justify-between gap-4 text-left"
+      onClick={onOpen}
+      type="button"
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            "flex size-10 items-center justify-center rounded-2xl bg-white text-lime-600 shadow-sm",
+            isComplete && "bg-lime-300 text-slate-950"
+          )}
+        >
+          {isComplete ? (
+            <Check className="size-5" />
+          ) : (
+            <Icon className="size-5" />
+          )}
+        </div>
+        <h3 className="font-bold text-slate-950">{title}</h3>
       </div>
-      <h3 className="font-bold text-slate-950">{title}</h3>
-    </div>
-    {children}
+      <ChevronDown
+        className={cn(
+          "size-4 text-slate-400 transition-transform",
+          isOpen && "rotate-180"
+        )}
+      />
+    </button>
+    {isOpen ? <div className="mt-4">{children}</div> : null}
   </div>
 );
 
@@ -538,6 +670,31 @@ const GrassSvg = ({ level }: { level: number }) => {
     </svg>
   );
 };
+
+const ServicePhotoUpload = ({
+  count,
+  onFiles,
+}: {
+  count: number;
+  onFiles: (fileNames: string[]) => void;
+}) => (
+  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
+    <span className="flex items-center gap-3">
+      <Upload className="size-4" />
+      Add photos for faster quote review
+    </span>
+    <span className="text-xs text-slate-400">{count} files</span>
+    <input
+      className="sr-only"
+      multiple
+      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+        const files = [...(event.target.files ?? [])];
+        onFiles(files.map(({ name }) => name));
+      }}
+      type="file"
+    />
+  </label>
+);
 
 const ProductAccordion = ({
   isOpen,
@@ -617,34 +774,20 @@ const ProductAccordion = ({
   );
 };
 
+// eslint-disable-next-line complexity
 const BookingWizard = (props: BookingWizardProps) => {
+  const navigate = useNavigate({ from: "/book" });
   const storedDraft = parseStoredDraft();
-  const [draft, setDraft] = useState<BookingDraft>(() => {
-    const initialDraft = emptyDraft(props);
-
-    return {
-      ...initialDraft,
-      ...storedDraft,
-      address: props.initialAddress || storedDraft?.address || "",
-      date: props.initialDate || storedDraft?.date || "",
-      serviceDetails: {
-        ...initialDraft.serviceDetails,
-        ...storedDraft?.serviceDetails,
-        "window-washing": {
-          ...initialDraft.serviceDetails["window-washing"],
-          ...storedDraft?.serviceDetails?.["window-washing"],
-        },
-      },
-      services:
-        props.initialServices.length > 0
-          ? props.initialServices
-          : storedDraft?.services || ["lawncare"],
-      timeSlot:
-        props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
-    };
-  });
-  const [activeStep, setActiveStep] = useState<WizardStep>(0);
+  const [draft, setDraft] = useState<BookingDraft>(() =>
+    buildInitialDraft(props, storedDraft)
+  );
+  const [activeStep, setActiveStep] = useState<WizardStep>(() =>
+    stepKeyToIndex(props.initialStep)
+  );
   const [openProductService, setOpenProductService] = useState<ServiceId>(
+    draft.services[0] ?? "lawncare"
+  );
+  const [openDetailService, setOpenDetailService] = useState<ServiceId>(
     draft.services[0] ?? "lawncare"
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -662,6 +805,28 @@ const BookingWizard = (props: BookingWizardProps) => {
     setErrors({});
   };
 
+  const goToStep = (step: WizardStep) => {
+    setActiveStep(step);
+    navigate({
+      replace: true,
+      search: (current) => ({
+        ...current,
+        step: stepKeys[step],
+      }),
+    });
+  };
+
+  const clearDraft = () => {
+    const nextDraft = emptyDraft(props);
+    window.localStorage.removeItem(storageKey);
+    setDraft(nextDraft);
+    setErrors({});
+    setIsAddressValidated(false);
+    setOpenDetailService(nextDraft.services[0]);
+    setOpenProductService(nextDraft.services[0]);
+    goToStep(0);
+  };
+
   const toggleService = (serviceId: ServiceId) => {
     setDraft((current) => {
       const exists = current.services.includes(serviceId);
@@ -669,6 +834,13 @@ const BookingWizard = (props: BookingWizardProps) => {
         ? current.services.filter((id) => id !== serviceId)
         : [...current.services, serviceId];
       const nextServices = services.length > 0 ? services : current.services;
+
+      if (!nextServices.includes(openDetailService)) {
+        setOpenDetailService(nextServices[0]);
+      }
+      if (!nextServices.includes(openProductService)) {
+        setOpenProductService(nextServices[0]);
+      }
 
       return {
         ...current,
@@ -678,43 +850,7 @@ const BookingWizard = (props: BookingWizardProps) => {
   };
 
   const validateStep = (step: WizardStep) => {
-    const nextErrors: Record<string, string> = {};
-
-    if (step === 0) {
-      const result = basicsSchema.safeParse(draft);
-      if (!result.success) {
-        for (const issue of result.error.issues) {
-          nextErrors[String(issue.path[0])] = issue.message;
-        }
-      }
-    }
-
-    if (step === 1) {
-      const result = contactSchema.safeParse(draft.contact);
-      if (!result.success) {
-        for (const issue of result.error.issues) {
-          nextErrors[`contact.${String(issue.path[0])}`] = issue.message;
-        }
-      }
-    }
-
-    if (step === 2) {
-      addServiceDetailErrors(draft, nextErrors);
-    }
-
-    if (step === 3) {
-      for (const serviceId of draft.services) {
-        if (!draft.products[serviceId]) {
-          nextErrors[`product.${serviceId}`] =
-            "Select an item for this service.";
-        }
-      }
-    }
-
-    if (step === 5 && !draft.paymentOption) {
-      nextErrors.paymentOption = "Choose a checkout option.";
-    }
-
+    const nextErrors = getStepErrors(draft, step);
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -724,7 +860,7 @@ const BookingWizard = (props: BookingWizardProps) => {
       return;
     }
 
-    setActiveStep(Math.min(step + 1, 5) as WizardStep);
+    goToStep(Math.min(step + 1, 5) as WizardStep);
   };
 
   const selectProduct = (serviceId: ServiceId, productId: string) => {
@@ -738,7 +874,17 @@ const BookingWizard = (props: BookingWizardProps) => {
       setOpenProductService(nextService);
       return;
     }
-    setActiveStep(4);
+    goToStep(4);
+  };
+
+  const completeServiceDetails = (serviceId: ServiceId) => {
+    const currentIndex = draft.services.indexOf(serviceId);
+    const nextService = draft.services[currentIndex + 1];
+    if (nextService) {
+      setOpenDetailService(nextService);
+      return;
+    }
+    setOpenDetailService(serviceId);
   };
 
   const selectedCombos = comboSubscriptions.filter((combo) =>
@@ -746,6 +892,12 @@ const BookingWizard = (props: BookingWizardProps) => {
       draft.services.includes(serviceId)
     )
   );
+  const shownCombos =
+    draft.services.length === 3
+      ? selectedCombos.filter((combo) => combo.requiredServices.length === 3)
+      : selectedCombos.filter(
+          (combo) => combo.requiredServices.length === draft.services.length
+        );
   const windowAddOns = getWindowAddOns(draft);
   let addOnTotalCents = 0;
   for (const addOn of windowAddOns) {
@@ -760,8 +912,20 @@ const BookingWizard = (props: BookingWizardProps) => {
   );
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-200/70 sm:p-6">
-      <StepProgress activeStep={activeStep} onStepSelect={setActiveStep} />
+    <div className="rounded-[2rem] border border-white/10 bg-white p-4 text-slate-950 shadow-2xl shadow-slate-950/40 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Request saved on this device
+        </p>
+        <button
+          className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-950"
+          onClick={clearDraft}
+          type="button"
+        >
+          Clear booking
+        </button>
+      </div>
+      <StepProgress activeStep={activeStep} onStepSelect={goToStep} />
       <StepPanel
         isComplete={basicsSchema.safeParse(draft).success}
         isOpen={activeStep === 0}
@@ -923,8 +1087,11 @@ const BookingWizard = (props: BookingWizardProps) => {
       >
         <div className="grid gap-4">
           {draft.services.includes("lawncare") ? (
-            <QuestionBlock
+            <QuestionAccordion
               icon={serviceQuestionIcons.grass}
+              isComplete={Boolean(draft.serviceDetails.lawncare.grassHeight)}
+              isOpen={openDetailService === "lawncare"}
+              onOpen={() => setOpenDetailService("lawncare")}
               title="How tall is the grass?"
             >
               <div className="grid gap-3 sm:grid-cols-3">
@@ -937,12 +1104,13 @@ const BookingWizard = (props: BookingWizardProps) => {
                         : "border-slate-200 bg-white text-slate-600"
                     )}
                     key={height.id}
-                    onClick={() =>
+                    onClick={() => {
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
                         lawncare: { grassHeight: height.id },
-                      })
-                    }
+                      });
+                      completeServiceDetails("lawncare");
+                    }}
                     type="button"
                   >
                     <GrassSvg level={index + 1} />
@@ -956,12 +1124,29 @@ const BookingWizard = (props: BookingWizardProps) => {
               {errors.grassHeight ? (
                 <p className="text-sm text-rose-300">{errors.grassHeight}</p>
               ) : null}
-            </QuestionBlock>
+              <div className="mt-4">
+                <ServicePhotoUpload
+                  count={draft.serviceDetails.lawncare.photoNames.length}
+                  onFiles={(photoNames) =>
+                    setDraftValue("serviceDetails", {
+                      ...draft.serviceDetails,
+                      lawncare: {
+                        ...draft.serviceDetails.lawncare,
+                        photoNames,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </QuestionAccordion>
           ) : null}
 
           {draft.services.includes("laundry") ? (
-            <QuestionBlock
+            <QuestionAccordion
               icon={serviceQuestionIcons.bedding}
+              isComplete={Boolean(draft.serviceDetails.laundry.bedding)}
+              isOpen={openDetailService === "laundry"}
+              onOpen={() => setOpenDetailService("laundry")}
               title="Will this include bedding?"
             >
               <div className="grid gap-3 sm:grid-cols-2">
@@ -981,14 +1166,15 @@ const BookingWizard = (props: BookingWizardProps) => {
                         : "border-slate-200 bg-white text-slate-600"
                     )}
                     key={id}
-                    onClick={() =>
+                    onClick={() => {
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
                         laundry: {
                           bedding: id as "none" | "with-bedding",
                         },
-                      })
-                    }
+                      });
+                      completeServiceDetails("laundry");
+                    }}
                     type="button"
                   >
                     <p className="font-semibold">{name}</p>
@@ -1001,12 +1187,38 @@ const BookingWizard = (props: BookingWizardProps) => {
               {errors.bedding ? (
                 <p className="text-sm text-rose-300">{errors.bedding}</p>
               ) : null}
-            </QuestionBlock>
+              <div className="mt-4">
+                <ServicePhotoUpload
+                  count={draft.serviceDetails.laundry.photoNames.length}
+                  onFiles={(photoNames) =>
+                    setDraftValue("serviceDetails", {
+                      ...draft.serviceDetails,
+                      laundry: {
+                        ...draft.serviceDetails.laundry,
+                        photoNames,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </QuestionAccordion>
           ) : null}
 
           {draft.services.includes("window-washing") ? (
-            <QuestionBlock
+            <QuestionAccordion
               icon={serviceQuestionIcons.windows}
+              isComplete={
+                Boolean(
+                  draft.serviceDetails["window-washing"].cleaningScope &&
+                  draft.serviceDetails["window-washing"].stories
+                ) &&
+                (draft.serviceDetails["window-washing"].finalizeOnSite ||
+                  Boolean(
+                    draft.serviceDetails["window-washing"].windowEstimate
+                  ))
+              }
+              isOpen={openDetailService === "window-washing"}
+              onOpen={() => setOpenDetailService("window-washing")}
               title="Tell us about the windows"
             >
               <div className="grid gap-4">
@@ -1096,6 +1308,9 @@ const BookingWizard = (props: BookingWizardProps) => {
                   </div>
 
                   <RoundedField
+                    disabled={
+                      draft.serviceDetails["window-washing"].finalizeOnSite
+                    }
                     error={errors.windowEstimate}
                     label="Rough window estimate"
                     onChange={(event) =>
@@ -1113,6 +1328,40 @@ const BookingWizard = (props: BookingWizardProps) => {
                       draft.serviceDetails["window-washing"].windowEstimate
                     }
                   />
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start gap-3 text-sm text-slate-700">
+                    <input
+                      checked={
+                        draft.serviceDetails["window-washing"].finalizeOnSite
+                      }
+                      className="mt-1 size-4 rounded border-slate-300 accent-lime-500"
+                      onChange={(event) =>
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          "window-washing": {
+                            ...draft.serviceDetails["window-washing"],
+                            finalizeOnSite: event.target.checked,
+                          },
+                        })
+                      }
+                      id="window-finalize-on-site"
+                      type="checkbox"
+                    />
+                    <span>
+                      <Label
+                        className="block font-semibold text-slate-950"
+                        htmlFor="window-finalize-on-site"
+                      >
+                        Finalize glass count on site
+                      </Label>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        Skip exact pane or screen counts now. The provider can
+                        verify the quote during the visit.
+                      </span>
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_180px]">
@@ -1148,7 +1397,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                     </span>
                   </div>
 
-                  {draft.serviceDetails["window-washing"].washScreens ? (
+                  {draft.serviceDetails["window-washing"].washScreens &&
+                  !draft.serviceDetails["window-washing"].finalizeOnSite ? (
                     <RoundedField
                       error={errors.screenCount}
                       label="Screen count"
@@ -1168,33 +1418,30 @@ const BookingWizard = (props: BookingWizardProps) => {
                   ) : null}
                 </div>
 
-                <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
-                  <span className="flex items-center gap-3">
-                    <Upload className="size-4" />
-                    Add photos for faster quote review
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    {draft.serviceDetails["window-washing"].photoNames.length}{" "}
-                    files
-                  </span>
-                  <input
-                    className="sr-only"
-                    multiple
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                      const files = [...(event.target.files ?? [])];
-                      setDraftValue("serviceDetails", {
-                        ...draft.serviceDetails,
-                        "window-washing": {
-                          ...draft.serviceDetails["window-washing"],
-                          photoNames: files.map(({ name }) => name),
-                        },
-                      });
-                    }}
-                    type="file"
-                  />
-                </label>
+                <ServicePhotoUpload
+                  count={
+                    draft.serviceDetails["window-washing"].photoNames.length
+                  }
+                  onFiles={(photoNames) =>
+                    setDraftValue("serviceDetails", {
+                      ...draft.serviceDetails,
+                      "window-washing": {
+                        ...draft.serviceDetails["window-washing"],
+                        photoNames,
+                      },
+                    })
+                  }
+                />
+                <Button
+                  className="h-11 w-full rounded-2xl bg-slate-950 font-bold text-white hover:bg-slate-800"
+                  onClick={() => completeServiceDetails("window-washing")}
+                  type="button"
+                >
+                  Save Window Details
+                  <Check className="size-4" />
+                </Button>
               </div>
-            </QuestionBlock>
+            </QuestionAccordion>
           ) : null}
 
           <StepButton onClick={() => continueFromStep(2)} />
@@ -1255,7 +1502,19 @@ const BookingWizard = (props: BookingWizardProps) => {
             </p>
           </button>
 
-          {selectedCombos.map((combo) => (
+          {shownCombos.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="font-semibold text-slate-950">
+                Recurring service plan
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Your selected item is eligible for recurring care. We will map
+                the exact billing cadence when Stripe products are synced.
+              </p>
+            </div>
+          ) : null}
+
+          {shownCombos.map((combo) => (
             <button
               className={cn(
                 "rounded-2xl border p-4 text-left transition-colors",
@@ -1292,31 +1551,7 @@ const BookingWizard = (props: BookingWizardProps) => {
         number="06"
         title="Checkout preview"
       >
-        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="grid gap-3">
-            {paymentOptions.map((option) => (
-              <button
-                className={cn(
-                  "rounded-2xl border p-4 text-left transition-colors",
-                  draft.paymentOption === option.id
-                    ? "border-lime-500 bg-lime-100"
-                    : "border-slate-200 bg-slate-50 hover:bg-white"
-                )}
-                key={option.id}
-                onClick={() => setDraftValue("paymentOption", option.id)}
-                type="button"
-              >
-                <p className="font-semibold text-slate-950">{option.name}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {option.description}
-                </p>
-              </button>
-            ))}
-            {errors.paymentOption ? (
-              <p className="text-sm text-rose-300">{errors.paymentOption}</p>
-            ) : null}
-          </div>
-
+        <div className="mx-auto max-w-3xl">
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
             <div className="border-b border-slate-100 bg-slate-950 p-5 text-white">
               <div className="flex items-center gap-2">
@@ -1386,8 +1621,42 @@ const BookingWizard = (props: BookingWizardProps) => {
                   </span>
                 </div>
               </div>
+
+              <div className="border-t border-slate-200 pt-4">
+                <p className="mb-3 text-sm font-semibold text-slate-950">
+                  Choose how to pay
+                </p>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {paymentOptions.map((option) => (
+                    <button
+                      className={cn(
+                        "rounded-2xl border p-3 text-left transition-colors",
+                        draft.paymentOption === option.id
+                          ? "border-lime-500 bg-lime-100"
+                          : "border-slate-200 bg-slate-50 hover:bg-white"
+                      )}
+                      key={option.id}
+                      onClick={() => setDraftValue("paymentOption", option.id)}
+                      type="button"
+                    >
+                      <p className="text-sm font-semibold text-slate-950">
+                        {option.name}
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-slate-600">
+                        {option.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+                {errors.paymentOption ? (
+                  <p className="mt-3 text-sm text-rose-300">
+                    {errors.paymentOption}
+                  </p>
+                ) : null}
+              </div>
               <Button
-                className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200"
+                className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!draft.paymentOption}
                 onClick={() => validateStep(5)}
                 type="button"
               >

@@ -34,7 +34,7 @@ export const centralArkansasArea = "Central Arkansas";
 export const serviceCatalog: ServiceCatalogItem[] = [
   {
     accentClassName: "border-lime-400/30 bg-lime-400/10 text-lime-300",
-    badge: "Lawn Maintenance",
+    badge: "Groundskeeper",
     ctaText: "Explore lawncare",
     description:
       "Eco-minded mowing, edge trimming, and cleanup for standard lots, larger yards, and commercial grounds.",
@@ -60,14 +60,14 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     shortName: "Lawn care",
     startingPrice: 75,
     subscriptionInfo: "Bi-weekly care plans available",
-    title: "Groundskeeper Lawncare",
+    title: "Lawncare",
   },
   {
     accentClassName: "border-sky-400/30 bg-sky-400/10 text-sky-300",
-    badge: "Laundry & Linens",
+    badge: "Royal Wash",
     ctaText: "Explore laundry",
     description:
-      "Wash, dry, fold, pickup, and delivery so the weekly laundry pile stops eating your day.",
+      "Same-day wash and fold, pickup, and delivery so the weekly laundry pile stops eating your day.",
     detailHeading: "Fresh laundry, folded neatly, back at your door.",
     features: [
       "Wash, dry, and crisp fold garment care",
@@ -88,13 +88,13 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     seoDescription:
       "Schedule laundry pickup and delivery in Central Arkansas with CallCastleCare. Wash and fold, bedding, and recurring laundry plans.",
     shortName: "Laundry",
-    startingPrice: 35,
+    startingPrice: 40,
     subscriptionInfo: "Weekly laundry care plans available",
-    title: "Royal Wash Laundry",
+    title: "Laundry",
   },
   {
     accentClassName: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
-    badge: "Spotless Window Valet",
+    badge: "Royal Pane",
     ctaText: "Explore window washing",
     description:
       "Crystal-clear glass care with estimates based on pane count, stories, screens, and finish level.",
@@ -120,7 +120,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     shortName: "Window washing",
     startingPrice: 10,
     subscriptionInfo: "Monthly and bi-annual plans available",
-    title: "Royal Pane Window Washing",
+    title: "Window Washing",
   },
 ];
 
@@ -138,6 +138,15 @@ export const comboSubscriptions = [
     id: "bi_weekly_royal_duo",
     name: "Bi-Weekly Royal Duo",
     requiredServices: ["lawncare", "laundry"],
+  },
+  {
+    description:
+      "Bi-weekly Royal Wash laundry plus monthly Royal Pane window detailing.",
+    discountLabel: "20% off total",
+    frequency: "Blended monthly care",
+    id: "royal_linen_panes_duo",
+    name: "Royal Linen & Panes Duo",
+    requiredServices: ["laundry", "window-washing"],
   },
   {
     description:

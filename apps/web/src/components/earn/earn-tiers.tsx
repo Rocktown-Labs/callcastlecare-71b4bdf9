@@ -30,9 +30,9 @@ export default function EarnTiers() {
         </div>
 
         <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-2">
-          <article className="flex flex-col border border-white/10 bg-slate-950/70 p-6 lg:p-8">
+          <article className="flex flex-col rounded-3xl border border-white/10 bg-slate-950/70 p-6 lg:p-8">
             <div>
-              <span className="inline-block border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-medium text-white/80">
+              <span className="inline-block rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-medium text-white/80">
                 Standard Provider
               </span>
               <div className="mt-5 text-5xl font-bold text-white">Free</div>
@@ -41,7 +41,7 @@ export default function EarnTiers() {
               </p>
             </div>
 
-            <div className="mt-8 border border-white/10 bg-[#080c16] p-4">
+            <div className="mt-8 rounded-2xl border border-white/10 bg-[#080c16] p-4">
               <div className="text-sm text-white/50">Starting split</div>
               <div className="mt-1 text-3xl font-bold text-white">
                 60
@@ -65,17 +65,17 @@ export default function EarnTiers() {
             </ul>
 
             <Button
-              className="mt-8 h-12 w-full border-white/15 bg-transparent text-white hover:bg-white/10"
+              className="mt-8 h-12 w-full rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
               variant="outline"
             >
               Join for free
             </Button>
           </article>
 
-          <article className="relative flex flex-col overflow-hidden border border-lime-300/50 bg-lime-300/10 p-6 lg:p-8">
+          <article className="relative flex flex-col overflow-hidden rounded-3xl border border-lime-300/50 bg-lime-300/10 p-6 lg:p-8">
             <div className="absolute inset-x-0 top-0 h-1 bg-lime-300" />
             <div>
-              <span className="inline-flex items-center gap-1.5 border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-bold text-lime-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-bold text-lime-200">
                 <ShieldCheck className="size-4" />
                 CallCastleCare Pro
               </span>
@@ -88,7 +88,7 @@ export default function EarnTiers() {
               </p>
             </div>
 
-            <div className="mt-8 border border-lime-300/30 bg-[#080c16] p-4">
+            <div className="mt-8 rounded-2xl border border-lime-300/30 bg-[#080c16] p-4">
               <div className="flex items-center gap-1.5 text-sm font-medium text-lime-300">
                 <Zap className="size-4" />
                 Instant upgrade
@@ -114,7 +114,7 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Button className="mt-8 h-12 w-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
+            <Button className="mt-8 h-12 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
               Apply as Pro
             </Button>
           </article>
