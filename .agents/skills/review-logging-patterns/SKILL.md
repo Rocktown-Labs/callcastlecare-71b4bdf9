@@ -21,13 +21,13 @@ Review and improve logging patterns in TypeScript/JavaScript codebases. Transfor
 
 ## Quick Reference
 
-| Working on...         | Resource                                                                                                        |
-| --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Wide events patterns  | [references/wide-events.md](references/wide-events.md)                                                          |
-| Error handling        | [references/structured-errors.md](references/structured-errors.md)                                              |
-| Code review checklist | [references/code-review.md](references/code-review.md)                                                          |
-| Drain pipeline        | [references/drain-pipeline.md](references/drain-pipeline.md)                                                    |
-| Audit logs            | [build-audit-logs](../build-audit-logs/SKILL.md) skill + [docs](https://www.evlog.dev/use-cases/audit/overview) |
+| Working on... | Resource |
+| --- | --- |
+| Wide events patterns | [references/wide-events.md](references/wide-events.md) |
+| Error handling | [references/structured-errors.md](references/structured-errors.md) |
+| Code review checklist | [references/code-review.md](references/code-review.md) |
+| Drain pipeline | [references/drain-pipeline.md](references/drain-pipeline.md) |
+| Audit logs | [build-audit-logs](../build-audit-logs/SKILL.md) skill + [docs](https://www.evlog.dev/use-cases/audit/overview) |
 
 ## Audit logs
 
@@ -108,12 +108,19 @@ Client-side: `log`, `setIdentity`, `clearIdentity` are auto-imported in componen
 // lib/evlog.ts
 import type { DrainContext } from "evlog";
 import { createEvlog } from "evlog/next";
-import { createUserAgentEnricher, createRequestSizeEnricher } from "evlog/enrichers";
+import {
+  createUserAgentEnricher,
+  createRequestSizeEnricher,
+} from "evlog/enrichers";
 import { createDrainPipeline } from "evlog/pipeline";
 
 const enrichers = [createUserAgentEnricher(), createRequestSizeEnricher()];
-const pipeline = createDrainPipeline<DrainContext>({ batch: { size: 50, intervalMs: 5000 } });
-const drain = pipeline(createAxiomDrain({ dataset: "logs", apiKey: process.env.AXIOM_API_KEY! }));
+const pipeline = createDrainPipeline<DrainContext>({
+  batch: { size: 50, intervalMs: 5000 },
+});
+const drain = pipeline(
+  createAxiomDrain({ dataset: "logs", apiKey: process.env.AXIOM_API_KEY! })
+);
 
 export const { withEvlog, useLogger, log, createError } = createEvlog({
   service: "my-app",
@@ -231,7 +238,7 @@ export async function POST(request: NextRequest) {
   const { service: _, ...sanitized } = body;
   console.log(
     "[CLIENT LOG]",
-    JSON.stringify({ ...sanitized, service: "my-app", source: "client" }),
+    JSON.stringify({ ...sanitized, service: "my-app", source: "client" })
   );
   return new Response(null, { status: 204 });
 }
@@ -462,7 +469,7 @@ app.use(
     keep: (ctx) => {
       if (ctx.duration && ctx.duration > 2000) ctx.shouldKeep = true;
     },
-  }),
+  })
 );
 ```
 
@@ -497,8 +504,13 @@ app.onError((error, c) => {
   c.get("log").error(error);
   const parsed = parseError(error);
   return c.json(
-    { message: parsed.message, why: parsed.why, fix: parsed.fix, link: parsed.link },
-    parsed.status as ContentfulStatusCode,
+    {
+      message: parsed.message,
+      why: parsed.why,
+      fix: parsed.fix,
+      link: parsed.link,
+    },
+    parsed.status as ContentfulStatusCode
   );
 });
 ```
@@ -518,7 +530,7 @@ app.use(
     keep: (ctx) => {
       if (ctx.duration && ctx.duration > 2000) ctx.shouldKeep = true;
     },
-  }),
+  })
 );
 ```
 
@@ -614,7 +626,7 @@ app.use(
     keep: (ctx) => {
       if (ctx.duration && ctx.duration > 2000) ctx.shouldKeep = true;
     },
-  }),
+  })
 );
 ```
 
@@ -706,7 +718,9 @@ const router = {
 const handler = withEvlog(new RPCHandler(router));
 
 export default async function fetch(request: Request) {
-  const { matched, response } = await handler.handle(request, { prefix: "/rpc" });
+  const { matched, response } = await handler.handle(request, {
+    prefix: "/rpc",
+  });
   return matched ? response : new Response("Not Found", { status: 404 });
 }
 ```
@@ -809,47 +823,47 @@ log.emit(); // Manual emit required in standalone
 
 All options work in Nuxt (`evlog` key), Nitro (passed to `evlog()`), Next.js (`createEvlog()`), and standalone (`initLogger()`).
 
-| Option                    | Type                                     | Default              | Description                                                                                                                                   |
-| ------------------------- | ---------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env.service` / `service` | `string`                                 | `'app'`              | Service name in logs                                                                                                                          |
-| `enabled`                 | `boolean`                                | `true`               | Global toggle (no-ops when false)                                                                                                             |
-| `pretty`                  | `boolean`                                | `true` in dev        | Pretty tree format vs JSON                                                                                                                    |
-| `silent`                  | `boolean`                                | `false`              | Suppress console output. Events still go to drains                                                                                            |
-| `include`                 | `string[]`                               | All routes           | Route glob patterns to log                                                                                                                    |
-| `exclude`                 | `string[]`                               | None                 | Route patterns to exclude (takes precedence)                                                                                                  |
-| `routes`                  | `Record<string, { service }>`            | --                   | Route-specific service names                                                                                                                  |
-| `minLevel`                | `'debug' \| 'info' \| 'warn' \| 'error'` | `'debug'`            | Hard threshold for the global `log` API and client `log` (not request wide events). Use `sampling.rates` for probabilistic volume on requests |
-| `sampling.rates`          | `object`                                 | --                   | Head sampling: `{ info: 10, warn: 50 }` (0-100%)                                                                                              |
-| `sampling.keep`           | `array`                                  | --                   | Tail sampling: `[{ status: 400 }, { duration: 1000 }]`                                                                                        |
-| `drain`                   | `(ctx) => void`                          | --                   | Drain callback (Next.js, standalone)                                                                                                          |
-| `enrich`                  | `(ctx) => void`                          | --                   | Enrich callback (Next.js)                                                                                                                     |
-| `keep`                    | `(ctx) => void`                          | --                   | Custom tail sampling callback (Next.js)                                                                                                       |
-| `redact`                  | `boolean \| RedactConfig`                | `true` in production | Enabled by default in production. `false` to disable. Object for fine-grained control                                                         |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `env.service` / `service` | `string` | `'app'` | Service name in logs |
+| `enabled` | `boolean` | `true` | Global toggle (no-ops when false) |
+| `pretty` | `boolean` | `true` in dev | Pretty tree format vs JSON |
+| `silent` | `boolean` | `false` | Suppress console output. Events still go to drains |
+| `include` | `string[]` | All routes | Route glob patterns to log |
+| `exclude` | `string[]` | None | Route patterns to exclude (takes precedence) |
+| `routes` | `Record<string, { service }>` | -- | Route-specific service names |
+| `minLevel` | `'debug' \| 'info' \| 'warn' \| 'error'` | `'debug'` | Hard threshold for the global `log` API and client `log` (not request wide events). Use `sampling.rates` for probabilistic volume on requests |
+| `sampling.rates` | `object` | -- | Head sampling: `{ info: 10, warn: 50 }` (0-100%) |
+| `sampling.keep` | `array` | -- | Tail sampling: `[{ status: 400 }, { duration: 1000 }]` |
+| `drain` | `(ctx) => void` | -- | Drain callback (Next.js, standalone) |
+| `enrich` | `(ctx) => void` | -- | Enrich callback (Next.js) |
+| `keep` | `(ctx) => void` | -- | Custom tail sampling callback (Next.js) |
+| `redact` | `boolean \| RedactConfig` | `true` in production | Enabled by default in production. `false` to disable. Object for fine-grained control |
 
 ### Nitro Hooks (Nuxt, Nitro v2/v3)
 
-| Hook              | When                     | Use                              |
-| ----------------- | ------------------------ | -------------------------------- |
-| `evlog:drain`     | After enrichment         | Send events to external services |
-| `evlog:enrich`    | After emit, before drain | Add derived context              |
-| `evlog:emit:keep` | During emit              | Custom tail sampling logic       |
-| `close`           | Server shutdown          | Flush drain pipeline buffers     |
+| Hook | When | Use |
+| --- | --- | --- |
+| `evlog:drain` | After enrichment | Send events to external services |
+| `evlog:enrich` | After emit, before drain | Add derived context |
+| `evlog:emit:keep` | During emit | Custom tail sampling logic |
+| `close` | Server shutdown | Flush drain pipeline buffers |
 
 ---
 
 ## Drain Adapters
 
-| Adapter               | Import               | Env Vars                                                                                         |
-| --------------------- | -------------------- | ------------------------------------------------------------------------------------------------ |
-| Axiom                 | `evlog/axiom`        | `AXIOM_API_KEY`, `AXIOM_DATASET`                                                                 |
-| OTLP                  | `evlog/otlp`         | `OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_ENDPOINT`)                                               |
-| HyperDX               | `evlog/hyperdx`      | `HYPERDX_API_KEY` (optional `HYPERDX_OTLP_ENDPOINT`; defaults to `https://in-otel.hyperdx.io`)   |
-| PostHog               | `evlog/posthog`      | `POSTHOG_API_KEY`, `POSTHOG_HOST`                                                                |
-| Sentry                | `evlog/sentry`       | `SENTRY_DSN`                                                                                     |
-| Better Stack          | `evlog/better-stack` | `BETTER_STACK_API_KEY`                                                                           |
-| Datadog               | `evlog/datadog`      | `DD_API_KEY` or `DATADOG_API_KEY`, optional `DD_SITE` / `DATADOG_LOGS_URL`                       |
-| File System           | `evlog/fs`           | None (local file system)                                                                         |
-| HTTP (browser ingest) | `evlog/http`         | None (configure `endpoint` in code). `evlog/browser` is deprecated; same API, removed next major |
+| Adapter | Import | Env Vars |
+| --- | --- | --- |
+| Axiom | `evlog/axiom` | `AXIOM_API_KEY`, `AXIOM_DATASET` |
+| OTLP | `evlog/otlp` | `OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) |
+| HyperDX | `evlog/hyperdx` | `HYPERDX_API_KEY` (optional `HYPERDX_OTLP_ENDPOINT`; defaults to `https://in-otel.hyperdx.io`) |
+| PostHog | `evlog/posthog` | `POSTHOG_API_KEY`, `POSTHOG_HOST` |
+| Sentry | `evlog/sentry` | `SENTRY_DSN` |
+| Better Stack | `evlog/better-stack` | `BETTER_STACK_API_KEY` |
+| Datadog | `evlog/datadog` | `DD_API_KEY` or `DATADOG_API_KEY`, optional `DD_SITE` / `DATADOG_LOGS_URL` |
+| File System | `evlog/fs` | None (local file system) |
+| HTTP (browser ingest) | `evlog/http` | None (configure `endpoint` in code). `evlog/browser` is deprecated; same API, removed next major |
 
 Use canonical env var names (e.g. `AXIOM_API_KEY`, `BETTER_STACK_API_KEY`) — the same names work in every framework.
 
@@ -1006,14 +1020,21 @@ This adds `ai.tools` (per-tool `{ name, durationMs, success, error? }`) and `ai.
 ### Embeddings
 
 ```typescript
-const { embedding, usage } = await embed({ model: embeddingModel, value: query });
+const { embedding, usage } = await embed({
+  model: embeddingModel,
+  value: query,
+});
 ai.captureEmbed({ usage, model: "text-embedding-3-small", dimensions: 1536 });
 ```
 
 For `embedMany`, pass the batch count:
 
 ```typescript
-ai.captureEmbed({ usage, model: "text-embedding-3-small", count: documents.length });
+ai.captureEmbed({
+  usage,
+  model: "text-embedding-3-small",
+  count: documents.length,
+});
 ```
 
 ### Cost estimation
@@ -1035,13 +1056,13 @@ Includes: `calls`, `model`, `provider`, `inputTokens`, `outputTokens`, `totalTok
 
 Anti-patterns to detect:
 
-| Anti-Pattern                           | Fix                                                          |
-| -------------------------------------- | ------------------------------------------------------------ |
-| Manual token tracking in `onFinish`    | `ai.wrap()` — middleware captures automatically              |
-| `console.log('tokens:', result.usage)` | `ai.wrap()` — structured `ai.*` fields in wide event         |
-| No AI observability                    | Add `createAILogger(log)` + `ai.wrap()`                      |
-| No tool execution timing               | Add `createEvlogIntegration(ai)` to `telemetry.integrations` |
-| Manual cost calculation                | Use `cost` option in `createAILogger()`                      |
+| Anti-Pattern | Fix |
+| --- | --- |
+| Manual token tracking in `onFinish` | `ai.wrap()` — middleware captures automatically |
+| `console.log('tokens:', result.usage)` | `ai.wrap()` — structured `ai.*` fields in wide event |
+| No AI observability | Add `createAILogger(log)` + `ai.wrap()` |
+| No tool execution timing | Add `createEvlogIntegration(ai)` to `telemetry.integrations` |
+| Manual cost calculation | Use `cost` option in `createAILogger()` |
 
 ---
 
@@ -1054,7 +1075,11 @@ import { createError } from "evlog"; // or auto-imported in Nuxt
 throw createError({ message: "Database connection failed", status: 500 });
 
 // Standard
-throw createError({ message: "Payment failed", status: 402, why: "Card declined by issuer" });
+throw createError({
+  message: "Payment failed",
+  status: 402,
+  why: "Card declined by issuer",
+});
 
 // Complete
 throw createError({
@@ -1090,15 +1115,15 @@ See [references/structured-errors.md](references/structured-errors.md) for commo
 
 ## Anti-Patterns to Detect
 
-| Anti-Pattern                                     | Fix                                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Multiple `console.log` in one function           | Single wide event with `log.set()`                                                    |
-| `throw new Error('...')`                         | `throw createError({ message, status, why, fix })`                                    |
-| `console.error(e); throw e`                      | `log.error(e); throw createError(...)`                                                |
-| No logging in request handlers                   | Add `useLogger(event)` / `useLogger()` / `createRequestLogger()`                      |
-| Flat log data `{ uid, n, t }`                    | Grouped objects: `{ user: {...}, cart: {...} }`                                       |
+| Anti-Pattern | Fix |
+| --- | --- |
+| Multiple `console.log` in one function | Single wide event with `log.set()` |
+| `throw new Error('...')` | `throw createError({ message, status, why, fix })` |
+| `console.error(e); throw e` | `log.error(e); throw createError(...)` |
+| No logging in request handlers | Add `useLogger(event)` / `useLogger()` / `createRequestLogger()` |
+| Flat log data `{ uid, n, t }` | Grouped objects: `{ user: {...}, cart: {...} }` |
 | Logging sensitive data `log.set({ user: body })` | Explicit fields: `{ user: { id: body.id, plan: body.plan } }` + enable `redact: true` |
-| Putting support-only IDs in `why` / `message`    | Use `createError({ ..., internal: { ... } })` for non-user-facing diagnostics         |
+| Putting support-only IDs in `why` / `message` | Use `createError({ ..., internal: { ... } })` for non-user-facing diagnostics |
 
 See [references/code-review.md](references/code-review.md) for the full checklist.
 

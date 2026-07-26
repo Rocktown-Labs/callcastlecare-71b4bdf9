@@ -1,8 +1,10 @@
 import { auth } from "@callcastlecare/auth";
 import { env } from "@callcastlecare/env/server";
 import { initLogger } from "evlog";
-import { createAuthMiddleware, type BetterAuthInstance } from "evlog/better-auth";
-import { evlog, type EvlogVariables } from "evlog/hono";
+import { createAuthMiddleware } from "evlog/better-auth";
+import type { BetterAuthInstance } from "evlog/better-auth";
+import { evlog } from "evlog/hono";
+import type { EvlogVariables } from "evlog/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
@@ -26,18 +28,16 @@ app.use("*", async (c, next) => {
 app.use(
   "/*",
   cors({
-    origin: env.CORS_ORIGIN,
-    allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
     credentials: true,
-  }),
+    origin: env.CORS_ORIGIN,
+  })
 );
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
-app.get("/", (c) => {
-  return c.text("OK");
-});
+app.get("/", (c) => c.text("OK"));
 
 import { serve } from "@hono/node-server";
 
@@ -51,6 +51,6 @@ if (!process.env.VERCEL) {
     },
     (info) => {
       console.log(`Server is running on http://localhost:${info.port}`);
-    },
+    }
   );
 }

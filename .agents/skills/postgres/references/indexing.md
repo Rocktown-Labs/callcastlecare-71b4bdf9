@@ -26,8 +26,7 @@ A composite index on `(a, b)` supports queries on `a` + `b` and `a` alone, but n
 
 ## Partial Indexes
 
-Reduce index size by filtering to common query patterns.
-Only use if index size is problematic but the index is needed for performance.
+Reduce index size by filtering to common query patterns. Only use if index size is problematic but the index is needed for performance.
 
 ```sql
 CREATE INDEX order_active_idx ON order (customer_id)
@@ -40,12 +39,12 @@ Consider creating covering indexes for commonly executed query patterns that ret
 
 ## Index Types
 
-| Type             | Use Case                          | Example                                                            |
-| ---------------- | --------------------------------- | ------------------------------------------------------------------ |
-| B-tree (default) | Equality, range, sorting          | `WHERE id = 1`, `ORDER BY date`                                    |
-| GIN              | Arrays, JSONB, full-text          | `WHERE tags @> ARRAY['x']`                                         |
-| GiST             | Geometric, range types, full-text | PostGIS, `tsrange`, `tsvector`                                     |
-| BRIN             | Large sequential/time-series      | Append-only logs, events (requires physical row order correlation) |
+| Type | Use Case | Example |
+| --- | --- | --- |
+| B-tree (default) | Equality, range, sorting | `WHERE id = 1`, `ORDER BY date` |
+| GIN | Arrays, JSONB, full-text | `WHERE tags @> ARRAY['x']` |
+| GiST | Geometric, range types, full-text | PostGIS, `tsrange`, `tsvector` |
+| BRIN | Large sequential/time-series | Append-only logs, events (requires physical row order correlation) |
 
 ```sql
 CREATE INDEX metadata_idx ON order USING GIN (metadata);       -- JSONB

@@ -1,34 +1,30 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import HeroSection from "@/components/home/hero";
+import MarketingLayout from "@/components/home/marketing-layout";
+import PropertiesSection from "@/components/home/properties";
+import ServicesSection from "@/components/home/services";
+
+const HomeComponent = () => (
+  <MarketingLayout>
+    <HeroSection />
+    <ServicesSection />
+    <PropertiesSection />
+  </MarketingLayout>
+);
+
 export const Route = createFileRoute("/")({
   component: HomeComponent,
+  head: () => ({
+    meta: [
+      {
+        title: "CallCastleCare | Premium Home Services On Demand",
+      },
+      {
+        content:
+          "Book premium lawn care, laundry, and home services with CallCastleCare.",
+        name: "description",
+      },
+    ],
+  }),
 });
-
-const TITLE_TEXT = `
- ██████╗ ███████╗████████╗████████╗███████╗██████╗
- ██╔══██╗██╔════╝╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗
- ██████╔╝█████╗     ██║      ██║   █████╗  ██████╔╝
- ██╔══██╗██╔══╝     ██║      ██║   ██╔══╝  ██╔══██╗
- ██████╔╝███████╗   ██║      ██║   ███████╗██║  ██║
- ╚═════╝ ╚══════╝   ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝
-
- ████████╗    ███████╗████████╗ █████╗  ██████╗██╗  ██╗
- ╚══██╔══╝    ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝
-    ██║       ███████╗   ██║   ███████║██║     █████╔╝
-    ██║       ╚════██║   ██║   ██╔══██║██║     ██╔═██╗
-    ██║       ███████║   ██║   ██║  ██║╚██████╗██║  ██╗
-    ╚═╝       ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
- `;
-
-function HomeComponent() {
-  return (
-    <div className="container mx-auto max-w-3xl px-4 py-2">
-      <pre className="overflow-x-auto font-mono text-sm">{TITLE_TEXT}</pre>
-      <div className="grid gap-6">
-        <section className="rounded-lg border p-4">
-          <h2 className="mb-2 font-medium">API Status</h2>
-        </section>
-      </div>
-    </div>
-  );
-}

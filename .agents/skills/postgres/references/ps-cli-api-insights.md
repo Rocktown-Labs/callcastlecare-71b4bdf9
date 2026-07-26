@@ -45,9 +45,9 @@ pscale api "organizations/{org}/databases/{db}/branches/{branch}/schema/lint"
 
 ## What to Look For
 
-| Metric                           | Indicates             | Action                          |
-| -------------------------------- | --------------------- | ------------------------------- |
+| Metric | Indicates | Action |
+| --- | --- | --- |
 | High `rows_read / rows_returned` | Missing or poor index | Add index on WHERE/JOIN columns |
-| High `total_time_s`              | Heavy query           | Optimize or cache               |
-| High `count` with same pattern   | N+1 queries           | Batch or eager-load             |
-| `indexed: false`                 | Full table scan       | Add index                       |
+| High `total_time_s` | Heavy query | Optimize or cache |
+| High `count` with same pattern | N+1 queries | Batch or eager-load |
+| `indexed: false` | Full table scan | Add index |

@@ -14,10 +14,12 @@
     "@callcastlecare/db": "workspace:*",
     "@callcastlecare/env": "workspace:*",
     "@hono/node-server": "^2.0.8",
+    "@hono/zod-openapi": "^1.5.1",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "evlog": "catalog:",
     "hono": "^4.12.27",
+    "stoker": "^2.0.1",
     "zod": "catalog:"
   },
   "devDependencies": {

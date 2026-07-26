@@ -15,8 +15,7 @@ tags: postgres, memory, shared_buffers, work_mem, oom, architecture, operations
 
 ## Memory Multiplication Danger
 
-Maximum potential: `work_mem × operations_per_query × (parallel_workers + 1) × connections` (leader participates by default via `parallel_leader_participation = on`; hash operations use up to `hash_mem_multiplier × work_mem`, default 2.0). Example: 128MB work_mem, 3 ops (2 sorts + 1 hash join), 2 parallel workers, 100 connections → 2 sorts at 128MB = 256MB, 1 hash join at 128MB × 2.0 = 256MB, per process = 512MB, × 3 processes (2 workers + leader) = 1536MB/query, × 100 connections = **~150GB** worst case. This case is rare.
-Not all queries hit limits at once, but high concurrency + large datasets approach it. This is a common cause of OOM in containerized/Kubernetes deployments. Plan capacity with a 1.5–2× safety margin.
+Maximum potential: `work_mem × operations_per_query × (parallel_workers + 1) × connections` (leader participates by default via `parallel_leader_participation = on`; hash operations use up to `hash_mem_multiplier × work_mem`, default 2.0). Example: 128MB work_mem, 3 ops (2 sorts + 1 hash join), 2 parallel workers, 100 connections → 2 sorts at 128MB = 256MB, 1 hash join at 128MB × 2.0 = 256MB, per process = 512MB, × 3 processes (2 workers + leader) = 1536MB/query, × 100 connections = **~150GB** worst case. This case is rare. Not all queries hit limits at once, but high concurrency + large datasets approach it. This is a common cause of OOM in containerized/Kubernetes deployments. Plan capacity with a 1.5–2× safety margin.
 
 ## OS Page Cache (Double Buffering)
 

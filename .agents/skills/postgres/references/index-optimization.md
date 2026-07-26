@@ -49,8 +49,7 @@ HAVING count(*) > 1;
 
 ## Identify Invalid Indexes
 
-Failed `CREATE INDEX CONCURRENTLY` builds leave INVALID indexes maintained on every write but never used for reads.
-`CREATE INDEX CONCURRENTLY IF NOT EXISTS` silently succeeds if an invalid index already exists — always check and drop before retrying.
+Failed `CREATE INDEX CONCURRENTLY` builds leave INVALID indexes maintained on every write but never used for reads. `CREATE INDEX CONCURRENTLY IF NOT EXISTS` silently succeeds if an invalid index already exists — always check and drop before retrying.
 
 ```sql
 SELECT indexrelname FROM pg_stat_user_indexes s
@@ -76,8 +75,7 @@ ORDER BY count(*) DESC;
 
 ## Index Bloat Detection
 
-VACUUM removes dead tuples but does **not** reclaim empty index page space — only `REINDEX` or `pg_repack` compacts pages.
-Detect with `pgstattuple`:
+VACUUM removes dead tuples but does **not** reclaim empty index page space — only `REINDEX` or `pg_repack` compacts pages. Detect with `pgstattuple`:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgstattuple;

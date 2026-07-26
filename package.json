@@ -34,6 +34,7 @@
     "db:studio": "turbo run db:studio -F @callcastlecare/db",
     "db:generate": "turbo run db:generate -F @callcastlecare/db",
     "db:migrate": "turbo run db:migrate -F @callcastlecare/db",
+    "db:reset": "turbo run db:reset -F @callcastlecare/db",
     "deploy:setup": "vercel link",
     "dev:vercel": "vercel dev -L",
     "env:preview": "tsx scripts/sync-vercel-env.ts preview",
@@ -59,7 +60,7 @@
     "turbo": "^2.10.2",
     "typescript": "^6",
     "ultracite": "7.9.3",
-    "vercel": "^54.18.6"
+    "vercel": "^57.0.0"
   },
   "packageManager": "bun@1.3.14"
 }
