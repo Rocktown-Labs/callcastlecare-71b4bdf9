@@ -6,9 +6,9 @@ const footerLinks = {
   company: ["About", "Careers", "Press", "Blog"],
   legal: ["Privacy", "Terms", "Cookies"],
   services: [
-    { href: "/#services", label: "Lawn care" },
-    { href: "/#services", label: "Laundry" },
-    { href: "/#homes", label: "Home services" },
+    { href: "/services/lawncare", label: "Lawn care" },
+    { href: "/services/laundry", label: "Laundry" },
+    { href: "/services/window-washing", label: "Window washing" },
     { href: "/earn", label: "Drive for us" },
   ],
   support: ["Help Center", "Contact", "Service Areas", "FAQ"],
@@ -51,14 +51,14 @@ export default function Footer() {
               />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/45">
-              Premium home services on demand. Lawn care, laundry, and trusted
-              home help for busy households.
+              Premium home services on demand. Lawn care, laundry, and window
+              washing for busy Central Arkansas households.
             </p>
             <div className="mt-6 flex gap-2">
               {socialLinks.map(({ icon: Icon, label }) => (
                 <button
                   aria-label={label}
-                  className="flex size-9 items-center justify-center border border-white/10 bg-white/[0.04] text-white/45 transition-colors hover:border-lime-300/40 hover:text-lime-300"
+                  className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/45 transition-colors hover:border-lime-300/40 hover:text-lime-300"
                   key={label}
                   type="button"
                 >

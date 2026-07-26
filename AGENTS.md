@@ -19,7 +19,9 @@ CastleCare is being rewritten from a previous Next.js application into a simpler
 ## Current Product Scope
 
 - Focus now on public pages, the admin dashboard, and the customer dashboard.
-- Omit the earn/provider onboarding route for now. It is planned later as `/earn` for workers and drivers.
+- The active public services are lawn care, laundry, and window washing.
+- Omit the Homes route, Homes configurator, and broader home-service marketplace surface for now. Do not reintroduce `/homes` until the product scope changes.
+- The earn/provider onboarding route exists as a reference and future worker flow, but it is not the current implementation focus.
 - Core public flows are marketing pages, service discovery, authentication, booking, checkout, and post-booking customer status.
 - Dashboards should be practical application surfaces, not marketing pages: prioritize clear navigation, scannable data, and fast task completion.
 
@@ -36,12 +38,34 @@ CastleCare is being rewritten from a previous Next.js application into a simpler
 ## TanStack Start Migration Rules
 
 - Reference the official migration guide when porting old components: https://tanstack.com/start/v0/docs/framework/react/migrate-from-next-js
+- Reference the official SEO guide when adding public service pages: https://raw.githubusercontent.com/tanstack/router/main/docs/start/framework/react/guide/seo.md
 - TanStack Start is isomorphic by default. Put server-only behavior behind `createServerFn`, server route handlers, Hono API handlers, or explicit server-only modules.
 - Do not add `"use server"` or `"use client"` directives from the old Next.js app.
 - Use TanStack Router file routes and route APIs. Dynamic params use `$param` filenames and typed `params`, not Next.js bracket routes.
 - Use route `head` metadata instead of Next.js metadata exports.
 - Validate search params with TanStack Router `validateSearch` and Zod when they affect data loading or UI state.
 - When copying components from the old Next.js app, place route-specific components in grouped folders such as `apps/web/src/components/earn`, replace `next/link` with TanStack Router `Link`, replace `next/image` with the project's current media pattern, and update asset paths to `apps/web/public`.
+
+## Booking And Checkout Direction
+
+- `/book` must stay available without authentication.
+- Keep booking forms multi-step, rounded, mobile-friendly, and validated with Zod at each step.
+- Prefer TanStack Form for durable form implementation work; the public route may also use TanStack Router search params for prefilled service, address, date, and time state.
+- Booking data should collect selected services, address, date/time, contact name, phone, email, SMS consent, service-specific questions, selected products, subscription intent, and checkout preference.
+- Service-specific questions:
+  - Lawn care: grass height (`low`, `medium`, `tall`).
+  - Laundry: with or without bedding.
+  - Window washing: stories (`1`, `2`, `3`), rough window estimate, and optional photos.
+- Product selection should behave like an accordion: each selected service gets a product panel, selecting an item closes/progresses to the next panel.
+- Show combo subscriptions only when the selected services qualify. Current combo names are Bi-Weekly Royal Duo, Monthly Castle Care, and Crown Estate Trio.
+- Keep the checkout step UI-first until schema/API work is in place. It should model the $50 deposit and the three payment choices: deposit plus invoice later, pay in full today, or deposit plus cash later.
+- Stripe work later should include a dashboard sync/edit flow for products, prices, deposit amount, subscriptions, and checkout payload generation. Use integer cents everywhere.
+
+## Auth Direction
+
+- Better Auth should use email/password auth when account finalization is implemented.
+- For Vercel previews and production domains, configure Better Auth dynamic base URL with an explicit `allowedHosts` allowlist for `callcastlecare.com`, local development hosts, and `*.vercel.app`.
+- Booking completion should offer account finalization; the app may create the customer account from booking details when the backend flow is ready.
 
 ## Hono API Standards
 

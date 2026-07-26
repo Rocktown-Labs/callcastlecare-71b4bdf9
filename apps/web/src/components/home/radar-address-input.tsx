@@ -72,7 +72,7 @@ export const RadarAddressInput = ({
         aria-autocomplete={isEnabled ? "list" : "none"}
         aria-invalid={Boolean(error)}
         className={cn(
-          "h-11 border-white/10 bg-white/[0.04] pl-10 text-sm text-white placeholder:text-white/35 focus-visible:border-lime-300/50",
+          "h-11 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-sm text-white placeholder:text-white/35 focus-visible:border-lime-300/50",
           isValidated && "text-lime-200"
         )}
         onBlur={() => {
@@ -105,11 +105,11 @@ export const RadarAddressInput = ({
       ) : null}
 
       {shouldShowSuggestions ? (
-        <ul className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto border border-white/10 bg-[#0f172a] shadow-xl">
+        <ul className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f172a] shadow-xl">
           {suggestions.map((suggestion) => (
             <li key={suggestion.id}>
               <button
-                className="w-full px-3 py-2 text-left text-sm text-white/80 hover:bg-white/10 hover:text-white"
+                className="w-full px-3 py-2 text-left text-sm text-white/80 first:rounded-t-2xl last:rounded-b-2xl hover:bg-white/10 hover:text-white"
                 onClick={() => {
                   onSelectSuggestion(suggestion);
                   setIsFocused(false);

@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 
 const sectionLinks = [
   { href: "/#services", label: "Services", sectionId: "services" },
-  { href: "/#homes", label: "Homes", sectionId: "homes" },
 ] as const;
 
 export default function Navbar() {
@@ -89,14 +88,14 @@ export default function Navbar() {
           <div className="hidden items-center gap-3 md:flex">
             <Link to="/login">
               <Button
-                className="border-white/15 bg-transparent text-white hover:bg-white/10"
+                className="rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
                 variant="outline"
               >
                 Log in
               </Button>
             </Link>
-            <Link to="/login">
-              <Button className="bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200">
+            <Link search={{}} to="/book">
+              <Button className="rounded-full bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200">
                 Get started
               </Button>
             </Link>
@@ -138,8 +137,8 @@ export default function Navbar() {
               >
                 Earn
               </Link>
-              <Link onClick={closeMenu} to="/login">
-                <Button className="mt-2 w-full bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200">
+              <Link onClick={closeMenu} search={{}} to="/book">
+                <Button className="mt-2 w-full rounded-full bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200">
                   Get started
                 </Button>
               </Link>

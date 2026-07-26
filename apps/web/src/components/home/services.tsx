@@ -1,97 +1,118 @@
 import { Button } from "@callcastlecare/ui/components/button";
+import { cn } from "@callcastlecare/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { Check, Shirt, Sprout, WandSparkles } from "lucide-react";
+import { ArrowRight, Check, Crown, Sparkles } from "lucide-react";
 
-const services = [
-  {
-    description:
-      "Clean, trimmed, and reliable lawn care for standard lots, medium lots, and commercial properties.",
-    features: ["Mowing", "Edge trimming", "Debris cleanup"],
-    icon: Sprout,
-    image: "/callcastlecare/media/lawn-care-rider-night.png",
-    name: "Lawn care",
-    price: "From $75",
-  },
-  {
-    description:
-      "Wash, fold, pickup, and delivery for households that want laundry handled without losing the day.",
-    features: ["Wash and fold", "Stain treatment", "Pickup and delivery"],
-    icon: Shirt,
-    image: "/callcastlecare/media/laundry-pickup-van.png",
-    name: "Laundry",
-    price: "From $35",
-  },
-  {
-    description:
-      "Trusted home service visits for the small jobs and specialist calls that keep a home running.",
-    features: ["Service visits", "Photo proof", "Clear status updates"],
-    icon: WandSparkles,
-    image: "/callcastlecare/media/home-technician-control-panel.png",
-    name: "Home services",
-    price: "$50 deposit",
-  },
-] as const;
+import { serviceCatalog } from "@/lib/service-catalog";
 
 export default function ServicesSection() {
   return (
-    <section className="bg-white py-20 text-slate-950" id="services">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl">
-          <h2 className="text-3xl font-bold sm:text-4xl">
-            Premium care without the coordination headache
+    <section
+      className="relative w-full overflow-hidden border-t border-white/5 bg-[#070b14] py-24"
+      id="services"
+    >
+      <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto mb-16 max-w-3xl text-center">
+          <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-lime-500/20 bg-lime-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-lime-400">
+            <Crown className="size-3.5" />
+            Royal Home Care
+          </span>
+          <h2 className="mb-4 text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+            Premium Home Services On Demand
           </h2>
-          <p className="mt-4 text-lg leading-8 text-slate-600">
-            Start with a simple request. CallCastleCare handles the service
-            details, provider coordination, and status visibility.
+          <p className="text-lg leading-8 text-slate-400">
+            Transparent pricing, guided estimates, and instant booking for homes
+            across Central Arkansas.
           </p>
         </div>
 
-        <div className="mt-10 grid gap-5 lg:grid-cols-3">
-          {services.map(
-            ({ description, features, icon: Icon, image, name, price }) => (
+        <div className="grid grid-cols-1 items-stretch gap-8 md:grid-cols-3">
+          {serviceCatalog.map((service) => {
+            const Icon = service.icon;
+
+            return (
               <article
-                className="overflow-hidden border border-slate-200 bg-slate-50"
-                key={name}
+                className={cn(
+                  "group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900/90 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5",
+                  service.id === "laundry" &&
+                    "border-sky-500/40 ring-1 ring-sky-500/30"
+                )}
+                key={service.id}
               >
-                <div className="relative aspect-[4/3] bg-slate-900">
-                  <img
-                    alt={`${name} service`}
-                    className="absolute inset-0 size-full object-cover"
-                    src={image}
-                  />
-                </div>
+                {service.id === "laundry" ? (
+                  <div className="absolute right-0 top-0 rounded-bl-xl bg-sky-400 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#070b14]">
+                    Most Popular
+                  </div>
+                ) : null}
+
                 <div className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-11 items-center justify-center bg-slate-950 text-lime-300">
-                        <Icon className="size-5" />
-                      </div>
-                      <h3 className="text-xl font-bold">{name}</h3>
+                  <div className="mb-5 flex items-start gap-4">
+                    <div className="flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-800 shadow-inner">
+                      <Icon className="size-6 text-current" />
                     </div>
-                    <span className="text-sm font-semibold text-slate-500">
-                      {price}
+                    <div>
+                      <span
+                        className={cn(
+                          "mb-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
+                          service.accentClassName
+                        )}
+                      >
+                        {service.badge}
+                      </span>
+                      <h3 className="text-xl font-bold leading-tight text-white">
+                        {service.title}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <p className="text-sm leading-6 text-slate-400">
+                    {service.description}
+                  </p>
+                </div>
+
+                <div className="mx-6 rounded-2xl border border-white/10 bg-slate-950 p-4 text-center">
+                  <div className="flex items-baseline justify-center gap-1">
+                    <span className="text-xs font-semibold text-slate-400">
+                      Starting at
+                    </span>
+                    <span className="ml-1.5 text-3xl font-black text-white">
+                      ${service.startingPrice}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      /{service.priceUnit}
                     </span>
                   </div>
-                  <p className="mt-4 text-sm leading-6 text-slate-600">
-                    {description}
+                  <p className="mt-1 flex items-center justify-center gap-1 text-center text-xs font-semibold text-emerald-400">
+                    <Sparkles className="size-3" />
+                    {service.subscriptionInfo}
                   </p>
-                  <ul className="mt-5 space-y-2 text-sm text-slate-700">
-                    {features.map((feature) => (
-                      <li className="flex items-center gap-2" key={feature}>
-                        <Check className="size-4 text-lime-600" />
+                </div>
+
+                <ul className="grow space-y-2.5 p-6 text-sm">
+                  {service.features.map((feature) => (
+                    <li className="flex items-start gap-2.5" key={feature}>
+                      <Check className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+                      <span className="leading-normal text-slate-300">
                         {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link to="/login">
-                    <Button className="mt-6 w-full bg-slate-950 text-white hover:bg-slate-800">
-                      Book {name.toLowerCase()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="border-t border-white/10 p-6 pt-0">
+                  <Link
+                    params={{ serviceId: service.id }}
+                    to="/services/$serviceId"
+                  >
+                    <Button className="h-12 w-full rounded-2xl border border-white/10 bg-slate-800 text-sm font-bold text-white shadow-md transition-all hover:border-cyan-500/40 hover:bg-slate-700 hover:text-cyan-300">
+                      {service.ctaText}
+                      <ArrowRight className="size-4" />
                     </Button>
                   </Link>
                 </div>
               </article>
-            )
-          )}
+            );
+          })}
         </div>
       </div>
     </section>
