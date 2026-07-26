@@ -21,7 +21,7 @@ import type { ChangeEvent } from "react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
-import { bookingTimeSlots, bookingWindowHours } from "@/lib/scheduling";
+import { bookingTimeSlots } from "@/lib/scheduling";
 import {
   comboSubscriptions,
   serviceCatalog,
@@ -32,7 +32,6 @@ import type { ServiceId } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "../home/radar-address-input";
 import type { RadarAddressSuggestion } from "../home/use-radar-address-autocomplete";
-import LiveClock from "../live-clock";
 
 const storageKey = "callcastlecare.booking-draft.v1";
 
@@ -281,49 +280,79 @@ const selectedProductTotal = (draft: BookingDraft) => {
 const getServiceLabel = (serviceId: ServiceId) =>
   serviceCatalog.find(({ id }) => id === serviceId)?.shortName ?? serviceId;
 
+const wizardSteps = [
+  "Schedule",
+  "Contact",
+  "Details",
+  "Products",
+  "Plans",
+  "Invoice",
+] as const;
+
 const StepPanel = ({
   children,
   isComplete,
   isOpen,
   number,
-  onOpen,
   title,
 }: {
   children: React.ReactNode;
   isComplete: boolean;
   isOpen: boolean;
   number: string;
-  onOpen: () => void;
   title: string;
-}) => (
-  <section className="border-b border-white/10 last:border-b-0">
-    <button
-      className="flex w-full items-center justify-between gap-3 py-4 text-left"
-      onClick={onOpen}
-      type="button"
-    >
-      <span className="flex items-center gap-3">
+}) => {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <section>
+      <div className="mb-6 flex items-center gap-3">
         <span
           className={cn(
-            "flex size-9 items-center justify-center rounded-full border text-xs font-black",
+            "flex size-10 items-center justify-center rounded-full border text-xs font-black",
             isComplete
-              ? "border-lime-300 bg-lime-300 text-slate-950"
-              : "border-white/10 text-white/50"
+              ? "border-lime-500 bg-lime-300 text-slate-950"
+              : "border-slate-200 bg-white text-slate-500"
           )}
         >
           {isComplete ? <Check className="size-4" /> : number}
         </span>
-        <span className="font-bold text-white">{title}</span>
-      </span>
-      <ChevronDown
+        <h2 className="text-xl font-black text-slate-950">{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
+};
+
+const StepProgress = ({
+  activeStep,
+  onStepSelect,
+}: {
+  activeStep: WizardStep;
+  onStepSelect: (step: WizardStep) => void;
+}) => (
+  <div className="mb-6 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    {wizardSteps.map((label, index) => (
+      <button
         className={cn(
-          "size-4 text-white/45 transition-transform",
-          isOpen && "rotate-180"
+          "rounded-2xl border px-3 py-2 text-left text-xs font-bold transition-colors",
+          activeStep === index
+            ? "border-slate-950 bg-slate-950 text-white"
+            : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
         )}
-      />
-    </button>
-    {isOpen ? <div className="pb-6">{children}</div> : null}
-  </section>
+        key={label}
+        onClick={() => onStepSelect(index as WizardStep)}
+        type="button"
+      >
+        <span className="block text-[10px] uppercase tracking-widest opacity-60">
+          Step {index + 1}
+        </span>
+        {label}
+      </button>
+    ))}
+  </div>
 );
 
 const StepButton = ({ onClick }: { onClick: () => void }) => (
@@ -348,15 +377,15 @@ const RoundedField = ({
   label: string;
 }) => (
   <div className="space-y-2">
-    <Label className="text-white/70">{label}</Label>
+    <Label className="text-slate-600">{label}</Label>
     <div className="relative">
       {Icon ? (
-        <Icon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+        <Icon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
       ) : null}
       <Input
         aria-invalid={Boolean(error)}
         className={cn(
-          "h-11 rounded-2xl border-white/10 bg-white/[0.04] text-sm text-white placeholder:text-white/35 focus-visible:border-lime-300/50",
+          "h-11 rounded-2xl border-slate-200 bg-slate-50 text-sm text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500",
           Icon ? "pl-10" : "pl-3"
         )}
         {...props}
@@ -375,12 +404,12 @@ const QuestionBlock = ({
   icon: LucideIcon;
   title: string;
 }) => (
-  <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
     <div className="mb-4 flex items-center gap-3">
-      <div className="flex size-10 items-center justify-center rounded-2xl bg-white/[0.06] text-lime-300">
+      <div className="flex size-10 items-center justify-center rounded-2xl bg-white text-lime-600 shadow-sm">
         <Icon className="size-5" />
       </div>
-      <h3 className="font-bold text-white">{title}</h3>
+      <h3 className="font-bold text-slate-950">{title}</h3>
     </div>
     {children}
   </div>
@@ -434,21 +463,23 @@ const ProductAccordion = ({
   const selectedProduct = products.find(({ id }) => id === selectedProductId);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.04]">
+    <div className="rounded-3xl border border-slate-200 bg-slate-50">
       <button
         className="flex w-full items-center justify-between gap-4 p-4 text-left"
         onClick={onOpen}
         type="button"
       >
         <div>
-          <p className="font-bold text-white">{getServiceLabel(serviceId)}</p>
-          <p className="mt-1 text-sm text-white/45">
+          <p className="font-bold text-slate-950">
+            {getServiceLabel(serviceId)}
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
             {selectedProduct?.name ?? "Choose one product"}
           </p>
         </div>
         <ChevronDown
           className={cn(
-            "size-4 text-white/45 transition-transform",
+            "size-4 text-slate-400 transition-transform",
             isOpen && "rotate-180"
           )}
         />
@@ -460,8 +491,8 @@ const ProductAccordion = ({
               className={cn(
                 "rounded-2xl border p-4 text-left transition-colors",
                 selectedProductId === product.id
-                  ? "border-lime-300/50 bg-lime-300/10"
-                  : "border-white/10 bg-slate-950/50 hover:border-white/25"
+                  ? "border-lime-500 bg-lime-100"
+                  : "border-slate-200 bg-white hover:border-slate-300"
               )}
               key={product.id}
               onClick={() => onSelect(product.id)}
@@ -469,17 +500,17 @@ const ProductAccordion = ({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-white">{product.name}</p>
-                  <p className="mt-2 text-sm leading-6 text-white/50">
+                  <p className="font-semibold text-slate-950">{product.name}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
                     {product.description}
                   </p>
                 </div>
-                <span className="shrink-0 font-black text-lime-300">
+                <span className="shrink-0 font-black text-lime-700">
                   {formatCents(product.priceCents)}
                 </span>
               </div>
               {product.recurring ? (
-                <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-1 text-xs font-semibold text-white/50">
+                <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">
                   <Sparkles className="size-3" />
                   Subscription eligible
                 </p>
@@ -637,22 +668,15 @@ const BookingWizard = (props: BookingWizardProps) => {
   );
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-slate-950/85 p-4 shadow-2xl sm:p-6">
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-200/70 sm:p-6">
+      <StepProgress activeStep={activeStep} onStepSelect={setActiveStep} />
       <StepPanel
         isComplete={basicsSchema.safeParse(draft).success}
         isOpen={activeStep === 0}
         number="01"
-        onOpen={() => setActiveStep(0)}
         title="Services and schedule"
       >
         <div className="grid gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <LiveClock label="Live clock" />
-            <span className="rounded-full bg-lime-300/10 px-3 py-2 text-xs font-semibold text-lime-200">
-              Every appointment reserves {bookingWindowHours} hours
-            </span>
-          </div>
-
           <div className="grid gap-2 sm:grid-cols-3">
             {serviceCatalog.map((service) => {
               const Icon = service.icon;
@@ -663,8 +687,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                   className={cn(
                     "rounded-2xl border p-4 text-left transition-colors",
                     selected
-                      ? "border-lime-300/50 bg-lime-300/10 text-lime-100"
-                      : "border-white/10 bg-white/[0.04] text-white/60 hover:border-white/25"
+                      ? "border-lime-500 bg-lime-100 text-slate-950"
+                      : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
                   )}
                   key={service.id}
                   onClick={() => toggleService(service.id)}
@@ -684,8 +708,9 @@ const BookingWizard = (props: BookingWizardProps) => {
 
           <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
             <div className="space-y-2">
-              <Label className="text-white/70">Service address</Label>
+              <Label className="text-slate-600">Service address</Label>
               <RadarAddressInput
+                className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
                 error={errors.address}
                 isValidated={isAddressValidated}
                 onChange={(address) => setDraftValue("address", address)}
@@ -711,11 +736,11 @@ const BookingWizard = (props: BookingWizardProps) => {
             />
 
             <div className="space-y-2">
-              <Label className="text-white/70">Time</Label>
+              <Label className="text-slate-600">Time</Label>
               <div className="relative">
-                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <select
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-[#111827] pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-950 outline-none focus:border-lime-500"
                   onChange={(event) =>
                     setDraftValue("timeSlot", event.target.value)
                   }
@@ -737,7 +762,6 @@ const BookingWizard = (props: BookingWizardProps) => {
         isComplete={contactSchema.safeParse(draft.contact).success}
         isOpen={activeStep === 1}
         number="02"
-        onOpen={() => setActiveStep(1)}
         title="Contact information"
       >
         <div className="grid gap-4 md:grid-cols-3">
@@ -781,10 +805,10 @@ const BookingWizard = (props: BookingWizardProps) => {
             type="email"
             value={draft.contact.email}
           />
-          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/70 md:col-span-3">
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:col-span-3">
             <input
               checked={draft.contact.smsUpdates}
-              className="size-4 rounded border-white/20 accent-lime-300"
+              className="size-4 rounded border-slate-300 accent-lime-500"
               onChange={(event) =>
                 setDraftValue("contact", {
                   ...draft.contact,
@@ -803,7 +827,6 @@ const BookingWizard = (props: BookingWizardProps) => {
         isComplete={Object.keys(errors).length === 0 && activeStep > 2}
         isOpen={activeStep === 2}
         number="03"
-        onOpen={() => setActiveStep(2)}
         title="Service details"
       >
         <div className="grid gap-4">
@@ -818,8 +841,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                     className={cn(
                       "rounded-2xl border p-4 text-left transition-colors",
                       draft.serviceDetails.lawncare.grassHeight === height.id
-                        ? "border-lime-300/50 bg-lime-300/10 text-lime-100"
-                        : "border-white/10 bg-white/[0.04] text-white/60"
+                        ? "border-lime-500 bg-lime-100 text-slate-950"
+                        : "border-slate-200 bg-white text-slate-600"
                     )}
                     key={height.id}
                     onClick={() =>
@@ -832,7 +855,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                   >
                     <GrassSvg level={index + 1} />
                     <p className="mt-3 font-semibold">{height.name}</p>
-                    <p className="mt-1 text-xs leading-5 text-white/45">
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
                       {height.description}
                     </p>
                   </button>
@@ -862,8 +885,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                     className={cn(
                       "rounded-2xl border p-4 text-left transition-colors",
                       draft.serviceDetails.laundry.bedding === id
-                        ? "border-sky-300/50 bg-sky-300/10 text-sky-100"
-                        : "border-white/10 bg-white/[0.04] text-white/60"
+                        ? "border-sky-500 bg-sky-50 text-slate-950"
+                        : "border-slate-200 bg-white text-slate-600"
                     )}
                     key={id}
                     onClick={() =>
@@ -877,7 +900,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                     type="button"
                   >
                     <p className="font-semibold">{name}</p>
-                    <p className="mt-2 text-xs leading-5 text-white/45">
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
                       {description}
                     </p>
                   </button>
@@ -896,7 +919,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             >
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <Label className="text-white/70">Stories</Label>
+                  <Label className="text-slate-600">Stories</Label>
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     {["1", "2", "3"].map((story) => (
                       <button
@@ -904,8 +927,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                           "rounded-2xl border p-4 text-center text-sm font-semibold transition-colors",
                           draft.serviceDetails["window-washing"].stories ===
                             story
-                            ? "border-cyan-300/50 bg-cyan-300/10 text-cyan-100"
-                            : "border-white/10 bg-white/[0.04] text-white/60"
+                            ? "border-cyan-500 bg-cyan-50 text-slate-950"
+                            : "border-slate-200 bg-white text-slate-600"
                         )}
                         key={story}
                         onClick={() =>
@@ -948,12 +971,12 @@ const BookingWizard = (props: BookingWizardProps) => {
                 />
               </div>
 
-              <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.04] p-4 text-sm text-white/60 transition-colors hover:border-cyan-300/40">
+              <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
                 <span className="flex items-center gap-3">
                   <Upload className="size-4" />
                   Add photos for faster quote review
                 </span>
-                <span className="text-xs text-white/35">
+                <span className="text-xs text-slate-400">
                   {draft.serviceDetails["window-washing"].photoNames.length}{" "}
                   files
                 </span>
@@ -986,7 +1009,6 @@ const BookingWizard = (props: BookingWizardProps) => {
         )}
         isOpen={activeStep === 3}
         number="04"
-        onOpen={() => setActiveStep(3)}
         title="Choose products"
       >
         <div className="space-y-3">
@@ -1014,7 +1036,6 @@ const BookingWizard = (props: BookingWizardProps) => {
         isComplete={Boolean(draft.subscriptionId) || !hasRecurringProduct}
         isOpen={activeStep === 4}
         number="05"
-        onOpen={() => setActiveStep(4)}
         title="Subscription options"
       >
         <div className="grid gap-3">
@@ -1022,14 +1043,16 @@ const BookingWizard = (props: BookingWizardProps) => {
             className={cn(
               "rounded-2xl border p-4 text-left transition-colors",
               draft.subscriptionId === "one_time"
-                ? "border-lime-300/50 bg-lime-300/10"
-                : "border-white/10 bg-white/[0.04]"
+                ? "border-lime-500 bg-lime-100"
+                : "border-slate-200 bg-slate-50 hover:bg-white"
             )}
             onClick={() => setDraftValue("subscriptionId", "one_time")}
             type="button"
           >
-            <p className="font-semibold text-white">No subscription today</p>
-            <p className="mt-1 text-sm leading-6 text-white/50">
+            <p className="font-semibold text-slate-950">
+              No subscription today
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
               Keep this as a single appointment and choose recurring care later.
             </p>
           </button>
@@ -1039,24 +1062,24 @@ const BookingWizard = (props: BookingWizardProps) => {
               className={cn(
                 "rounded-2xl border p-4 text-left transition-colors",
                 draft.subscriptionId === combo.id
-                  ? "border-lime-300/50 bg-lime-300/10"
-                  : "border-white/10 bg-white/[0.04]"
+                  ? "border-lime-500 bg-lime-100"
+                  : "border-slate-200 bg-slate-50 hover:bg-white"
               )}
               key={combo.id}
               onClick={() => setDraftValue("subscriptionId", combo.id)}
               type="button"
             >
               <div className="flex flex-wrap items-center gap-2">
-                <Crown className="size-4 text-lime-300" />
-                <p className="font-semibold text-white">{combo.name}</p>
+                <Crown className="size-4 text-lime-700" />
+                <p className="font-semibold text-slate-950">{combo.name}</p>
                 <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
                   {combo.discountLabel}
                 </span>
               </div>
-              <p className="mt-2 text-sm leading-6 text-white/50">
+              <p className="mt-2 text-sm leading-6 text-slate-600">
                 {combo.description}
               </p>
-              <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-white/35">
+              <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
                 {combo.frequency}
               </p>
             </button>
@@ -1069,25 +1092,24 @@ const BookingWizard = (props: BookingWizardProps) => {
         isComplete={Boolean(draft.paymentOption)}
         isOpen={activeStep === 5}
         number="06"
-        onOpen={() => setActiveStep(5)}
         title="Checkout preview"
       >
-        <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="grid gap-3">
             {paymentOptions.map((option) => (
               <button
                 className={cn(
                   "rounded-2xl border p-4 text-left transition-colors",
                   draft.paymentOption === option.id
-                    ? "border-lime-300/50 bg-lime-300/10"
-                    : "border-white/10 bg-white/[0.04]"
+                    ? "border-lime-500 bg-lime-100"
+                    : "border-slate-200 bg-slate-50 hover:bg-white"
                 )}
                 key={option.id}
                 onClick={() => setDraftValue("paymentOption", option.id)}
                 type="button"
               >
-                <p className="font-semibold text-white">{option.name}</p>
-                <p className="mt-2 text-sm leading-6 text-white/50">
+                <p className="font-semibold text-slate-950">{option.name}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
                   {option.description}
                 </p>
               </button>
@@ -1097,57 +1119,70 @@ const BookingWizard = (props: BookingWizardProps) => {
             ) : null}
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <CreditCard className="size-5 text-lime-300" />
-              <h3 className="font-bold text-white">Invoice preview</h3>
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
+            <div className="border-b border-slate-100 bg-slate-950 p-5 text-white">
+              <div className="flex items-center gap-2">
+                <CreditCard className="size-5 text-lime-300" />
+                <h3 className="font-bold">Invoice preview</h3>
+              </div>
+              <p className="mt-2 text-sm text-white/55">
+                Review the service estimate before Stripe checkout.
+              </p>
             </div>
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 p-5 text-sm">
               {draft.services.map((serviceId) => {
                 const product = productsByService[serviceId].find(
                   ({ id }) => id === draft.products[serviceId]
                 );
 
                 return (
-                  <div className="flex justify-between gap-3" key={serviceId}>
-                    <span className="text-white/55">
-                      {product?.name ?? getServiceLabel(serviceId)}
+                  <div
+                    className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3"
+                    key={serviceId}
+                  >
+                    <span>
+                      <span className="block font-semibold text-slate-950">
+                        {product?.name ?? getServiceLabel(serviceId)}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {getServiceLabel(serviceId)}
+                      </span>
                     </span>
-                    <span className="font-semibold text-white">
+                    <span className="font-black text-slate-950">
                       {formatCents(product?.priceCents ?? 0)}
                     </span>
                   </div>
                 );
               })}
-              <div className="border-t border-white/10 pt-3">
+              <div className="border-t border-slate-200 pt-3">
                 <div className="flex justify-between">
-                  <span className="text-white/55">Deposit due today</span>
-                  <span className="font-semibold text-lime-300">
+                  <span className="text-slate-500">Deposit due today</span>
+                  <span className="font-semibold text-lime-700">
                     {formatCents(depositCents)}
                   </span>
                 </div>
                 <div className="mt-2 flex justify-between text-base">
-                  <span className="font-semibold text-white">
+                  <span className="font-semibold text-slate-950">
                     Estimated total
                   </span>
-                  <span className="font-black text-white">
+                  <span className="font-black text-slate-950">
                     {formatCents(subtotalCents)}
                   </span>
                 </div>
               </div>
+              <Button
+                className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200"
+                onClick={() => validateStep(5)}
+                type="button"
+              >
+                Continue to Stripe
+                <ArrowRight className="size-4" />
+              </Button>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Product sync, deposit collection, and account finalization will
+                wire into this UI after the schema and API are ready.
+              </p>
             </div>
-            <Button
-              className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200"
-              onClick={() => validateStep(5)}
-              type="button"
-            >
-              Continue to checkout preview
-              <ArrowRight className="size-4" />
-            </Button>
-            <p className="mt-3 text-xs leading-5 text-white/40">
-              Stripe checkout, product sync, and account finalization will wire
-              into this UI after the schema and API are ready.
-            </p>
           </div>
         </div>
       </StepPanel>

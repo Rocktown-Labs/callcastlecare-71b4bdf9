@@ -7,6 +7,7 @@ import type { RadarAddressSuggestion } from "./use-radar-address-autocomplete";
 import { useRadarAddressAutocomplete } from "./use-radar-address-autocomplete";
 
 interface RadarAddressInputProps {
+  className?: string;
   error?: string;
   isValidated?: boolean;
   onChange: (value: string) => void;
@@ -15,6 +16,7 @@ interface RadarAddressInputProps {
 }
 
 export const RadarAddressInput = ({
+  className,
   error,
   isValidated = false,
   onChange,
@@ -73,7 +75,8 @@ export const RadarAddressInput = ({
         aria-invalid={Boolean(error)}
         className={cn(
           "h-11 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-sm text-white placeholder:text-white/35 focus-visible:border-lime-300/50",
-          isValidated && "text-lime-200"
+          className,
+          isValidated && "text-lime-600"
         )}
         onBlur={() => {
           window.setTimeout(() => setIsFocused(false), 100);
@@ -85,7 +88,7 @@ export const RadarAddressInput = ({
       />
       <button
         aria-label="Use my current location"
-        className="absolute left-2.5 top-5.5 inline-flex size-6 -translate-y-1/2 items-center justify-center text-white/45 transition-colors hover:text-lime-300"
+        className="absolute left-2.5 top-5.5 inline-flex size-6 -translate-y-1/2 items-center justify-center text-slate-400 transition-colors hover:text-lime-600"
         disabled={isLocating}
         onClick={handleUseCurrentLocation}
         type="button"
@@ -98,7 +101,7 @@ export const RadarAddressInput = ({
       </button>
 
       {isEnabled && isLoading && isFocused ? (
-        <p className="mt-2 text-xs text-white/50">Searching addresses...</p>
+        <p className="mt-2 text-xs text-slate-500">Searching addresses...</p>
       ) : null}
       {locationError ? (
         <p className="mt-2 text-xs text-rose-300">{locationError}</p>

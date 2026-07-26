@@ -37,25 +37,24 @@ const BookPage = () => {
 
   return (
     <MarketingLayout>
-      <section className="bg-[#070b14] px-4 pb-20 pt-28 text-white sm:px-6 lg:px-8">
+      <section className="bg-slate-50 px-4 pb-20 pt-28 text-slate-950 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.7fr_1.3fr]">
           <div className="lg:sticky lg:top-28 lg:h-fit">
-            <span className="inline-flex rounded-full border border-lime-300/30 bg-lime-300/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-lime-300">
+            <span className="inline-flex rounded-full border border-lime-600/20 bg-lime-100 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-lime-700">
               Guided booking
             </span>
-            <h1 className="mt-6 text-4xl font-black leading-tight sm:text-5xl">
+            <h1 className="mt-6 text-pretty text-4xl font-black leading-tight sm:text-5xl">
               Tell us what your castle needs.
             </h1>
-            <p className="mt-5 text-base leading-8 text-white/60">
-              This UI-first wizard validates each step, remembers progress on
-              this device, and prepares the Stripe checkout handoff once pricing
-              and schemas are wired.
+            <p className="mt-5 text-base leading-8 text-slate-600">
+              Choose services, answer only the questions that matter, and review
+              a clean invoice before checkout.
             </p>
-            <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <p className="text-sm font-semibold text-white">
+            <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-sm font-semibold text-slate-950">
                 Service area focus
               </p>
-              <p className="mt-2 text-sm leading-6 text-white/50">
+              <p className="mt-2 text-sm leading-6 text-slate-600">
                 Built around {centralArkansasArea} with address and location
                 inputs ready for coverage checks.
               </p>

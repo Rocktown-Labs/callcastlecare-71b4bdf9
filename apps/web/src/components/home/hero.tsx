@@ -8,8 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import LiveClock from "@/components/live-clock";
-import { bookingTimeSlots, bookingWindowHours } from "@/lib/scheduling";
+import { bookingTimeSlots } from "@/lib/scheduling";
 import { serviceIdSchema, serviceOptions } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "./radar-address-input";
@@ -93,51 +92,46 @@ export default function HeroSection() {
   };
 
   return (
-    <section className="relative min-h-screen overflow-hidden bg-[#080c16] pt-18">
+    <section className="relative min-h-screen overflow-hidden bg-slate-950 pt-18">
       <div className="absolute inset-0">
         <img
           alt=""
           aria-hidden="true"
-          className="size-full object-cover opacity-35"
+          className="size-full object-cover opacity-55"
           src="/callcastlecare/media/technician-van-night.png"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#080c16] via-[#080c16]/85 to-[#080c16]/55" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/78 to-slate-950/25" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-white to-transparent" />
       </div>
 
       <div className="relative mx-auto grid min-h-[calc(100svh-72px)] max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_460px] lg:px-8">
         <div className="max-w-3xl space-y-7">
-          <div className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-1 text-sm font-medium text-lime-200">
+          <div className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-medium text-lime-100 shadow-lg shadow-lime-950/20">
             <span className="size-2 rounded-full bg-lime-300" />
             Now serving Central Arkansas
           </div>
 
-          <h1 className="text-5xl font-bold leading-tight text-white sm:text-6xl lg:text-7xl">
-            Your castle deserves{" "}
-            <span className="text-lime-300">royal care.</span>
+          <h1 className="max-w-4xl text-pretty text-5xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
+            Book home services like you book a ride.
           </h1>
 
           <p className="max-w-2xl text-lg leading-8 text-white/65">
-            Professional lawn care, laundry, and window washing delivered with
-            care. Book in seconds, relax for hours.
+            CallCastleCare brings vetted lawn care, laundry pickup, and window
+            washing into one simple local marketplace, starting in Central
+            Arkansas.
           </p>
 
           <ServiceAvailability />
         </div>
 
         <form
-          className="rounded-3xl border border-white/10 bg-slate-950/75 p-5 shadow-2xl backdrop-blur"
+          className="rounded-3xl border border-white/20 bg-white p-5 text-slate-950 shadow-2xl shadow-slate-950/30"
           onSubmit={handleSubmit}
         >
-          <h2 className="text-lg font-semibold text-white">Book a service</h2>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <LiveClock />
-            <span className="rounded-full bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/45">
-              {bookingWindowHours}-hour booking windows
-            </span>
-          </div>
+          <h2 className="text-lg font-bold text-slate-950">Book a service</h2>
 
           <div className="mt-5 space-y-3">
-            <Label className="text-white/70">Services</Label>
+            <Label className="text-slate-600">Services</Label>
             <div className="grid grid-cols-3 gap-2">
               {serviceOptions.map(({ icon: Icon, id, name }) => {
                 const isSelected = selectedServices.includes(id);
@@ -147,8 +141,8 @@ export default function HeroSection() {
                     className={cn(
                       "flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border p-3 text-sm transition-colors",
                       isSelected
-                        ? "border-lime-300/50 bg-lime-300/10 text-lime-200"
-                        : "border-white/10 bg-white/[0.04] text-white/60 hover:border-white/25"
+                        ? "border-lime-500 bg-lime-100 text-slate-950"
+                        : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
                     )}
                     key={id}
                     onClick={() => toggleService(id)}
@@ -168,8 +162,9 @@ export default function HeroSection() {
           </div>
 
           <div className="mt-5 space-y-2">
-            <Label className="text-white/70">Address</Label>
+            <Label className="text-slate-600">Address</Label>
             <RadarAddressInput
+              className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
               error={errors.address}
               isValidated={isAddressValidated}
               onChange={handleAddressChange}
@@ -183,11 +178,11 @@ export default function HeroSection() {
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-white/70">Date</Label>
+              <Label className="text-slate-600">Date</Label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+                <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-950 outline-none focus:border-lime-500"
                   min={new Date().toISOString().slice(0, 10)}
                   onChange={(event) => {
                     setDate(event.target.value);
@@ -203,11 +198,11 @@ export default function HeroSection() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-white/70">Time</Label>
+              <Label className="text-slate-600">Time</Label>
               <div className="relative">
-                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <select
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-[#111827] pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-950 outline-none focus:border-lime-500"
                   onChange={(event) => setSelectedTimeSlot(event.target.value)}
                   value={selectedTimeSlot}
                 >
@@ -225,8 +220,8 @@ export default function HeroSection() {
           >
             Get quote
           </Button>
-          <p className="mt-3 text-xs leading-5 text-white/45">
-            Account setup, plan selection, and payment come next.
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            Pick services now. We will guide the exact details next.
           </p>
         </form>
       </div>
