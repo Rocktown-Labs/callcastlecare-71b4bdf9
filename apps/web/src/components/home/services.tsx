@@ -84,12 +84,12 @@ export default function ServicesSection() {
                   </p>
                 </div>
 
-                <div className="mx-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Starting at
-                    </span>
-                    <span className="ml-1.5 text-3xl font-black text-slate-950">
+                <div className="mx-6 flex min-h-28 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <p className="text-xs font-semibold text-slate-500">
+                    Starting at
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-baseline justify-center gap-1">
+                    <span className="text-3xl font-black text-slate-950">
                       ${service.startingPrice}
                     </span>
                     <span className="text-xs text-slate-500">

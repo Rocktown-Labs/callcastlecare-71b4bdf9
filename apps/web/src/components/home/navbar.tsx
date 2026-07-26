@@ -48,7 +48,7 @@ export default function Navbar() {
       )}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-18 items-center justify-between">
+        <div className="flex h-20 items-center justify-between">
           <Link
             aria-label="CallCastleCare home"
             className="flex items-center"
@@ -56,7 +56,7 @@ export default function Navbar() {
           >
             <img
               alt="CallCastleCare"
-              className="h-11 w-auto"
+              className="h-16 w-auto sm:h-18"
               src="/callcastlecare/brand/logo-square-200.png"
             />
           </Link>

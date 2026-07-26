@@ -98,14 +98,15 @@ export default function HeroSection() {
         <img
           alt=""
           aria-hidden="true"
-          className="size-full object-cover opacity-55"
-          src="/callcastlecare/media/technician-van-night.png"
+          className="size-full object-cover object-center opacity-90"
+          src="/callcastlecare/media/hero-workers-bg.png"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/78 to-slate-950/25" />
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-white to-transparent" />
+        <div className="absolute inset-0 bg-slate-950/35" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/58 to-slate-950/20" />
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-950/85 to-transparent" />
       </div>
 
-      <div className="relative mx-auto grid min-h-[calc(100svh-72px)] max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_460px] lg:px-8">
+      <div className="relative mx-auto grid min-h-[calc(100svh-80px)] max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_460px] lg:px-8">
         <div className="max-w-3xl space-y-7">
           <div className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-medium text-lime-100 shadow-lg shadow-lime-950/20">
             <span className="size-2 rounded-full bg-lime-300" />
