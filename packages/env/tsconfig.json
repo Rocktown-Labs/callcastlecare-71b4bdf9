@@ -1,0 +1,6 @@
+{
+  "extends": "@callcastlecare/config/tsconfig.base.json",
+  "compilerOptions": {
+    "strictNullChecks": true
+  }
+}
