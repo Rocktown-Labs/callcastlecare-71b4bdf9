@@ -149,6 +149,9 @@ const paymentOptions = [
   },
 ] as const;
 
+const insideGlassFeePerPaneCents = 500;
+const screenWashFeePerScreenCents = 250;
+
 const basicsSchema = z.object({
   address: z.string().min(5, "Enter a service address."),
   date: z.string().min(1, "Choose a date."),
@@ -193,8 +196,11 @@ interface BookingDraft {
       grassHeight: "low" | "medium" | "tall" | "";
     };
     "window-washing": {
+      cleaningScope: "exterior" | "both" | "";
       photoNames: string[];
+      screenCount: string;
       stories: "1" | "2" | "3" | "";
+      washScreens: boolean;
       windowEstimate: string;
     };
   };
@@ -230,8 +236,11 @@ const emptyDraft = ({
     laundry: { bedding: "" },
     lawncare: { grassHeight: "" },
     "window-washing": {
+      cleaningScope: "",
       photoNames: [],
+      screenCount: "",
       stories: "",
+      washScreens: false,
       windowEstimate: "",
     },
   },
@@ -277,8 +286,93 @@ const selectedProductTotal = (draft: BookingDraft) => {
   return total;
 };
 
+const parsePositiveCount = (value: string) => {
+  const count = Math.trunc(Number(value));
+  if (!Number.isFinite(count) || count < 1) {
+    return 0;
+  }
+
+  return count;
+};
+
+const getWindowAddOns = (draft: BookingDraft) => {
+  if (!draft.services.includes("window-washing")) {
+    return [];
+  }
+
+  const windowDetails = draft.serviceDetails["window-washing"];
+  const paneCount = parsePositiveCount(windowDetails.windowEstimate);
+  const screenCount = parsePositiveCount(windowDetails.screenCount);
+  const addOns: {
+    description: string;
+    name: string;
+    priceCents: number;
+  }[] = [];
+
+  if (windowDetails.cleaningScope === "both" && paneCount > 0) {
+    addOns.push({
+      description: `${paneCount} panes x ${formatCents(
+        insideGlassFeePerPaneCents
+      )}`,
+      name: "Inside glass upgrade",
+      priceCents: paneCount * insideGlassFeePerPaneCents,
+    });
+  }
+
+  if (windowDetails.washScreens && screenCount > 0) {
+    addOns.push({
+      description: `${screenCount} screens x ${formatCents(
+        screenWashFeePerScreenCents
+      )}`,
+      name: "Screen washing",
+      priceCents: screenCount * screenWashFeePerScreenCents,
+    });
+  }
+
+  return addOns;
+};
+
 const getServiceLabel = (serviceId: ServiceId) =>
   serviceCatalog.find(({ id }) => id === serviceId)?.shortName ?? serviceId;
+
+const addServiceDetailErrors = (
+  draft: BookingDraft,
+  nextErrors: Record<string, string>
+) => {
+  if (
+    draft.services.includes("lawncare") &&
+    !draft.serviceDetails.lawncare.grassHeight
+  ) {
+    nextErrors.grassHeight = "Choose a grass height.";
+  }
+  if (
+    draft.services.includes("laundry") &&
+    !draft.serviceDetails.laundry.bedding
+  ) {
+    nextErrors.bedding = "Choose a bedding option.";
+  }
+  if (!draft.services.includes("window-washing")) {
+    return;
+  }
+
+  const windowDetails = draft.serviceDetails["window-washing"];
+
+  if (!windowDetails.cleaningScope) {
+    nextErrors.cleaningScope = "Choose exterior only or inside and out.";
+  }
+  if (!windowDetails.stories) {
+    nextErrors.stories = "Choose the number of stories.";
+  }
+  if (!windowDetails.windowEstimate) {
+    nextErrors.windowEstimate = "Estimate the number of windows.";
+  }
+  if (
+    windowDetails.washScreens &&
+    parsePositiveCount(windowDetails.screenCount) === 0
+  ) {
+    nextErrors.screenCount = "Enter the number of screens.";
+  }
+};
 
 const wizardSteps = [
   "Schedule",
@@ -525,18 +619,30 @@ const ProductAccordion = ({
 
 const BookingWizard = (props: BookingWizardProps) => {
   const storedDraft = parseStoredDraft();
-  const [draft, setDraft] = useState<BookingDraft>(() => ({
-    ...emptyDraft(props),
-    ...storedDraft,
-    address: props.initialAddress || storedDraft?.address || "",
-    date: props.initialDate || storedDraft?.date || "",
-    services:
-      props.initialServices.length > 0
-        ? props.initialServices
-        : storedDraft?.services || ["lawncare"],
-    timeSlot:
-      props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
-  }));
+  const [draft, setDraft] = useState<BookingDraft>(() => {
+    const initialDraft = emptyDraft(props);
+
+    return {
+      ...initialDraft,
+      ...storedDraft,
+      address: props.initialAddress || storedDraft?.address || "",
+      date: props.initialDate || storedDraft?.date || "",
+      serviceDetails: {
+        ...initialDraft.serviceDetails,
+        ...storedDraft?.serviceDetails,
+        "window-washing": {
+          ...initialDraft.serviceDetails["window-washing"],
+          ...storedDraft?.serviceDetails?.["window-washing"],
+        },
+      },
+      services:
+        props.initialServices.length > 0
+          ? props.initialServices
+          : storedDraft?.services || ["lawncare"],
+      timeSlot:
+        props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
+    };
+  });
   const [activeStep, setActiveStep] = useState<WizardStep>(0);
   const [openProductService, setOpenProductService] = useState<ServiceId>(
     draft.services[0] ?? "lawncare"
@@ -593,26 +699,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     }
 
     if (step === 2) {
-      if (
-        draft.services.includes("lawncare") &&
-        !draft.serviceDetails.lawncare.grassHeight
-      ) {
-        nextErrors.grassHeight = "Choose a grass height.";
-      }
-      if (
-        draft.services.includes("laundry") &&
-        !draft.serviceDetails.laundry.bedding
-      ) {
-        nextErrors.bedding = "Choose a bedding option.";
-      }
-      if (draft.services.includes("window-washing")) {
-        if (!draft.serviceDetails["window-washing"].stories) {
-          nextErrors.stories = "Choose the number of stories.";
-        }
-        if (!draft.serviceDetails["window-washing"].windowEstimate) {
-          nextErrors.windowEstimate = "Estimate the number of windows.";
-        }
-      }
+      addServiceDetailErrors(draft, nextErrors);
     }
 
     if (step === 3) {
@@ -659,7 +746,12 @@ const BookingWizard = (props: BookingWizardProps) => {
       draft.services.includes(serviceId)
     )
   );
-  const subtotalCents = selectedProductTotal(draft);
+  const windowAddOns = getWindowAddOns(draft);
+  let addOnTotalCents = 0;
+  for (const addOn of windowAddOns) {
+    addOnTotalCents += addOn.priceCents;
+  }
+  const subtotalCents = selectedProductTotal(draft) + addOnTotalCents;
   const depositCents = 5000;
   const hasRecurringProduct = draft.services.some((serviceId) =>
     productsByService[serviceId].some(
@@ -917,85 +1009,191 @@ const BookingWizard = (props: BookingWizardProps) => {
               icon={serviceQuestionIcons.windows}
               title="Tell us about the windows"
             >
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4">
                 <div>
-                  <Label className="text-slate-600">Stories</Label>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {["1", "2", "3"].map((story) => (
+                  <Label className="text-slate-600">Glass service</Label>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    {[
+                      [
+                        "exterior",
+                        "Exterior only",
+                        "Outside glass wash for the selected panes.",
+                      ],
+                      [
+                        "both",
+                        "Inside and out",
+                        "Adds inside glass care based on pane estimate.",
+                      ],
+                    ].map(([id, name, description]) => (
                       <button
                         className={cn(
-                          "rounded-2xl border p-4 text-center text-sm font-semibold transition-colors",
-                          draft.serviceDetails["window-washing"].stories ===
-                            story
+                          "rounded-2xl border p-4 text-left transition-colors",
+                          draft.serviceDetails["window-washing"]
+                            .cleaningScope === id
                             ? "border-cyan-500 bg-cyan-50 text-slate-950"
                             : "border-slate-200 bg-white text-slate-600"
                         )}
-                        key={story}
+                        key={id}
                         onClick={() =>
                           setDraftValue("serviceDetails", {
                             ...draft.serviceDetails,
                             "window-washing": {
                               ...draft.serviceDetails["window-washing"],
-                              stories: story as "1" | "2" | "3",
+                              cleaningScope: id as "exterior" | "both",
                             },
                           })
                         }
                         type="button"
                       >
-                        {story}
+                        <p className="font-semibold">{name}</p>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                          {description}
+                        </p>
                       </button>
                     ))}
                   </div>
-                  {errors.stories ? (
+                  {errors.cleaningScope ? (
                     <p className="mt-2 text-sm text-rose-300">
-                      {errors.stories}
+                      {errors.cleaningScope}
                     </p>
                   ) : null}
                 </div>
 
-                <RoundedField
-                  error={errors.windowEstimate}
-                  label="Rough window estimate"
-                  onChange={(event) =>
-                    setDraftValue("serviceDetails", {
-                      ...draft.serviceDetails,
-                      "window-washing": {
-                        ...draft.serviceDetails["window-washing"],
-                        windowEstimate: event.target.value,
-                      },
-                    })
-                  }
-                  placeholder="Around 20"
-                  type="number"
-                  value={draft.serviceDetails["window-washing"].windowEstimate}
-                />
-              </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label className="text-slate-600">Stories</Label>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {["1", "2", "3"].map((story) => (
+                        <button
+                          className={cn(
+                            "rounded-2xl border p-4 text-center text-sm font-semibold transition-colors",
+                            draft.serviceDetails["window-washing"].stories ===
+                              story
+                              ? "border-cyan-500 bg-cyan-50 text-slate-950"
+                              : "border-slate-200 bg-white text-slate-600"
+                          )}
+                          key={story}
+                          onClick={() =>
+                            setDraftValue("serviceDetails", {
+                              ...draft.serviceDetails,
+                              "window-washing": {
+                                ...draft.serviceDetails["window-washing"],
+                                stories: story as "1" | "2" | "3",
+                              },
+                            })
+                          }
+                          type="button"
+                        >
+                          {story}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.stories ? (
+                      <p className="mt-2 text-sm text-rose-300">
+                        {errors.stories}
+                      </p>
+                    ) : null}
+                  </div>
 
-              <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
-                <span className="flex items-center gap-3">
-                  <Upload className="size-4" />
-                  Add photos for faster quote review
-                </span>
-                <span className="text-xs text-slate-400">
-                  {draft.serviceDetails["window-washing"].photoNames.length}{" "}
-                  files
-                </span>
-                <input
-                  className="sr-only"
-                  multiple
-                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                    const files = [...(event.target.files ?? [])];
-                    setDraftValue("serviceDetails", {
-                      ...draft.serviceDetails,
-                      "window-washing": {
-                        ...draft.serviceDetails["window-washing"],
-                        photoNames: files.map(({ name }) => name),
-                      },
-                    });
-                  }}
-                  type="file"
-                />
-              </label>
+                  <RoundedField
+                    error={errors.windowEstimate}
+                    label="Rough window estimate"
+                    onChange={(event) =>
+                      setDraftValue("serviceDetails", {
+                        ...draft.serviceDetails,
+                        "window-washing": {
+                          ...draft.serviceDetails["window-washing"],
+                          windowEstimate: event.target.value,
+                        },
+                      })
+                    }
+                    placeholder="Around 20"
+                    type="number"
+                    value={
+                      draft.serviceDetails["window-washing"].windowEstimate
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_180px]">
+                  <div className="flex items-start gap-3 text-sm text-slate-700">
+                    <input
+                      checked={
+                        draft.serviceDetails["window-washing"].washScreens
+                      }
+                      className="mt-1 size-4 rounded border-slate-300 accent-lime-500"
+                      id="window-screen-wash"
+                      onChange={(event) =>
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          "window-washing": {
+                            ...draft.serviceDetails["window-washing"],
+                            washScreens: event.target.checked,
+                          },
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <Label
+                        className="block font-semibold text-slate-950"
+                        htmlFor="window-screen-wash"
+                      >
+                        Wash screens
+                      </Label>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        Adds {formatCents(screenWashFeePerScreenCents)} per
+                        screen.
+                      </span>
+                    </span>
+                  </div>
+
+                  {draft.serviceDetails["window-washing"].washScreens ? (
+                    <RoundedField
+                      error={errors.screenCount}
+                      label="Screen count"
+                      onChange={(event) =>
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          "window-washing": {
+                            ...draft.serviceDetails["window-washing"],
+                            screenCount: event.target.value,
+                          },
+                        })
+                      }
+                      placeholder="12"
+                      type="number"
+                      value={draft.serviceDetails["window-washing"].screenCount}
+                    />
+                  ) : null}
+                </div>
+
+                <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
+                  <span className="flex items-center gap-3">
+                    <Upload className="size-4" />
+                    Add photos for faster quote review
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {draft.serviceDetails["window-washing"].photoNames.length}{" "}
+                    files
+                  </span>
+                  <input
+                    className="sr-only"
+                    multiple
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                      const files = [...(event.target.files ?? [])];
+                      setDraftValue("serviceDetails", {
+                        ...draft.serviceDetails,
+                        "window-washing": {
+                          ...draft.serviceDetails["window-washing"],
+                          photoNames: files.map(({ name }) => name),
+                        },
+                      });
+                    }}
+                    type="file"
+                  />
+                </label>
+              </div>
             </QuestionBlock>
           ) : null}
 
@@ -1154,6 +1352,24 @@ const BookingWizard = (props: BookingWizardProps) => {
                   </div>
                 );
               })}
+              {windowAddOns.map((addOn) => (
+                <div
+                  className="flex justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3"
+                  key={addOn.name}
+                >
+                  <span>
+                    <span className="block font-semibold text-slate-950">
+                      {addOn.name}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {addOn.description}
+                    </span>
+                  </span>
+                  <span className="font-black text-slate-950">
+                    {formatCents(addOn.priceCents)}
+                  </span>
+                </div>
+              ))}
               <div className="border-t border-slate-200 pt-3">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Deposit due today</span>
