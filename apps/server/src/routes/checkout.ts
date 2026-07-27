@@ -1,4 +1,4 @@
-import { db,and,eq } from "@callcastlecare/db";
+import { and, db, eq } from "@callcastlecare/db";
 import {
   addresses,
   checkoutDrafts,
@@ -7,6 +7,7 @@ import {
   homePreorders,
   homeQuotes,
   orders,
+  quoteRequests,
 } from "@callcastlecare/db/schema/index";
 import { Hono } from "hono";
 
@@ -24,6 +25,7 @@ import {
   checkoutDraftRequestSchema,
   checkoutConfirmRequestSchema,
   checkoutPreviewRequestSchema,
+  publicQuoteRequestSchema,
 } from "./schemas";
 
 const parsePositiveId = (value: string) => {
@@ -42,6 +44,89 @@ const parseScheduledDate = (value: string | undefined) => {
   }
 
   return parsed;
+};
+
+interface PublicQuoteRequestInput {
+  address?: string;
+  contact?: {
+    email?: string;
+    name?: string;
+    phone?: string;
+  };
+  lastCompletedStep: number;
+  payload: Record<string, unknown>;
+  status:
+    | "draft"
+    | "contact_captured"
+    | "checkout_started"
+    | "paid"
+    | "abandoned"
+    | "cancelled";
+  trackingId: string;
+}
+
+const resolveQuoteRequestStatus = (input: PublicQuoteRequestInput) =>
+  input.lastCompletedStep >= 2 && input.status === "draft"
+    ? "contact_captured"
+    : input.status;
+
+const toQuoteRequestValues = (input: PublicQuoteRequestInput) => ({
+  addressText: input.address ?? null,
+  contactEmail: input.contact?.email || null,
+  contactName: input.contact?.name || null,
+  contactPhone: input.contact?.phone || null,
+  lastCompletedStep: input.lastCompletedStep,
+  payloadJson: input.payload,
+  status: resolveQuoteRequestStatus(input),
+});
+
+const toQuoteRequestResponse = (quoteRequest: {
+  id: number;
+  status: string;
+  trackingId: string;
+  updatedAt: Date;
+}) => ({
+  id: quoteRequest.id,
+  status: quoteRequest.status,
+  trackingId: quoteRequest.trackingId,
+  updatedAt: quoteRequest.updatedAt.toISOString(),
+});
+
+const upsertPublicQuoteRequest = async (input: PublicQuoteRequestInput) => {
+  const existing = await db.query.quoteRequests.findFirst({
+    where: eq(quoteRequests.trackingId, input.trackingId),
+  });
+
+  if (existing) {
+    const [updated] = await db
+      .update(quoteRequests)
+      .set({
+        ...toQuoteRequestValues(input),
+        updatedAt: new Date(),
+      })
+      .where(eq(quoteRequests.id, existing.id))
+      .returning();
+
+    if (!updated) {
+      throw new Error("Failed to update quote request");
+    }
+
+    return { quoteRequest: updated, statusCode: 200 as const };
+  }
+
+  const [created] = await db
+    .insert(quoteRequests)
+    .values({
+      ...toQuoteRequestValues(input),
+      trackingId: input.trackingId,
+    })
+    .returning();
+
+  if (!created) {
+    throw new Error("Failed to create quote request");
+  }
+
+  return { quoteRequest: created, statusCode: 201 as const };
 };
 
 export const checkoutRoutes = new Hono<AppEnv>()
@@ -90,6 +175,34 @@ export const checkoutRoutes = new Hono<AppEnv>()
         totalCents: preview.totalCents,
       },
       200
+    );
+  })
+  .put("/quote-request", async (c) => {
+    const body = await c.req.json();
+    const parsed = publicQuoteRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const { quoteRequest, statusCode } = await upsertPublicQuoteRequest(
+      parsed.data
+    );
+
+    logger.info(
+      {
+        lastCompletedStep: quoteRequest.lastCompletedStep,
+        quoteRequestId: quoteRequest.id,
+        requestId: c.get("requestId"),
+        status: quoteRequest.status,
+      },
+      statusCode === 201 ? "quote_request:created" : "quote_request:updated"
+    );
+
+    return c.json(
+      {
+        quoteRequest: toQuoteRequestResponse(quoteRequest),
+      },
+      statusCode
     );
   })
   .post("/confirm", async (c) => {
@@ -153,7 +266,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
 
     const preview = computeCheckoutPreview(parsed.data);
 
-    const createdSessionRows = await db
+    const [checkoutSession] = await db
       .insert(checkoutSessions)
       .values({
         addressId: address.id,
@@ -167,7 +280,6 @@ export const checkoutRoutes = new Hono<AppEnv>()
       })
       .returning();
 
-    const checkoutSession = createdSessionRows[0];
     if (!checkoutSession) {
       return c.json({ error: "Failed to create checkout session" }, 500);
     }
@@ -194,37 +306,39 @@ export const checkoutRoutes = new Hono<AppEnv>()
       }))
     );
 
-    for (const lineItem of preview.lineItems) {
-      if (lineItem.itemKind !== "home_preorder") {
-        continue;
-      }
+    await Promise.all(
+      preview.lineItems.map(async (lineItem) => {
+        if (lineItem.itemKind !== "home_preorder") {
+          return;
+        }
 
-      const homeQuoteId =
-        typeof lineItem.metadata.homeQuoteId === "number"
-          ? lineItem.metadata.homeQuoteId
-          : null;
+        const homeQuoteId =
+          typeof lineItem.metadata.homeQuoteId === "number"
+            ? lineItem.metadata.homeQuoteId
+            : null;
 
-      if (homeQuoteId === null) {
-        continue;
-      }
+        if (homeQuoteId === null) {
+          return;
+        }
 
-      const quote = await db.query.homeQuotes.findFirst({
-        where: eq(homeQuotes.id, homeQuoteId),
-      });
+        const quote = await db.query.homeQuotes.findFirst({
+          where: eq(homeQuotes.id, homeQuoteId),
+        });
 
-      if (!quote) {
-        continue;
-      }
+        if (!quote) {
+          return;
+        }
 
-      await db.insert(homePreorders).values({
-        addressId: address.id,
-        checkoutSessionId: checkoutSession.id,
-        customerId: customer.id,
-        depositAmountCents: lineItem.basePriceCents,
-        homeQuoteId,
-        status: "pending_payment",
-      });
-    }
+        await db.insert(homePreorders).values({
+          addressId: address.id,
+          checkoutSessionId: checkoutSession.id,
+          customerId: customer.id,
+          depositAmountCents: lineItem.basePriceCents,
+          homeQuoteId,
+          status: "pending_payment",
+        });
+      })
+    );
 
     const paymentIntent = await createStripePaymentIntent({
       amountCents: preview.totalCents,
@@ -242,21 +356,12 @@ export const checkoutRoutes = new Hono<AppEnv>()
       })
       .where(eq(checkoutSessions.id, checkoutSession.id));
 
-    const isMockIntent = paymentIntent.id.startsWith("mock_pi_");
-
-    if (isMockIntent) {
-      await finalizeCheckoutPayment({
-        checkoutSessionId: checkoutSession.id,
-        stripePaymentIntentId: paymentIntent.id,
-      });
-    }
-
     return c.json(
       {
         checkoutSessionId: checkoutSession.id,
         clientSecret: paymentIntent.clientSecret,
         paymentIntentId: paymentIntent.id,
-        status: isMockIntent ? "paid" : "pending_payment",
+        status: "pending_payment",
       },
       200
     );
@@ -279,7 +384,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
     });
 
     if (existing) {
-      const updatedRows = await db
+      const [updated] = await db
         .update(checkoutDrafts)
         .set({
           payloadJson: parsed.data.payload,
@@ -288,7 +393,6 @@ export const checkoutRoutes = new Hono<AppEnv>()
         .where(eq(checkoutDrafts.id, existing.id))
         .returning();
 
-      const updated = updatedRows[0];
       if (!updated) {
         return c.json({ error: "Failed to update checkout draft" }, 500);
       }
@@ -305,7 +409,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
       );
     }
 
-    const insertedRows = await db
+    const [created] = await db
       .insert(checkoutDrafts)
       .values({
         customerId: customer.id,
@@ -313,7 +417,6 @@ export const checkoutRoutes = new Hono<AppEnv>()
       })
       .returning();
 
-    const created = insertedRows[0];
     if (!created) {
       return c.json({ error: "Failed to create checkout draft" }, 500);
     }

@@ -48,6 +48,7 @@
   "dependencies": {
     "@callcastlecare/env": "workspace:*",
     "dotenv": "catalog:",
+    "marketingskills": "coreyhaines31/marketingskills",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@
       "dependencies": {
         "@callcastlecare/env": "workspace:*",
         "dotenv": "catalog:",
+        "marketingskills": "coreyhaines31/marketingskills",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -2314,6 +2315,8 @@
     "make-asynchronous": ["make-asynchronous@1.1.0", "", { "dependencies": { "p-event": "^6.0.0", "type-fest": "^4.6.0", "web-worker": "^1.5.0" } }, "sha512-ayF7iT+44LXdxJLTrTd3TLQpFDDvPCBxXxbv+pMUSuHA5Q8zyAfwkRP6aHHwNVFBUFWtxAHqwNJxF8vMZLAbVg=="],
 
     "makeerror": ["makeerror@1.0.12", "", { "dependencies": { "tmpl": "1.0.5" } }, "sha512-JmqCvUhmt43madlpFzG4BQzG2Z3m6tvQDNKdClZnO3VbIudJYmxsT0FNJMeiB2+JTSlTQTSbU8QdesVmwJcmLg=="],
+
+    "marketingskills": ["marketingskills@github:coreyhaines31/marketingskills#c21a984", {}, "coreyhaines31-marketingskills-c21a984", "sha512-/30Qfr4jzEAATk3Ali1UfBcQVC363E8uCjmieV2oo/T24CieAwIeMTOtI0tnzwhLctoOHELoxs96GfkOdglJtg=="],
 
     "marky": ["marky@1.3.0", "", {}, "sha512-ocnPZQLNpvbedwTy9kNrQEsknEfgvcLMvOtz3sFeWApDq1MXH1TqkCIx58xlpESsfwQOnuBO9beyQuNGzVvuhQ=="],
 

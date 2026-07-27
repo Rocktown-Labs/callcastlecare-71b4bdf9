@@ -2,15 +2,57 @@ import { z } from "zod";
 
 export const timingTypeSchema = z.enum(["asap", "scheduled"]);
 
-export const checkoutPreviewItemSchema = z.object({
-  homeQuoteId: z.number().int().positive().optional(),
-  itemKind: z.enum(["lawncare", "laundry", "home_preorder"]),
-  planId: z.string().min(1).optional(),
-  scheduledEndAt: z.string().datetime().optional(),
-  scheduledStartAt: z.string().datetime().optional(),
-  timingType: timingTypeSchema.optional(),
-  tipAmountCents: z.number().int().nonnegative().optional(),
-});
+export const checkoutPreviewItemSchema = z
+  .object({
+    cleanScreens: z.boolean().optional(),
+    frequency: z
+      .enum(["one_time", "bi_weekly", "weekly", "monthly"])
+      .optional(),
+    homeQuoteId: z.number().int().positive().optional(),
+    isSubscription: z.boolean().optional(),
+    itemKind: z.enum([
+      "lawncare",
+      "laundry",
+      "window_washing",
+      "home_preorder",
+    ]),
+    livingArea: z.number().int().positive().optional(),
+    packageType: z.enum(["EXTERIOR_ONLY", "FULL_SERVICE"]).optional(),
+    paneCount: z.number().int().positive().optional(),
+    planId: z.string().min(1).optional(),
+    propertyType: z.enum(["residential", "commercial"]).optional(),
+    scheduledEndAt: z.string().datetime().optional(),
+    scheduledStartAt: z.string().datetime().optional(),
+    stories: z.number().int().min(1).max(3).optional(),
+    timingType: timingTypeSchema.optional(),
+    tipAmountCents: z.number().int().nonnegative().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.timingType !== "scheduled") {
+      return;
+    }
+
+    if (!value.scheduledStartAt || !value.scheduledEndAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Scheduled services require start and end times.",
+        path: ["scheduledStartAt"],
+      });
+      return;
+    }
+
+    const start = new Date(value.scheduledStartAt);
+    const end = new Date(value.scheduledEndAt);
+    const durationMs = end.getTime() - start.getTime();
+    const twoHoursMs = 2 * 60 * 60 * 1000;
+    if (durationMs !== twoHoursMs) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Scheduled services must reserve exactly two hours.",
+        path: ["scheduledEndAt"],
+      });
+    }
+  });
 
 export const checkoutPreviewRequestSchema = z
   .object({
@@ -36,6 +78,30 @@ export const checkoutConfirmRequestSchema = checkoutPreviewRequestSchema.extend(
 
 export const checkoutDraftRequestSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
+});
+
+export const quoteRequestStatusSchema = z.enum([
+  "draft",
+  "contact_captured",
+  "checkout_started",
+  "paid",
+  "abandoned",
+  "cancelled",
+]);
+
+export const publicQuoteRequestSchema = z.object({
+  address: z.string().trim().min(5).optional(),
+  contact: z
+    .object({
+      email: z.email().optional().or(z.literal("")),
+      name: z.string().trim().optional(),
+      phone: z.string().trim().optional(),
+    })
+    .optional(),
+  lastCompletedStep: z.number().int().min(0).max(6).default(0),
+  payload: z.record(z.string(), z.unknown()),
+  status: quoteRequestStatusSchema.default("draft"),
+  trackingId: z.string().trim().min(8).max(128),
 });
 
 export const updateCustomerProfileRequestSchema = z.object({

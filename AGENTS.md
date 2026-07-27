@@ -108,9 +108,17 @@ CastleCare is being rewritten from a previous Next.js application into a simpler
 
 Before substantial edits, run the intent skill check above. In addition, use the checked-in `.agents/skills` directory as local project guidance:
 
+- Product context: read `.agents/product-marketing.md` before marketing, onboarding, pricing, SEO, or conversion work.
 - API and backend: `hono`, `better-auth-best-practices`, `postgres`, `neki`
+- Maps, location, and routing: `google-maps-platform`; load the official Google subskills it references before changing Places, Address Validation, Static Maps, Routes, or Route Optimization code.
 - Logging and observability: `review-logging-patterns`, `analyze-logs`
 - Web UI and components: `shadcn`, `web-design-guidelines`, `vercel-react-best-practices`, `vercel-composition-patterns`
+- Marketing strategy: `product-marketing`, `marketing-plan`, `marketing-ideas`, `marketing-psychology`, `customer-research`, `competitors`, `competitor-profiling`
+- Copy and conversion: `copywriting`, `copy-editing`, `cro`, `signup`, `onboarding`, `offers`, `pricing`, `ab-testing`
+- SEO and content: `seo-audit`, `ai-seo`, `schema`, `site-architecture`, `programmatic-seo`, `content-strategy`
+- Launch, campaigns, and retention: `launch`, `emails`, `sms`, `ads`, `ad-creative`, `analytics`, `referrals`, `lead-magnets`, `churn-prevention`, `community-marketing`, `co-marketing`, `public-relations`
+- Sales and GTM: `revops`, `sales-enablement`, `cold-email`, `prospecting`, `directory-submissions`
+- Media and creative: `image`, `video`, `social`, `influencer-marketing`
 - Mobile app: `expo-dev-client`, `expo-tailwind-setup`, `heroui-native`, `vercel-react-native-skills`
 - Monorepo and quality: `turborepo`, `ultracite`
 - Deployment: `deploy-to-vercel`

@@ -27,6 +27,10 @@ const createStripeClient = () => {
 };
 
 const createMockPaymentIntent = (amountCents: number): StripePaymentIntent => {
+  if (env.NODE_ENV === "production") {
+    throw new Error("Stripe is not configured for production payments.");
+  }
+
   const random = Math.random().toString(36).slice(2);
   return {
     clientSecret: `mock_pi_client_secret_${random}`,
@@ -50,7 +54,7 @@ export const createStripePaymentIntent = async (input: {
 
   const stripeClient = createStripeClient();
   if (!stripeClient) {
-    return createMockPaymentIntent(input.amountCents);
+    throw new Error("Stripe client is unavailable.");
   }
 
   try {
@@ -64,7 +68,7 @@ export const createStripePaymentIntent = async (input: {
     });
 
     if (!paymentIntent.client_secret) {
-      return createMockPaymentIntent(input.amountCents);
+      throw new Error("Stripe did not return a client secret.");
     }
 
     return {
@@ -79,14 +83,14 @@ export const createStripePaymentIntent = async (input: {
       },
       "stripe_payment_intent:create_failed"
     );
-    return createMockPaymentIntent(input.amountCents);
+    throw error;
   }
 };
 
-export const parseStripeWebhookEvent = async (input: {
+export const parseStripeWebhookEvent = (input: {
   rawBody: string;
   signatureHeader: string | undefined;
-}): Promise<StripeWebhookEvent | null> => {
+}): StripeWebhookEvent | null => {
   if (shouldUseMockMode()) {
     try {
       return JSON.parse(input.rawBody) as StripeWebhookEvent;

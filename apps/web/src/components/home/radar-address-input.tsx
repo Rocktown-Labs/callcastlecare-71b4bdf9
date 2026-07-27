@@ -108,11 +108,11 @@ export const RadarAddressInput = ({
       ) : null}
 
       {shouldShowSuggestions ? (
-        <ul className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f172a] shadow-xl">
+        <ul className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
           {suggestions.map((suggestion) => (
             <li key={suggestion.id}>
               <button
-                className="w-full px-3 py-2 text-left text-sm text-white/80 first:rounded-t-2xl last:rounded-b-2xl hover:bg-white/10 hover:text-white"
+                className="w-full px-3 py-2 text-left text-sm text-slate-700 first:rounded-t-2xl last:rounded-b-2xl hover:bg-slate-50 hover:text-slate-950"
                 onClick={() => {
                   onSelectSuggestion(suggestion);
                   setIsFocused(false);

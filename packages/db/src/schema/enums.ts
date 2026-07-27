@@ -137,6 +137,15 @@ export const checkoutSessionStatusEnum = pgEnum("checkout_session_status", [
   "cancelled",
 ]);
 
+export const quoteRequestStatusEnum = pgEnum("quote_request_status", [
+  "draft",
+  "contact_captured",
+  "checkout_started",
+  "paid",
+  "abandoned",
+  "cancelled",
+]);
+
 export const checkoutItemKindEnum = pgEnum("checkout_item_kind", [
   "lawncare",
   "laundry",

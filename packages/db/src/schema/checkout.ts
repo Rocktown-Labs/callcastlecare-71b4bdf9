@@ -18,6 +18,7 @@ import {
   homePreorderStatusEnum,
   homeQuoteStatusEnum,
   pricingTierEnum,
+  quoteRequestStatusEnum,
   timingTypeEnum,
 } from "./enums";
 
@@ -178,5 +179,37 @@ export const checkoutDrafts = pgTable(
   (table) => [
     uniqueIndex("idx_checkout_drafts_customer_id").on(table.customerId),
     index("idx_checkout_drafts_updated_at").on(table.updatedAt),
+  ]
+);
+
+export const quoteRequests = pgTable(
+  "quote_requests",
+  {
+    addressText: text("address_text"),
+    checkoutSessionId: integer("checkout_session_id").references(
+      () => checkoutSessions.id
+    ),
+    contactEmail: text("contact_email"),
+    contactName: text("contact_name"),
+    contactPhone: text("contact_phone"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    id: serial("id").primaryKey(),
+    lastCompletedStep: integer("last_completed_step").notNull().default(0),
+    payloadJson: jsonb("payload_json").notNull(),
+    status: quoteRequestStatusEnum("status").notNull().default("draft"),
+    trackingId: text("tracking_id").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_quote_requests_tracking_id").on(table.trackingId),
+    index("idx_quote_requests_status_updated").on(
+      table.status,
+      table.updatedAt
+    ),
+    index("idx_quote_requests_contact_email").on(table.contactEmail),
   ]
 );

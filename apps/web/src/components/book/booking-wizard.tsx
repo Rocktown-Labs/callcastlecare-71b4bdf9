@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import { bookingTimeSlots } from "@/lib/scheduling";
+import { getServerUrl } from "@/lib/server-url";
 import {
   comboSubscriptions,
   serviceCatalog,
@@ -32,9 +33,11 @@ import {
 import type { ServiceId } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "../home/radar-address-input";
+import { validateAddress } from "../home/use-radar-address-autocomplete";
 import type { RadarAddressSuggestion } from "../home/use-radar-address-autocomplete";
 
 const storageKey = "callcastlecare.booking-draft.v1";
+const trackingKey = "callcastlecare.quote-request-id.v1";
 
 const grassHeights = [
   {
@@ -227,6 +230,7 @@ interface BookingDraft {
 interface BookingWizardProps {
   initialAddress?: string;
   initialDate?: string;
+  initialResumeDraft?: boolean;
   initialServices: ServiceId[];
   initialStep?: WizardStepKey;
   initialTimeSlot?: string;
@@ -261,7 +265,7 @@ const emptyDraft = ({
       windowEstimate: "",
     },
   },
-  services: initialServices.length > 0 ? initialServices : ["lawncare"],
+  services: initialServices,
   subscriptionId: "",
   timeSlot: initialTimeSlot,
 });
@@ -364,6 +368,23 @@ const parseStoredDraft = () => {
   }
 };
 
+const getOrCreateTrackingId = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const stored = window.localStorage.getItem(trackingKey);
+  if (stored) {
+    return stored;
+  }
+
+  const generated =
+    globalThis.crypto?.randomUUID?.() ??
+    `quote-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(trackingKey, generated);
+  return generated;
+};
+
 const toStringArray = (value: unknown) =>
   Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
@@ -406,7 +427,11 @@ const resolveInitialServices = (
     return props.initialServices;
   }
 
-  return storedDraft?.services || ["lawncare"];
+  if (props.initialResumeDraft) {
+    return storedDraft?.services ?? [];
+  }
+
+  return [];
 };
 
 const selectedProductTotal = (draft: BookingDraft) => {
@@ -524,18 +549,58 @@ const buildInitialDraft = (
   storedDraft: BookingDraft | null
 ) => {
   const initialDraft = emptyDraft(props);
+  const activeStoredDraft = props.initialResumeDraft ? storedDraft : null;
 
   return {
     ...initialDraft,
-    ...storedDraft,
-    address: props.initialAddress || storedDraft?.address || "",
-    date: props.initialDate || storedDraft?.date || "",
-    serviceDetails: normalizeServiceDetails(initialDraft, storedDraft),
-    services: resolveInitialServices(props, storedDraft),
+    ...activeStoredDraft,
+    address: props.initialAddress || activeStoredDraft?.address || "",
+    date: props.initialDate || activeStoredDraft?.date || "",
+    serviceDetails: normalizeServiceDetails(initialDraft, activeStoredDraft),
+    services: resolveInitialServices(props, activeStoredDraft),
     timeSlot:
-      props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
+      props.initialTimeSlot ||
+      activeStoredDraft?.timeSlot ||
+      bookingTimeSlots[2],
   };
 };
+
+const persistQuoteRequest = async ({
+  draft,
+  lastCompletedStep,
+  status = "draft",
+  trackingId,
+}: {
+  draft: BookingDraft;
+  lastCompletedStep: number;
+  status?: "draft" | "contact_captured" | "checkout_started";
+  trackingId: string;
+}) => {
+  if (!trackingId) {
+    return;
+  }
+
+  const url = new URL("/api/checkout/quote-request", getServerUrl());
+  await fetch(url, {
+    body: JSON.stringify({
+      address: draft.address,
+      contact: draft.contact,
+      lastCompletedStep,
+      payload: draft as unknown as Record<string, unknown>,
+      status,
+      trackingId,
+    }),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "PUT",
+  });
+};
+
+const getPaymentOptionsForServices = (services: ServiceId[]) =>
+  services.length === 1 && services[0] === "laundry"
+    ? paymentOptions.filter((option) => option.id === "pay_full")
+    : paymentOptions;
 
 const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
   const nextErrors: Record<string, string> = {};
@@ -570,7 +635,12 @@ const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
     }
   }
 
-  if (step === 5 && !draft.paymentOption) {
+  if (
+    step === 5 &&
+    !getPaymentOptionsForServices(draft.services).some(
+      (option) => option.id === draft.paymentOption
+    )
+  ) {
     nextErrors.paymentOption = "Choose a checkout option.";
   }
 
@@ -630,7 +700,7 @@ const StepProgress = ({
   activeStep: WizardStep;
   onStepSelect: (step: WizardStep) => void;
 }) => (
-  <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+  <div className="mb-6 grid grid-cols-3 gap-2 lg:grid-cols-6">
     {wizardSteps.map((label, index) => (
       <button
         className={cn(
@@ -740,7 +810,7 @@ const ScheduleDateTimePicker = ({
           <ChevronDown className="size-4 text-slate-400" />
         </Button>
         {isCalendarOpen ? (
-          <div className="absolute z-30 mt-2 w-80 rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl">
+          <div className="z-30 mt-2 w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl sm:absolute sm:w-80">
             <div className="mb-4 flex items-center justify-between gap-3">
               <button
                 className="rounded-full border border-slate-200 px-3 py-1 text-sm font-bold"
@@ -1028,17 +1098,18 @@ const ProductAccordion = ({
 const BookingWizard = (props: BookingWizardProps) => {
   const navigate = useNavigate({ from: "/book" });
   const storedDraft = parseStoredDraft();
+  const hasStoredDraft = Boolean(storedDraft) && !props.initialResumeDraft;
+  const quoteRequestTrackingId = getOrCreateTrackingId();
   const [draft, setDraft] = useState<BookingDraft>(() =>
     buildInitialDraft(props, storedDraft)
   );
   const [activeStep, setActiveStep] = useState<WizardStep>(() =>
     stepKeyToIndex(props.initialStep)
   );
-  const [openProductService, setOpenProductService] = useState<ServiceId>(
-    draft.services[0] ?? "lawncare"
-  );
-  const [openDetailService, setOpenDetailService] = useState<ServiceId>(
-    draft.services[0] ?? "lawncare"
+  const [openProductService, setOpenProductService] =
+    useState<ServiceId | null>(draft.services[0] ?? null);
+  const [openDetailService, setOpenDetailService] = useState<ServiceId | null>(
+    draft.services[0] ?? null
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isAddressValidated, setIsAddressValidated] = useState(false);
@@ -1046,6 +1117,8 @@ const BookingWizard = (props: BookingWizardProps) => {
   useEffect(() => {
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
   }, [draft]);
+
+  const paymentOptionsForDraft = getPaymentOptionsForServices(draft.services);
 
   const setDraftValue = <Key extends keyof BookingDraft>(
     key: Key,
@@ -1069,12 +1142,37 @@ const BookingWizard = (props: BookingWizardProps) => {
   const clearDraft = () => {
     const nextDraft = emptyDraft(props);
     window.localStorage.removeItem(storageKey);
+    window.localStorage.removeItem(trackingKey);
     setDraft(nextDraft);
     setErrors({});
     setIsAddressValidated(false);
-    setOpenDetailService(nextDraft.services[0]);
-    setOpenProductService(nextDraft.services[0]);
-    goToStep(0);
+    setOpenDetailService(null);
+    setOpenProductService(null);
+    setActiveStep(0);
+    navigate({
+      replace: true,
+      search: () => ({
+        step: "schedule",
+      }),
+    });
+  };
+
+  const resumeStoredDraft = () => {
+    const nextDraft = buildInitialDraft(
+      { ...props, initialResumeDraft: true },
+      storedDraft
+    );
+    setDraft(nextDraft);
+    setOpenDetailService(nextDraft.services[0] ?? null);
+    setOpenProductService(nextDraft.services[0] ?? null);
+    setErrors({});
+    navigate({
+      replace: true,
+      search: (current) => ({
+        ...current,
+        resume: true,
+      }),
+    });
   };
 
   const toggleService = (serviceId: ServiceId) => {
@@ -1083,13 +1181,13 @@ const BookingWizard = (props: BookingWizardProps) => {
       const services = exists
         ? current.services.filter((id) => id !== serviceId)
         : [...current.services, serviceId];
-      const nextServices = services.length > 0 ? services : current.services;
+      const nextServices = services;
 
-      if (!nextServices.includes(openDetailService)) {
-        setOpenDetailService(nextServices[0]);
+      if (!openDetailService || !nextServices.includes(openDetailService)) {
+        setOpenDetailService(nextServices[0] ?? null);
       }
-      if (!nextServices.includes(openProductService)) {
-        setOpenProductService(nextServices[0]);
+      if (!openProductService || !nextServices.includes(openProductService)) {
+        setOpenProductService(nextServices[0] ?? null);
       }
 
       return {
@@ -1108,6 +1206,15 @@ const BookingWizard = (props: BookingWizardProps) => {
   const continueFromStep = (step: WizardStep) => {
     if (!validateStep(step)) {
       return;
+    }
+
+    if (step >= 1) {
+      void persistQuoteRequest({
+        draft,
+        lastCompletedStep: step + 1,
+        status: step >= 4 ? "checkout_started" : "contact_captured",
+        trackingId: quoteRequestTrackingId,
+      });
     }
 
     goToStep(Math.min(step + 1, 5) as WizardStep);
@@ -1137,6 +1244,17 @@ const BookingWizard = (props: BookingWizardProps) => {
     setOpenDetailService(serviceId);
   };
 
+  const validateSelectedAddress = async (
+    suggestion: RadarAddressSuggestion
+  ) => {
+    const validated = await validateAddress(suggestion.label);
+    if (!validated) {
+      return;
+    }
+    setDraftValue("address", validated.label);
+    setIsAddressValidated(true);
+  };
+
   const selectedCombos = comboSubscriptions.filter((combo) =>
     combo.requiredServices.every((serviceId) =>
       draft.services.includes(serviceId)
@@ -1155,6 +1273,11 @@ const BookingWizard = (props: BookingWizardProps) => {
   }
   const subtotalCents = selectedProductTotal(draft) + addOnTotalCents;
   const depositCents = 5000;
+  const isLaundryOnly =
+    draft.services.length === 1 && draft.services[0] === "laundry";
+  const dueTodayCents = isLaundryOnly
+    ? subtotalCents
+    : Math.min(depositCents, subtotalCents);
   const hasRecurringProduct = draft.services.some((serviceId) =>
     productsByService[serviceId].some(
       (product) => product.id === draft.products[serviceId] && product.recurring
@@ -1162,11 +1285,22 @@ const BookingWizard = (props: BookingWizardProps) => {
   );
 
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-white p-4 text-slate-950 shadow-2xl shadow-slate-950/40 sm:p-6">
+    <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-slate-950 shadow-2xl shadow-slate-200/70 sm:p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-          Request saved on this device
-        </p>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Request saved on this device
+          </p>
+          {hasStoredDraft ? (
+            <button
+              className="mt-2 text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
+              onClick={resumeStoredDraft}
+              type="button"
+            >
+              Resume saved quote
+            </button>
+          ) : null}
+        </div>
         <button
           className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-950"
           onClick={clearDraft}
@@ -1183,7 +1317,7 @@ const BookingWizard = (props: BookingWizardProps) => {
         title="Services and schedule"
       >
         <div className="grid gap-4">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2">
             {serviceCatalog.map((service) => {
               const Icon = service.icon;
               const selected = draft.services.includes(service.id);
@@ -1191,7 +1325,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               return (
                 <button
                   className={cn(
-                    "rounded-2xl border p-4 text-left transition-colors",
+                    "rounded-2xl border p-3 text-left transition-colors sm:p-4",
                     selected
                       ? "border-lime-500 bg-lime-100 text-slate-950"
                       : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
@@ -1201,7 +1335,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                   type="button"
                 >
                   <Icon className="mb-3 size-5" />
-                  <span className="text-sm font-semibold">
+                  <span className="text-xs font-semibold sm:text-sm">
                     {service.shortName}
                   </span>
                 </button>
@@ -1219,10 +1353,14 @@ const BookingWizard = (props: BookingWizardProps) => {
                 className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
                 error={errors.address}
                 isValidated={isAddressValidated}
-                onChange={(address) => setDraftValue("address", address)}
+                onChange={(address) => {
+                  setIsAddressValidated(false);
+                  setDraftValue("address", address);
+                }}
                 onSelectSuggestion={(suggestion: RadarAddressSuggestion) => {
                   setDraftValue("address", suggestion.label);
                   setIsAddressValidated(true);
+                  void validateSelectedAddress(suggestion);
                 }}
                 value={draft.address}
               />
@@ -1841,9 +1979,11 @@ const BookingWizard = (props: BookingWizardProps) => {
               ))}
               <div className="border-t border-slate-200 pt-3">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Deposit due today</span>
+                  <span className="text-slate-500">
+                    {isLaundryOnly ? "Due today" : "Deposit due today"}
+                  </span>
                   <span className="font-semibold text-lime-700">
-                    {formatCents(depositCents)}
+                    {formatCents(dueTodayCents)}
                   </span>
                 </div>
                 <div className="mt-2 flex justify-between text-base">
@@ -1861,7 +2001,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                   Choose how to pay
                 </p>
                 <div className="grid gap-3 md:grid-cols-3">
-                  {paymentOptions.map((option) => (
+                  {paymentOptionsForDraft.map((option) => (
                     <button
                       className={cn(
                         "rounded-2xl border p-3 text-left transition-colors",
@@ -1891,7 +2031,18 @@ const BookingWizard = (props: BookingWizardProps) => {
               <Button
                 className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!draft.paymentOption}
-                onClick={() => validateStep(5)}
+                onClick={() => {
+                  if (!validateStep(5)) {
+                    return;
+                  }
+
+                  void persistQuoteRequest({
+                    draft,
+                    lastCompletedStep: 6,
+                    status: "checkout_started",
+                    trackingId: quoteRequestTrackingId,
+                  });
+                }}
                 type="button"
               >
                 Continue to Stripe

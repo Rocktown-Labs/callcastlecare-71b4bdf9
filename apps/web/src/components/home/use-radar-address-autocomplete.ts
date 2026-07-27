@@ -1,5 +1,7 @@
 import { useDebouncedValue } from "@tanstack/react-pacer";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { getServerUrl } from "@/lib/server-url";
 
 export interface RadarAddressSuggestion {
   id: string;
@@ -9,43 +11,13 @@ export interface RadarAddressSuggestion {
   raw: Record<string, unknown>;
 }
 
-const RADAR_AUTOCOMPLETE_URL = "https://api.radar.io/v1/search/autocomplete";
-const RADAR_REVERSE_GEOCODE_URL = "https://api.radar.io/v1/geocode/reverse";
 const DEBOUNCE_MS = 300;
-
-const getRadarPublishableKey = () =>
-  import.meta.env.VITE_RADAR_PUBLISHABLE_KEY as string | undefined;
 
 const toStringOrNull = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : null;
 
 const toNumberOrNull = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
-
-const getSuggestionLabel = (candidate: Record<string, unknown>) => {
-  const preferredKeys = [
-    "formattedAddress",
-    "formatted_address",
-    "addressLabel",
-    "display_name",
-  ] as const;
-
-  for (const key of preferredKeys) {
-    const value = toStringOrNull(candidate[key]);
-    if (value) {
-      return value;
-    }
-  }
-
-  const segments = [
-    toStringOrNull(candidate.street),
-    toStringOrNull(candidate.city),
-    toStringOrNull(candidate.state),
-    toStringOrNull(candidate.postalCode),
-  ].filter(Boolean);
-
-  return segments.length > 0 ? segments.join(", ") : "Unknown address";
-};
 
 export const parseRadarSuggestions = (
   payload: unknown
@@ -55,12 +27,9 @@ export const parseRadarSuggestions = (
   }
 
   const response = payload as Record<string, unknown>;
-  let rawSuggestions: unknown[] = [];
-  if (Array.isArray(response.addresses)) {
-    rawSuggestions = response.addresses;
-  } else if (Array.isArray(response.results)) {
-    rawSuggestions = response.results;
-  }
+  const rawSuggestions = Array.isArray(response.suggestions)
+    ? response.suggestions
+    : [];
 
   const suggestions: RadarAddressSuggestion[] = [];
   for (const [index, rawSuggestion] of rawSuggestions.entries()) {
@@ -69,9 +38,14 @@ export const parseRadarSuggestions = (
     }
 
     const candidate = rawSuggestion as Record<string, unknown>;
+    const label = toStringOrNull(candidate.formattedAddress);
+    if (!label) {
+      continue;
+    }
+
     suggestions.push({
-      id: `${toStringOrNull(candidate.id) ?? "radar"}-${index}`,
-      label: getSuggestionLabel(candidate),
+      id: `${toStringOrNull(candidate.placeId) ?? "google"}-${index}`,
+      label,
       latitude:
         toNumberOrNull(candidate.latitude) ??
         toNumberOrNull(candidate.lat) ??
@@ -87,17 +61,8 @@ export const parseRadarSuggestions = (
   return suggestions;
 };
 
-const fetchRadar = async (url: URL) => {
-  const publishableKey = getRadarPublishableKey();
-  if (!publishableKey) {
-    return null;
-  }
-
-  const response = await fetch(url, {
-    headers: {
-      Authorization: publishableKey,
-    },
-  });
+const fetchJson = async (url: URL, init?: RequestInit) => {
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     return null;
@@ -106,15 +71,59 @@ const fetchRadar = async (url: URL) => {
   return response.json() as Promise<unknown>;
 };
 
+export const validateAddress = async (address: string) => {
+  const url = new URL("/api/locations/addresses/validate", getServerUrl());
+  const payload = await fetchJson(url, {
+    body: JSON.stringify({ address }),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const response = payload as Record<string, unknown>;
+  const rawAddress = response.address;
+  if (!rawAddress || typeof rawAddress !== "object") {
+    return null;
+  }
+
+  const candidate = rawAddress as Record<string, unknown>;
+  const label = toStringOrNull(candidate.formattedAddress);
+  if (!label) {
+    return null;
+  }
+
+  return {
+    id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
+    label,
+    latitude: toNumberOrNull(candidate.latitude),
+    longitude: toNumberOrNull(candidate.longitude),
+    raw: candidate,
+  };
+};
+
 export const reverseGeocodeAddress = async (
   latitude: number,
   longitude: number
 ) => {
-  const url = new URL(RADAR_REVERSE_GEOCODE_URL);
-  url.searchParams.set("coordinates", `${latitude},${longitude}`);
+  const label = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 
-  const payload = await fetchRadar(url);
-  return parseRadarSuggestions(payload)[0] ?? null;
+  const response = await validateAddress(label);
+  if (response) {
+    return response;
+  }
+
+  return {
+    id: `current-location-${latitude}-${longitude}`,
+    label,
+    latitude,
+    longitude,
+    raw: { latitude, longitude },
+  };
 };
 
 export const useRadarAddressAutocomplete = (query: string) => {
@@ -123,13 +132,7 @@ export const useRadarAddressAutocomplete = (query: string) => {
   const [suggestions, setSuggestions] = useState<RadarAddressSuggestion[]>([]);
   const requestIdRef = useRef(0);
 
-  const isEnabled = useMemo(() => Boolean(getRadarPublishableKey()), []);
-
   useEffect(() => {
-    if (!isEnabled) {
-      return;
-    }
-
     const trimmed = debouncedQuery.trim();
     if (trimmed.length < 3) {
       return;
@@ -137,15 +140,17 @@ export const useRadarAddressAutocomplete = (query: string) => {
 
     const currentRequestId = requestIdRef.current + 1;
     requestIdRef.current = currentRequestId;
-    const url = new URL(RADAR_AUTOCOMPLETE_URL);
-    url.searchParams.set("limit", "5");
-    url.searchParams.set("query", trimmed);
+    const url = new URL(
+      "/api/locations/addresses/autocomplete",
+      getServerUrl()
+    );
+    url.searchParams.set("input", trimmed);
 
     const search = async () => {
       setIsLoading(true);
 
       try {
-        const payload = await fetchRadar(url);
+        const payload = await fetchJson(url);
         if (requestIdRef.current === currentRequestId) {
           setSuggestions(parseRadarSuggestions(payload));
         }
@@ -161,11 +166,11 @@ export const useRadarAddressAutocomplete = (query: string) => {
     };
 
     void search();
-  }, [debouncedQuery, isEnabled]);
+  }, [debouncedQuery]);
 
   return {
-    isEnabled,
-    isLoading: isLoading && isEnabled && debouncedQuery.trim().length >= 3,
-    suggestions,
+    isEnabled: true,
+    isLoading: isLoading && debouncedQuery.trim().length >= 3,
+    suggestions: debouncedQuery.trim().length >= 3 ? suggestions : [],
   };
 };

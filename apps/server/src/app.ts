@@ -9,13 +9,10 @@ import { requestLogger, logger } from "./lib/logger";
 import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
-import { driverRoutes } from "./routes/driver";
-import { homeRoutes } from "./routes/home";
+import { locationRoutes } from "./routes/locations";
 import { meRoutes } from "./routes/me";
-import { mediaRoutes } from "./routes/media";
 import { notificationRoutes } from "./routes/notifications";
 import { orderRoutes } from "./routes/orders";
-import { queueRoutes } from "./routes/queues";
 import type { AppEnv } from "./types";
 
 const app = new Hono<AppEnv>();
@@ -108,13 +105,12 @@ app.use("/*", async (c, next) => {
   if (!session) {
     c.set("user", null);
     c.set("session", null);
-    await next();
-    return;
+    return await next();
   }
 
   c.set("user", session.user);
   c.set("session", session.session);
-  await next();
+  return await next();
 });
 
 app.on(["POST", "GET", "OPTIONS"], ["/api/auth/*", "/auth/*"], (c) =>
@@ -136,12 +132,9 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/checkout", checkoutRoutes)
   .route("/me", meRoutes)
   .route("/addresses", addressesRoutes)
+  .route("/locations", locationRoutes)
   .route("/orders", orderRoutes)
-  .route("/home", homeRoutes)
-  .route("/media", mediaRoutes)
   .route("/notifications", notificationRoutes)
-  .route("/driver", driverRoutes)
-  .route("/queues", queueRoutes)
   .route("/admin", adminRoutes);
 
 const routes = app

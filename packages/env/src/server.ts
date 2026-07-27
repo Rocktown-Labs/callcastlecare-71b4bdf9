@@ -2,7 +2,7 @@ import "dotenv/config";
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
-function getVercelOrigin() {
+const getVercelOrigin = () => {
   const vercelUrl =
     process.env.VERCEL_ENV === "production"
       ? (process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL)
@@ -11,7 +11,7 @@ function getVercelOrigin() {
     return;
   }
   return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
-}
+};
 
 const vercelOrigin = getVercelOrigin();
 
@@ -29,13 +29,14 @@ export const env = createEnv({
   emptyStringAsUndefined: true,
   runtimeEnv,
   server: {
+    ADMIN_EMAIL: z.email().default("cg@rocktownlabs.com"),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     CORS_ORIGIN: z.url(),
     DATABASE_URL: z.string().min(1),
-    ADMIN_EMAIL: z.email().default("cg@rocktownlabs.com"),
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
