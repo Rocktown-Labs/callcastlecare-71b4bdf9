@@ -3,6 +3,7 @@ import { hc } from "hono/client";
 
 export * from "./contracts";
 export * from "./pricing";
+export * from "./stripe-catalog";
 export * from "./window-washing";
 
 export interface CreateApiClientOptions {
@@ -10,7 +11,8 @@ export interface CreateApiClientOptions {
   customFetch?: typeof fetch;
 }
 
-export const createApiClient = <TApp extends Hono>(
+// eslint-disable-next-line typescript/no-explicit-any -- Hono's hc type uses `Hono<any, any, any>` for custom env/schema clients.
+export const createApiClient = <TApp extends Hono<any, any, any>>(
   baseURL: string,
   options?: CreateApiClientOptions
 ) =>

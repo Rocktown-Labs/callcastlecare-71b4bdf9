@@ -34,7 +34,9 @@ export default function HeroSection() {
   ]);
   const [address, setAddress] = useState("");
   const [date, setDate] = useState("");
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState(bookingTimeSlots[2]);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>(
+    bookingTimeSlots[2] ?? "10:00 AM - 12:00 PM"
+  );
   const [isAddressValidated, setIsAddressValidated] = useState(false);
   const [errors, setErrors] = useState<BookingErrors>({});
 

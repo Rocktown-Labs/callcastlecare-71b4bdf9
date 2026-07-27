@@ -12,6 +12,7 @@ export * from "./orchestration";
 export * from "./order";
 export * from "./payout";
 export * from "./quote";
+export * from "./stripe";
 export * from "./tracking";
 export * from "./worker";
 export * from "./window_washing";

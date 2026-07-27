@@ -152,6 +152,8 @@ const paymentOptions = [
 
 const insideGlassFeePerPaneCents = 500;
 const screenWashFeePerScreenCents = 250;
+const minutesPerHour = 60;
+const serviceWindowHours = 2;
 const stepKeys = [
   "schedule",
   "contact",
@@ -270,6 +272,81 @@ const formatCents = (cents: number) =>
     style: "currency",
   }).format(cents / 100);
 
+const formatLongDate = (value: string) => {
+  if (!value) {
+    return "Select date";
+  }
+
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Select date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    weekday: "short",
+  }).format(parsed);
+};
+
+const toDateInputValue = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+
+const getCalendarDays = (monthDate: Date) => {
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const daysInMonth = new Date(
+    monthDate.getFullYear(),
+    monthDate.getMonth() + 1,
+    0
+  ).getDate();
+  const leadingBlankCount = firstDay.getDay();
+
+  return [
+    ...Array.from({ length: leadingBlankCount }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+};
+
+const timeSlotToInputTime = (slot: string) => {
+  const match = /^(?<hour>\d{1,2}):(?<minute>\d{2})\s(?<meridiem>AM|PM)/u.exec(
+    slot
+  );
+  const groups = match?.groups;
+  if (!groups) {
+    return "10:00";
+  }
+
+  const hour = Number(groups.hour);
+  let normalizedHour = hour;
+  if (groups.meridiem === "PM" && hour !== 12) {
+    normalizedHour = hour + 12;
+  }
+  if (groups.meridiem === "AM" && hour === 12) {
+    normalizedHour = 0;
+  }
+
+  return `${String(normalizedHour).padStart(2, "0")}:${groups.minute}`;
+};
+
+const formatTimeRange = (value: string) => {
+  const [hourValue = "10", minuteValue = "00"] = value.split(":");
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  const start = new Date();
+  start.setHours(hour, minute, 0, 0);
+  const end = new Date(
+    start.getTime() + serviceWindowHours * minutesPerHour * 60_000
+  );
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  return `${formatter.format(start)} - ${formatter.format(end)}`;
+};
+
 const parseStoredDraft = () => {
   if (typeof window === "undefined") {
     return null;
@@ -285,6 +362,51 @@ const parseStoredDraft = () => {
   } catch {
     return null;
   }
+};
+
+const toStringArray = (value: unknown) =>
+  Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+const normalizeServiceDetails = (
+  initialDraft: BookingDraft,
+  storedDraft: BookingDraft | null
+) => {
+  const storedLaundry = storedDraft?.serviceDetails?.laundry;
+  const storedLawncare = storedDraft?.serviceDetails?.lawncare;
+  const storedWindows = storedDraft?.serviceDetails?.["window-washing"];
+
+  return {
+    ...initialDraft.serviceDetails,
+    ...storedDraft?.serviceDetails,
+    laundry: {
+      ...initialDraft.serviceDetails.laundry,
+      ...storedLaundry,
+      photoNames: toStringArray(storedLaundry?.photoNames),
+    },
+    lawncare: {
+      ...initialDraft.serviceDetails.lawncare,
+      ...storedLawncare,
+      photoNames: toStringArray(storedLawncare?.photoNames),
+    },
+    "window-washing": {
+      ...initialDraft.serviceDetails["window-washing"],
+      ...storedWindows,
+      photoNames: toStringArray(storedWindows?.photoNames),
+    },
+  };
+};
+
+const resolveInitialServices = (
+  props: BookingWizardProps,
+  storedDraft: BookingDraft | null
+) => {
+  if (props.initialServices.length > 0) {
+    return props.initialServices;
+  }
+
+  return storedDraft?.services || ["lawncare"];
 };
 
 const selectedProductTotal = (draft: BookingDraft) => {
@@ -408,26 +530,8 @@ const buildInitialDraft = (
     ...storedDraft,
     address: props.initialAddress || storedDraft?.address || "",
     date: props.initialDate || storedDraft?.date || "",
-    serviceDetails: {
-      ...initialDraft.serviceDetails,
-      ...storedDraft?.serviceDetails,
-      laundry: {
-        ...initialDraft.serviceDetails.laundry,
-        ...storedDraft?.serviceDetails?.laundry,
-      },
-      lawncare: {
-        ...initialDraft.serviceDetails.lawncare,
-        ...storedDraft?.serviceDetails?.lawncare,
-      },
-      "window-washing": {
-        ...initialDraft.serviceDetails["window-washing"],
-        ...storedDraft?.serviceDetails?.["window-washing"],
-      },
-    },
-    services:
-      props.initialServices.length > 0
-        ? props.initialServices
-        : storedDraft?.services || ["lawncare"],
+    serviceDetails: normalizeServiceDetails(initialDraft, storedDraft),
+    services: resolveInitialServices(props, storedDraft),
     timeSlot:
       props.initialTimeSlot || storedDraft?.timeSlot || bookingTimeSlots[2],
   };
@@ -593,6 +697,152 @@ const RoundedField = ({
     {error ? <p className="text-sm text-rose-300">{error}</p> : null}
   </div>
 );
+
+const ScheduleDateTimePicker = ({
+  date,
+  dateError,
+  onDateChange,
+  onTimeSlotChange,
+  timeSlot,
+}: {
+  date: string;
+  dateError?: string;
+  onDateChange: (value: string) => void;
+  onTimeSlotChange: (value: string) => void;
+  timeSlot: string;
+}) => {
+  const selectedDate = date ? new Date(`${date}T12:00:00`) : new Date();
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(
+    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+  );
+  const today = toDateInputValue(new Date());
+  const visibleMonthLabel = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(visibleMonth);
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="relative space-y-2">
+        <Label className="text-slate-600">Date</Label>
+        <Button
+          aria-expanded={isCalendarOpen}
+          className="h-11 w-full justify-between rounded-2xl border-slate-200 bg-slate-50 px-3 font-normal text-slate-950 hover:bg-white"
+          onClick={() => setIsCalendarOpen((current) => !current)}
+          type="button"
+          variant="outline"
+        >
+          <span className="inline-flex items-center gap-2">
+            <Calendar className="size-4 text-slate-400" />
+            {formatLongDate(date)}
+          </span>
+          <ChevronDown className="size-4 text-slate-400" />
+        </Button>
+        {isCalendarOpen ? (
+          <div className="absolute z-30 mt-2 w-80 rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm font-bold"
+                onClick={() =>
+                  setVisibleMonth(
+                    new Date(
+                      visibleMonth.getFullYear(),
+                      visibleMonth.getMonth() - 1,
+                      1
+                    )
+                  )
+                }
+                type="button"
+              >
+                Prev
+              </button>
+              <p className="font-black text-slate-950">{visibleMonthLabel}</p>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm font-bold"
+                onClick={() =>
+                  setVisibleMonth(
+                    new Date(
+                      visibleMonth.getFullYear(),
+                      visibleMonth.getMonth() + 1,
+                      1
+                    )
+                  )
+                }
+                type="button"
+              >
+                Next
+              </button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-black uppercase tracking-widest text-slate-400">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <span key={day}>{day.slice(0, 1)}</span>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-7 gap-1">
+              {getCalendarDays(visibleMonth).map((day, index) => {
+                if (!day) {
+                  return <span aria-hidden key={`blank-${index}`} />;
+                }
+
+                const dayValue = toDateInputValue(
+                  new Date(
+                    visibleMonth.getFullYear(),
+                    visibleMonth.getMonth(),
+                    day
+                  )
+                );
+                const isSelected = dayValue === date;
+                const isPast = dayValue < today;
+
+                return (
+                  <button
+                    className={cn(
+                      "flex aspect-square items-center justify-center rounded-2xl text-sm font-bold transition-colors",
+                      isSelected
+                        ? "bg-lime-300 text-slate-950"
+                        : "text-slate-700 hover:bg-slate-100",
+                      isPast ? "pointer-events-none opacity-30" : ""
+                    )}
+                    disabled={isPast}
+                    key={dayValue}
+                    onClick={() => {
+                      onDateChange(dayValue);
+                      setIsCalendarOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+        {dateError ? (
+          <p className="text-sm text-rose-300">{dateError}</p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-slate-600">Time</Label>
+        <div className="relative">
+          <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="h-11 rounded-2xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-950 focus-visible:border-lime-500"
+            onChange={(event) =>
+              onTimeSlotChange(formatTimeRange(event.target.value))
+            }
+            step="900"
+            type="time"
+            value={timeSlotToInputTime(timeSlot)}
+          />
+        </div>
+        <p className="text-xs font-bold text-slate-500">{timeSlot}</p>
+      </div>
+    </div>
+  );
+};
 
 const QuestionAccordion = ({
   children,
@@ -962,7 +1212,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             <p className="text-sm text-rose-300">{errors.services}</p>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
             <div className="space-y-2">
               <Label className="text-slate-600">Service address</Label>
               <RadarAddressInput
@@ -981,33 +1231,13 @@ const BookingWizard = (props: BookingWizardProps) => {
               ) : null}
             </div>
 
-            <RoundedField
-              error={errors.date}
-              icon={Calendar}
-              label="Date"
-              min={new Date().toISOString().slice(0, 10)}
-              onChange={(event) => setDraftValue("date", event.target.value)}
-              type="date"
-              value={draft.date}
+            <ScheduleDateTimePicker
+              date={draft.date}
+              dateError={errors.date}
+              onDateChange={(value) => setDraftValue("date", value)}
+              onTimeSlotChange={(value) => setDraftValue("timeSlot", value)}
+              timeSlot={draft.timeSlot}
             />
-
-            <div className="space-y-2">
-              <Label className="text-slate-600">Time</Label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-950 outline-none focus:border-lime-500"
-                  onChange={(event) =>
-                    setDraftValue("timeSlot", event.target.value)
-                  }
-                  value={draft.timeSlot}
-                >
-                  {bookingTimeSlots.map((timeSlot) => (
-                    <option key={timeSlot}>{timeSlot}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
           </div>
 
           <StepButton onClick={() => continueFromStep(0)} />
@@ -1107,7 +1337,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                     onClick={() => {
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
-                        lawncare: { grassHeight: height.id },
+                        lawncare: {
+                          ...draft.serviceDetails.lawncare,
+                          grassHeight: height.id,
+                        },
                       });
                       completeServiceDetails("lawncare");
                     }}
@@ -1170,6 +1403,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
                         laundry: {
+                          ...draft.serviceDetails.laundry,
                           bedding: id as "none" | "with-bedding",
                         },
                       });

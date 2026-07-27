@@ -3,11 +3,13 @@ interface AuthUser {
   id: string;
   image?: string | null;
   name?: string | null;
+  role?: string | null;
 }
 
 interface AuthSession {
   expiresAt?: Date | string;
   id?: string;
+  impersonatedBy?: string | null;
   token?: string;
   userId?: string;
 }

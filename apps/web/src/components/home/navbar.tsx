@@ -26,7 +26,8 @@ export default function Navbar() {
       let current = "";
       for (const { sectionId } of sectionLinks) {
         const element = document.querySelector(`#${sectionId}`);
-        if (element?.getBoundingClientRect().top <= 180) {
+        const elementTop = element?.getBoundingClientRect().top;
+        if (elementTop !== undefined && elementTop <= 180) {
           current = sectionId;
         }
       }

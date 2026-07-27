@@ -7,6 +7,7 @@ import onError from "stoker/middlewares/on-error";
 
 import { requestLogger, logger } from "./lib/logger";
 import { addressesRoutes } from "./routes/addresses";
+import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
 import { driverRoutes } from "./routes/driver";
 import { homeRoutes } from "./routes/home";
@@ -140,7 +141,8 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/media", mediaRoutes)
   .route("/notifications", notificationRoutes)
   .route("/driver", driverRoutes)
-  .route("/queues", queueRoutes);
+  .route("/queues", queueRoutes)
+  .route("/admin", adminRoutes);
 
 const routes = app
   .route("/api", apiRoutes)

@@ -1,8 +1,9 @@
 import { serve } from "@hono/node-server";
 
+// eslint-disable-next-line unicorn/prefer-export-from -- The server entry needs the local app value for the dev server.
 import { app } from "./app";
 
-export type { AppType } from "./app";
+export { type ApiType, type AppType } from "./app";
 export default app;
 
 if (!process.env.VERCEL) {

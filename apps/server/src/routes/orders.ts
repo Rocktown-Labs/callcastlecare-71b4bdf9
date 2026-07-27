@@ -1,4 +1,4 @@
-import { db,and,desc,eq,inArray } from "@callcastlecare/db";
+import { db, and, desc, eq, inArray } from "@callcastlecare/db";
 import {
   addresses,
   dispatchOffers,
@@ -85,7 +85,8 @@ const toCustomerTimeline = (
     toStatus: string;
   }[]
 ) => {
-  const sortedHistory = [...history].toSorted(
+  // eslint-disable-next-line unicorn/no-array-sort -- ES2022 target does not include Array.prototype.toSorted.
+  const sortedHistory = [...history].sort(
     (first, second) => first.changedAt.getTime() - second.changedAt.getTime()
   );
 

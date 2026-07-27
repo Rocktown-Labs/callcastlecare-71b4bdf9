@@ -1,14 +1,19 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  id: text("id").primaryKey(),
-  image: text("image"),
-  name: text("name").notNull(),
-  updatedAt: timestamp("updated_at")
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    id: text("id").primaryKey(),
+    image: text("image"),
+    name: text("name").notNull(),
+    banExpires: timestamp("ban_expires"),
+    banReason: text("ban_reason"),
+    banned: boolean("banned").default(false),
+    role: text("role").default("user"),
+    stripeCustomerId: text("stripe_customer_id"),
+    updatedAt: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
@@ -20,6 +25,7 @@ export const session = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
     id: text("id").primaryKey(),
+    impersonatedBy: text("impersonated_by"),
     ipAddress: text("ip_address"),
     token: text("token").notNull().unique(),
     updatedAt: timestamp("updated_at")
@@ -31,6 +37,36 @@ export const session = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
   },
   (table) => [index("session_userId_idx").on(table.userId)]
+);
+
+export const subscription = pgTable(
+  "subscription",
+  {
+    billingInterval: text("billing_interval"),
+    cancelAt: timestamp("cancel_at"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+    canceledAt: timestamp("canceled_at"),
+    endedAt: timestamp("ended_at"),
+    id: text("id").primaryKey(),
+    periodEnd: timestamp("period_end"),
+    periodStart: timestamp("period_start"),
+    plan: text("plan").notNull(),
+    referenceId: text("reference_id").notNull(),
+    seats: integer("seats"),
+    status: text("status").default("incomplete").notNull(),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeScheduleId: text("stripe_schedule_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    trialEnd: timestamp("trial_end"),
+    trialStart: timestamp("trial_start"),
+  },
+  (table) => [
+    index("subscription_reference_id_idx").on(table.referenceId),
+    index("subscription_stripe_customer_id_idx").on(table.stripeCustomerId),
+    index("subscription_stripe_subscription_id_idx").on(
+      table.stripeSubscriptionId
+    ),
+  ]
 );
 
 export const account = pgTable(

@@ -33,6 +33,9 @@ export const env = createEnv({
     BETTER_AUTH_URL: z.url(),
     CORS_ORIGIN: z.url(),
     DATABASE_URL: z.string().min(1),
+    ADMIN_EMAIL: z.email().default("cg@rocktownlabs.com"),
+    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
@@ -42,6 +45,7 @@ export const env = createEnv({
     RESEND_API_KEY: z.string().min(1).optional(),
     STRIPE_PRICE_BASIC_MONTHLY: z.string().min(1).optional(),
     STRIPE_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_WEBHOOK_PUBLIC_URL: z.url().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
     VERCEL_BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
   },

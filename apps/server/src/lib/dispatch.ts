@@ -199,7 +199,8 @@ const getEligibleWorkers = async (input: {
       );
       return distanceMiles <= effectiveRadiusMiles;
     })
-    .toSorted((first, second) => first.distanceMiles - second.distanceMiles)
+    // eslint-disable-next-line unicorn/no-array-sort -- ES2022 target does not include Array.prototype.toSorted.
+    .sort((first, second) => first.distanceMiles - second.distanceMiles)
     .slice(0, MAX_OFFERS_PER_BATCH);
 
   if (
@@ -258,7 +259,8 @@ const getEligibleWorkers = async (input: {
         distanceByWorkerId.get(entry.worker.id) ?? entry.distanceMiles,
       worker: entry.worker,
     }))
-    .toSorted((first, second) => first.distanceMiles - second.distanceMiles)
+    // eslint-disable-next-line unicorn/no-array-sort -- ES2022 target does not include Array.prototype.toSorted.
+    .sort((first, second) => first.distanceMiles - second.distanceMiles)
     .slice(0, MAX_OFFERS_PER_BATCH);
 
   return ranked.map((entry) => entry.worker);

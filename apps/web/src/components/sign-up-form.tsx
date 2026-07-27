@@ -3,6 +3,7 @@ import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
+import { CircleUserRound } from "lucide-react";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -58,6 +59,20 @@ export default function SignUpForm({
   if (isPending) {
     return <Loader />;
   }
+
+  const signUpWithGoogle = async () => {
+    await authClient.signIn.social(
+      {
+        callbackURL: "/dashboard",
+        provider: "google",
+      },
+      {
+        onError: (error) => {
+          toast.error(error.error.message || error.error.statusText);
+        },
+      }
+    );
+  };
 
   return (
     <div className="mx-auto w-full mt-10 max-w-md p-6">
@@ -156,6 +171,22 @@ export default function SignUpForm({
           )}
         </form.Subscribe>
       </form>
+
+      <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+        <span className="h-px flex-1 bg-slate-200" />
+        or
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      <Button
+        className="h-11 w-full rounded-full border-slate-200"
+        onClick={signUpWithGoogle}
+        type="button"
+        variant="outline"
+      >
+        <CircleUserRound className="size-4" />
+        Continue with Google
+      </Button>
 
       <div className="mt-4 text-center">
         <Button
