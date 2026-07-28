@@ -457,21 +457,6 @@ const ServiceDetailPage = () => {
                       </Link>
                     );
                   })}
-                  <Link
-                    className="flex items-start gap-4 rounded-3xl border border-lime-300/25 bg-lime-300/10 p-4 transition-colors hover:border-lime-300/50 hover:bg-lime-300/15"
-                    to="/earn"
-                  >
-                    <Handshake className="mt-1 size-5 shrink-0 text-lime-300" />
-                    <span>
-                      <span className="block font-semibold text-white">
-                        Want to earn with CastleCare?
-                      </span>
-                      <span className="mt-1 block text-sm leading-6 text-white/60">
-                        See provider lanes for lawn care, laundry pickup, and
-                        window washing, then start the onboarding path.
-                      </span>
-                    </span>
-                  </Link>
                 </div>
               </div>
             </div>
@@ -480,6 +465,36 @@ const ServiceDetailPage = () => {
               Starting price shown: {priceLabel}. Final quote depends on the
               service details you provide during booking.
             </p>
+          </div>
+        </section>
+
+        <section className="bg-white py-16 text-slate-950">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="grid gap-8 rounded-[2rem] border border-slate-200 bg-slate-50 p-6 shadow-sm sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div className="max-w-3xl">
+                <div className="mb-4 inline-flex size-12 items-center justify-center rounded-2xl bg-lime-300/25 text-lime-700">
+                  <Handshake className="size-6" />
+                </div>
+                <p className="text-sm font-bold uppercase tracking-widest text-lime-700">
+                  Work with CastleCare
+                </p>
+                <h2 className="mt-3 text-3xl font-black sm:text-4xl">
+                  Want to earn by providing home services?
+                </h2>
+                <p className="mt-4 text-base leading-7 text-slate-600">
+                  CastleCare is building an on-demand provider network for lawn
+                  care, laundry pickup, and window washing. See the lanes,
+                  requirements, payouts, and onboarding options built for people
+                  who want flexible service work.
+                </p>
+              </div>
+              <Link to="/earn">
+                <Button className="h-12 w-full rounded-full bg-slate-950 px-6 font-bold text-white hover:bg-slate-800 lg:w-auto">
+                  Start earning with CastleCare
+                  <ArrowRight className="size-4" />
+                </Button>
+              </Link>
+            </div>
           </div>
         </section>
       </article>

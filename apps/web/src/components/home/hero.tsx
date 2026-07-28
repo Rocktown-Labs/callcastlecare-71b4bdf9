@@ -141,8 +141,8 @@ export default function HeroSection() {
   };
 
   return (
-    <section className="relative min-h-screen overflow-hidden bg-slate-950 pt-18">
-      <div className="absolute inset-0">
+    <section className="relative min-h-screen overflow-hidden bg-[#080c16] pt-20">
+      <div className="absolute inset-x-0 bottom-0 top-20 hidden sm:block">
         <img
           alt=""
           aria-hidden="true"

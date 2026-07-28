@@ -57,7 +57,7 @@ export default function Navbar() {
           >
             <img
               alt="CallCastleCare"
-              className="h-16 w-auto sm:h-18"
+              className="h-[67px] w-auto sm:h-[75px]"
               src="/callcastlecare/brand/logo-square-200.png"
             />
           </Link>
