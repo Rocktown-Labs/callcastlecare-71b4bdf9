@@ -3,7 +3,7 @@ import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
-import { RefreshCw, Save, ShieldCheck, Sparkles } from "lucide-react";
+import { Inbox, RefreshCw, Save, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -34,6 +34,24 @@ interface Coupon {
   stripeCouponId?: string | null;
 }
 
+interface SupportRequest {
+  addressText?: string | null;
+  city?: string | null;
+  createdAt: string;
+  email: string;
+  id: number;
+  message: string;
+  name: string;
+  orderId?: number | null;
+  orderNumber?: string | null;
+  phone?: string | null;
+  requestType: string;
+  serviceType?: string | null;
+  state?: string | null;
+  status: string;
+  zip?: string | null;
+}
+
 const formatCents = (cents: number) =>
   new Intl.NumberFormat("en-US", {
     currency: "USD",
@@ -56,6 +74,7 @@ const RouteComponent = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncLabel, setLastSyncLabel] = useState<string | null>(null);
+  const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
 
   const userEmail = session.data?.user.email ?? "";
 
@@ -64,15 +83,24 @@ const RouteComponent = () => {
 
     const loadCatalog = async () => {
       setIsLoading(true);
-      const response = await apiClient.admin.stripe.catalog.$get();
-      if (!response.ok) {
+      const [catalogResponse, supportResponse] = await Promise.all([
+        apiClient.admin.stripe.catalog.$get(),
+        apiClient.admin.support.$get(),
+      ]);
+
+      if (!catalogResponse.ok) {
         setIsLoading(false);
         return;
       }
 
-      const payload = await response.json();
+      const payload = await catalogResponse.json();
       if (!active) {
         return;
+      }
+
+      if (supportResponse.ok) {
+        const supportPayload = await supportResponse.json();
+        setSupportRequests(supportPayload.requests as SupportRequest[]);
       }
 
       setItems(payload.items as CatalogItem[]);
@@ -196,6 +224,87 @@ const RouteComponent = () => {
               />
               {isSyncing ? "Syncing..." : "Sync to Stripe"}
             </Button>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Inbox className="size-5 text-lime-500" />
+                <h2 className="text-2xl font-black">Support queue</h2>
+              </div>
+              <p className="mt-2 text-sm text-slate-600">
+                Help Center and service-area requests from public pages and
+                customer dashboards.
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
+              {supportRequests.length} latest
+            </div>
+          </div>
+          <div className="grid gap-4">
+            {supportRequests.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                No support requests yet.
+              </div>
+            ) : (
+              supportRequests.map((request) => (
+                <article
+                  className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                  key={request.id}
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
+                          {request.requestType.replace("_", " ")}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                          {request.status}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-lg font-black">
+                        {request.name}
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {request.email}
+                        {request.phone ? ` · ${request.phone}` : ""}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-500">
+                      {new Date(request.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-slate-700">
+                    {request.message}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                    {request.orderId ? (
+                      <span>Order #{request.orderId}</span>
+                    ) : null}
+                    {request.orderNumber ? (
+                      <span>Ref {request.orderNumber}</span>
+                    ) : null}
+                    {request.serviceType ? (
+                      <span>{request.serviceType.replace("_", " ")}</span>
+                    ) : null}
+                    {request.addressText ? (
+                      <span>
+                        {[
+                          request.addressText,
+                          request.city,
+                          request.state,
+                          request.zip,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </span>
+                    ) : null}
+                  </div>
+                </article>
+              ))
+            )}
           </div>
         </section>
 

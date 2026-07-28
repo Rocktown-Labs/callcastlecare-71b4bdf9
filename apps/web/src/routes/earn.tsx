@@ -13,7 +13,7 @@ const earnUrl = `${siteUrl}/earn`;
 const earnTitle = "Earn with CastleCare | Home Service Jobs Across Arkansas";
 const earnDescription =
   "Apply to provide lawn care, laundry pickup, or window washing across Arkansas as CastleCare builds its on-demand home service provider network.";
-const earnImage = `${siteUrl}/callcastlecare/media/technician-van-night.png`;
+const earnImage = `${siteUrl}/callcastlecare/media/earn-og.png`;
 
 const EarnRoute = () => (
   <MarketingLayout>

@@ -3,15 +3,28 @@ import { Camera, MessageCircle, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 const footerLinks = {
-  company: ["About", "Careers", "Press", "Blog"],
-  legal: ["Privacy", "Terms", "Cookies"],
+  company: [
+    { href: "/about", label: "About" },
+    { href: "/earn", label: "Careers" },
+    { href: "/press", label: "Press" },
+    { href: "/blog", label: "Blog" },
+  ],
+  legal: [
+    { href: "/privacy", label: "Privacy" },
+    { href: "/terms", label: "Terms" },
+    { href: "/cookies", label: "Cookies" },
+  ],
   services: [
     { href: "/services/lawncare", label: "Lawn care" },
     { href: "/services/laundry", label: "Laundry" },
     { href: "/services/window-washing", label: "Window washing" },
     { href: "/earn", label: "Drive for us" },
   ],
-  support: ["Help Center", "Contact", "Service Areas", "FAQ"],
+  support: [
+    { href: "/help", label: "Help Center" },
+    { href: "/service-areas", label: "Service Areas" },
+    { href: "/faq", label: "FAQ" },
+  ],
 } as const;
 
 const socialLinks = [
@@ -76,18 +89,24 @@ export default function Footer() {
             ))}
           </FooterColumn>
           <FooterColumn title="Company">
-            {footerLinks.company.map((label) => (
-              <span key={label}>{label}</span>
+            {footerLinks.company.map(({ href, label }) => (
+              <a href={href} key={label}>
+                {label}
+              </a>
             ))}
           </FooterColumn>
           <FooterColumn title="Support">
-            {footerLinks.support.map((label) => (
-              <span key={label}>{label}</span>
+            {footerLinks.support.map(({ href, label }) => (
+              <a href={href} key={label}>
+                {label}
+              </a>
             ))}
           </FooterColumn>
           <FooterColumn title="Legal">
-            {footerLinks.legal.map((label) => (
-              <span key={label}>{label}</span>
+            {footerLinks.legal.map(({ href, label }) => (
+              <a href={href} key={label}>
+                {label}
+              </a>
             ))}
           </FooterColumn>
         </div>

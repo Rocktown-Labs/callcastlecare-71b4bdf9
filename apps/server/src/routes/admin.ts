@@ -8,6 +8,7 @@ import {
   stripeCatalogItems,
   stripeCoupons,
   stripeSyncRuns,
+  supportRequests,
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import type { Context } from "hono";
@@ -174,6 +175,19 @@ const seedCatalogIfEmpty = async () => {
 };
 
 export const adminRoutes = new Hono<AppEnv>()
+  .get("/support", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const requests = await db.query.supportRequests.findMany({
+      limit: 50,
+      orderBy: desc(supportRequests.createdAt),
+    });
+
+    return c.json({ requests }, 200);
+  })
   .get("/stripe/catalog", async (c) => {
     const adminError = requireAdmin(c);
     if (adminError) {

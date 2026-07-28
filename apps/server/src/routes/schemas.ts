@@ -1,3 +1,4 @@
+import { optionalPhoneSchema } from "@callcastlecare/api/validation";
 import { z } from "zod";
 
 export const timingTypeSchema = z.enum(["asap", "scheduled"]);
@@ -95,7 +96,7 @@ export const publicQuoteRequestSchema = z.object({
     .object({
       email: z.email().optional().or(z.literal("")),
       name: z.string().trim().optional(),
-      phone: z.string().trim().optional(),
+      phone: optionalPhoneSchema,
     })
     .optional(),
   lastCompletedStep: z.number().int().min(0).max(6).default(0),
@@ -107,7 +108,7 @@ export const publicQuoteRequestSchema = z.object({
 export const updateCustomerProfileRequestSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
-  phone: z.string().trim().min(7).optional().nullable(),
+  phone: optionalPhoneSchema.nullable(),
 });
 
 export const upsertAddressRequestSchema = z
@@ -146,6 +147,26 @@ export const updateAddressRequestSchema = z.object({
   instructions: z.string().trim().max(500).optional().nullable(),
   isDefault: z.boolean().optional(),
   label: z.string().trim().min(1).max(64).optional(),
+});
+
+export const supportRequestSchema = z.object({
+  addressText: z.string().trim().max(240).optional().or(z.literal("")),
+  city: z.string().trim().max(80).optional().or(z.literal("")),
+  email: z.email(),
+  message: z.string().trim().min(10).max(2000),
+  name: z.string().trim().min(2).max(120),
+  orderId: z.number().int().positive().optional().nullable(),
+  orderNumber: z.string().trim().max(80).optional().or(z.literal("")),
+  phone: optionalPhoneSchema,
+  requestType: z
+    .enum(["help", "dashboard_help", "service_area"])
+    .default("help"),
+  serviceType: z
+    .enum(["lawncare", "laundry", "window_washing", "combo", "unknown"])
+    .default("unknown"),
+  sourcePath: z.string().trim().max(160).optional().or(z.literal("")),
+  state: z.string().trim().max(40).optional().or(z.literal("")),
+  zip: z.string().trim().max(20).optional().or(z.literal("")),
 });
 
 export const driverLocationHeartbeatSchema = z.object({

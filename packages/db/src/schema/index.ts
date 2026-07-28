@@ -1,3 +1,4 @@
+/* eslint-disable oxc/no-barrel-file -- Drizzle uses this schema export surface when creating the database client. */
 export * from "./auth";
 export * from "./chat";
 export * from "./checkout";
@@ -13,6 +14,7 @@ export * from "./order";
 export * from "./payout";
 export * from "./quote";
 export * from "./stripe";
+export * from "./support";
 export * from "./tracking";
 export * from "./worker";
 export * from "./window_washing";

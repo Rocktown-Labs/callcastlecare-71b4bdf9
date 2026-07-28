@@ -4,6 +4,12 @@ import {
   LAWNCARE_PLAN_PRICES,
   WINDOW_WASHING_SUBSCRIPTION_PRICES,
 } from "@callcastlecare/api";
+import {
+  normalizeIntegerInput,
+  normalizePhoneInput,
+  phoneSchema,
+  positiveWholeNumberStringSchema,
+} from "@callcastlecare/api/validation";
 import { Button } from "@callcastlecare/ui/components/button";
 import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
@@ -229,9 +235,7 @@ const basicsSchema = z.object({
 const contactSchema = z.object({
   email: z.string().email("Enter a valid email address."),
   name: z.string().min(2, "Enter your name."),
-  phone: z
-    .string()
-    .regex(/^\D*(?:\d\D*){10,}$/u, "Enter a valid phone number."),
+  phone: phoneSchema,
   smsUpdates: z.boolean(),
 });
 
@@ -246,13 +250,6 @@ const laundryDetailsSchema = z.object({
     message: "Choose a bedding option.",
   }),
 });
-
-const positiveCountStringSchema = z
-  .string()
-  .trim()
-  .refine((value) => Number.isInteger(Number(value)) && Number(value) > 0, {
-    message: "Enter a positive whole number.",
-  });
 
 const windowDetailsSchema = z
   .object({
@@ -269,7 +266,7 @@ const windowDetailsSchema = z
   })
   .superRefine((value, ctx) => {
     if (!value.finalizeOnSite) {
-      const parsedWindowEstimate = positiveCountStringSchema.safeParse(
+      const parsedWindowEstimate = positiveWholeNumberStringSchema.safeParse(
         value.windowEstimate
       );
       if (!parsedWindowEstimate.success) {
@@ -282,7 +279,7 @@ const windowDetailsSchema = z
     }
 
     if (value.washScreens && !value.finalizeOnSite) {
-      const parsedScreenCount = positiveCountStringSchema.safeParse(
+      const parsedScreenCount = positiveWholeNumberStringSchema.safeParse(
         value.screenCount
       );
       if (!parsedScreenCount.success) {
@@ -1844,12 +1841,14 @@ const BookingWizard = (props: BookingWizardProps) => {
               onChange={(event) =>
                 setDraftValue("contact", {
                   ...draft.contact,
-                  phone: event.target.value,
+                  phone: normalizePhoneInput(event.target.value),
                 })
               }
               inputMode="tel"
+              pattern="[0-9\s()+.-]*"
               placeholder="(501) 555-0123"
               required
+              type="tel"
               value={draft.contact.phone}
             />
             <RoundedField
@@ -2134,12 +2133,15 @@ const BookingWizard = (props: BookingWizardProps) => {
                           ...draft.serviceDetails,
                           "window-washing": {
                             ...draft.serviceDetails["window-washing"],
-                            windowEstimate: event.target.value,
+                            windowEstimate: normalizeIntegerInput(
+                              event.target.value
+                            ),
                           },
                         })
                       }
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       placeholder="Around 20"
-                      type="number"
                       value={
                         draft.serviceDetails["window-washing"].windowEstimate
                       }
@@ -2223,12 +2225,15 @@ const BookingWizard = (props: BookingWizardProps) => {
                             ...draft.serviceDetails,
                             "window-washing": {
                               ...draft.serviceDetails["window-washing"],
-                              screenCount: event.target.value,
+                              screenCount: normalizeIntegerInput(
+                                event.target.value
+                              ),
                             },
                           })
                         }
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         placeholder="12"
-                        type="number"
                         value={
                           draft.serviceDetails["window-washing"].screenCount
                         }

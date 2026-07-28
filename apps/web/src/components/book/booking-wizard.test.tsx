@@ -114,4 +114,39 @@ describe("BookingWizard", () => {
       );
     });
   });
+
+  it("sanitizes phone input and blocks incomplete contact numbers", async () => {
+    mockFetch();
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-07-28"
+        initialServices={["laundry"]}
+      />
+    );
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), {
+      target: { value: "Taylor Customer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "501-CALL-CARE" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "customer@example.com" },
+    });
+
+    expect(
+      (screen.getByPlaceholderText("(501) 555-0123") as HTMLInputElement).value
+    ).toBe("501--");
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Enter a valid phone number.")).toBeTruthy();
+    expect(screen.queryByText("Service details")).toBeNull();
+  });
 });
