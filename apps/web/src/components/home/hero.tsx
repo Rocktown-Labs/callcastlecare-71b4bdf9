@@ -158,7 +158,7 @@ export default function HeroSection() {
         <div className="max-w-3xl space-y-7">
           <div className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-medium text-lime-100 shadow-lg shadow-lime-950/20">
             <span className="size-2 rounded-full bg-lime-300" />
-            Now serving Central Arkansas
+            Now serving Arkansas
           </div>
 
           <h1 className="max-w-4xl text-pretty text-5xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
@@ -167,8 +167,7 @@ export default function HeroSection() {
 
           <p className="max-w-2xl text-lg leading-8 text-white/65">
             CallCastleCare brings vetted lawn care, laundry pickup, and window
-            washing into one simple local marketplace, starting in Central
-            Arkansas.
+            washing into one simple home service marketplace across Arkansas.
           </p>
 
           <ServiceAvailability />

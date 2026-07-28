@@ -62,7 +62,7 @@ const BookPage = () => {
       <section className="min-h-[calc(100vh-5rem)] bg-slate-50 px-4 pb-24 pt-28 text-slate-950 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
           <span className="inline-flex rounded-full border border-lime-300 bg-lime-100 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-lime-700">
-            Central Arkansas
+            Arkansas
           </span>
           <h1 className="mx-auto mt-5 max-w-2xl text-pretty text-4xl font-black leading-tight sm:text-5xl">
             Reserve the care your place needs.
@@ -95,7 +95,7 @@ export const Route = createFileRoute("/book")({
       { title: "Book Home Services | CastleCare" },
       {
         content:
-          "Book lawn care, laundry, and window washing in Central Arkansas with CastleCare.",
+          "Book lawn care, laundry, and window washing in Arkansas with CastleCare.",
         name: "description",
       },
       { content: "noindex,follow", name: "robots" },

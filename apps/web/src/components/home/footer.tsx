@@ -52,7 +52,7 @@ export default function Footer() {
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/45">
               Premium home services on demand. Lawn care, laundry, and window
-              washing for busy Central Arkansas households.
+              washing for busy Arkansas households.
             </p>
             <div className="mt-6 flex gap-2">
               {socialLinks.map(({ icon: Icon, label }) => (

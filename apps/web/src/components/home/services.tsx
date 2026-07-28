@@ -1,9 +1,56 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, Crown, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarCheck,
+  Check,
+  Crown,
+  MapPin,
+  Route,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 
 import { serviceCatalog } from "@/lib/service-catalog";
+
+const arkansasCities = [
+  "Little Rock",
+  "North Little Rock",
+  "Conway",
+  "Searcy",
+  "Bentonville",
+  "Fayetteville",
+  "Jonesboro",
+  "Fort Smith",
+  "Hot Springs",
+  "Pine Bluff",
+  "Texarkana",
+  "Cabot",
+  "Bryant",
+  "Maumelle",
+] as const;
+
+const bookingSteps = [
+  {
+    description:
+      "Pick lawn care, laundry, window washing, or a qualified bundle.",
+    icon: Check,
+    title: "Choose services",
+  },
+  {
+    description:
+      "Enter your Arkansas address and reserve a 2-hour appointment window.",
+    icon: CalendarCheck,
+    title: "Schedule the job",
+  },
+  {
+    description:
+      "CastleCare guides the details, checkout choice, and status updates.",
+    icon: Route,
+    title: "Follow every step",
+  },
+] as const;
 
 export default function ServicesSection() {
   return (
@@ -22,7 +69,7 @@ export default function ServicesSection() {
           </h2>
           <p className="text-lg leading-8 text-slate-600">
             Transparent pricing, guided estimates, and instant booking for homes
-            across Central Arkansas.
+            across Arkansas.
           </p>
         </div>
 
@@ -127,6 +174,64 @@ export default function ServicesSection() {
               </article>
             );
           })}
+        </div>
+
+        <div className="mt-16 grid gap-8 rounded-[2rem] border border-slate-200 bg-slate-50 p-6 shadow-sm sm:p-8 lg:grid-cols-[1fr_0.95fr] lg:items-center">
+          <div>
+            <div className="mb-5 inline-flex size-12 items-center justify-center rounded-2xl bg-lime-300/25 text-lime-700">
+              <MapPin className="size-6" />
+            </div>
+            <p className="text-sm font-bold uppercase tracking-widest text-lime-700">
+              Arkansas service areas
+            </p>
+            <h2 className="mt-3 text-pretty text-3xl font-black text-slate-950 sm:text-4xl">
+              Fast home services across Arkansas
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+              CastleCare helps Arkansas households book lawn care, laundry
+              pickup, and window washing with clear pricing, guided checkout,
+              and 2-hour appointment windows. Exact coverage is confirmed during
+              booking as provider availability opens city by city.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {arkansasCities.map((city) => (
+                <span
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700"
+                  key={city}
+                >
+                  {city}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3">
+            {bookingSteps.map(({ description, icon: Icon, title }) => (
+              <div
+                className="rounded-3xl border border-slate-200 bg-white p-5"
+                key={title}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-lime-300">
+                    <Icon className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-950">{title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <Link className="mt-2" search={{ step: "schedule" }} to="/book">
+              <Button className="h-12 w-full rounded-full bg-slate-950 font-bold text-white hover:bg-slate-800">
+                Check your address
+                <ArrowRight className="size-4" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </section>

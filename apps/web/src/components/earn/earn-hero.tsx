@@ -26,7 +26,8 @@ export default function EarnHero() {
               Join the CastleCare provider network for lawn care, laundry
               pickup, and window washing on your schedule. Keep up to{" "}
               <span className="font-semibold text-lime-300">80%</span> of what
-              you earn as we build on-demand home services city by city.
+              you earn as we build from Arkansas toward an on-demand home
+              service network city by city.
             </p>
           </div>
 

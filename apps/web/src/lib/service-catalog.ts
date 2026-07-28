@@ -58,7 +58,7 @@ export interface ServicePageContent {
   serviceArea: string;
 }
 
-export const centralArkansasArea = "Central Arkansas";
+export const centralArkansasArea = "Arkansas";
 
 export const serviceCatalog: ServiceCatalogItem[] = [
   {
@@ -85,7 +85,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "service",
     seoDescription:
-      "Book lawncare in Central Arkansas with CastleCare. Mowing, edging, cleanup, and recurring lawn maintenance plans.",
+      "Book lawncare in Arkansas with CastleCare. Mowing, edging, cleanup, and recurring lawn maintenance plans.",
     shortName: "Lawn care",
     startingPrice: 75,
     subscriptionInfo: "Bi-weekly care plans available",
@@ -115,7 +115,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "load",
     seoDescription:
-      "Schedule laundry pickup and delivery in Central Arkansas with CastleCare. Wash and fold, bedding, and recurring laundry plans.",
+      "Schedule laundry pickup and delivery in Arkansas with CastleCare. Wash and fold, bedding, and recurring laundry plans.",
     shortName: "Laundry",
     startingPrice: 40,
     subscriptionInfo: "Weekly laundry care plans available",
@@ -145,7 +145,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "pane",
     seoDescription:
-      "Book window washing in Central Arkansas with CastleCare. Exterior panes, inside-and-out cleaning, screens, and recurring glass care.",
+      "Book window washing in Arkansas with CastleCare. Exterior panes, inside-and-out cleaning, screens, and recurring glass care.",
     shortName: "Window washing",
     startingPrice: 5,
     subscriptionInfo: "Monthly and bi-annual plans available",
@@ -162,11 +162,11 @@ export const serviceOptions = serviceCatalog.map(({ icon, id, shortName }) => ({
 export const servicePageContent: Record<ServiceId, ServicePageContent> = {
   laundry: {
     aiAnswer:
-      "CastleCare provides same-day wash and fold laundry pickup and delivery in Central Arkansas. Customers choose laundry during booking, add bedding if needed, pick a 2-hour window, and pay for laundry-only orders up front before pickup.",
+      "CastleCare provides same-day wash and fold laundry pickup and delivery in Arkansas. Customers choose laundry during booking, add bedding if needed, pick a 2-hour window, and pay for laundry-only orders up front before pickup.",
     bookingPrefill:
       "The booking flow opens with Royal Wash selected, so you can go straight into address, pickup window, bedding, and contact details.",
     cityExpansionNote:
-      "Royal Wash is built first for Central Arkansas, with the same booking workflow ready to expand as pickup coverage grows.",
+      "Royal Wash is built first for Arkansas, with the same booking workflow ready to expand as pickup coverage grows.",
     faq: [
       {
         answer:
@@ -185,7 +185,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       },
       {
         answer:
-          "CastleCare starts in Central Arkansas. The app is designed to add more pickup zones as operations scale city by city.",
+          "CastleCare starts in Arkansas. The app is designed to add more pickup zones as operations scale city by city.",
         question: "Where is laundry pickup available?",
       },
     ],
@@ -228,15 +228,15 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       "SMS consent and delivery updates",
     ],
     secondaryKeyword: "laundry pickup and delivery",
-    serviceArea: "Laundry pickup and delivery in Central Arkansas",
+    serviceArea: "Laundry pickup and delivery in Arkansas",
   },
   lawncare: {
     aiAnswer:
-      "CastleCare offers lawn care booking in Central Arkansas for mowing, edging, trimming, cleanup, and recurring yard maintenance. Customers choose lawn care, enter the property address, select grass height, reserve a 2-hour appointment window, and place a $50 deposit for non-laundry service.",
+      "CastleCare offers lawn care booking in Arkansas for mowing, edging, trimming, cleanup, and recurring yard maintenance. Customers choose lawn care, enter the property address, select grass height, reserve a 2-hour appointment window, and place a $50 deposit for non-laundry service.",
     bookingPrefill:
       "The booking flow opens with Groundskeeper Lawncare selected, then asks for address, preferred window, grass height, photos, and product choice.",
     cityExpansionNote:
-      "Groundskeeper Lawncare launches in Central Arkansas and is structured so new service areas can be added as provider coverage expands.",
+      "Groundskeeper Lawncare launches in Arkansas and is structured so new service areas can be added as provider coverage expands.",
     faq: [
       {
         answer:
@@ -263,8 +263,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
     finalCtaBody:
       "Start with your address and grass height. CastleCare will guide the quote before checkout.",
     headline: "Fast and Affordable Lawn Care",
-    heroAlt:
-      "CastleCare lawn care crew mowing and edging a Central Arkansas yard",
+    heroAlt: "CastleCare lawn care crew mowing and edging an Arkansas yard",
     intro:
       "Groundskeeper Lawncare is built for yards that need reliable mowing, clean edges, and a booking flow that does not make you chase a quote by phone.",
     localProof: [
@@ -272,7 +271,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       "$50 appointment deposit",
       "Recurring care options",
     ],
-    primaryKeyword: "lawn care in Central Arkansas",
+    primaryKeyword: "lawn care in Arkansas",
     process: [
       {
         description:
@@ -299,15 +298,15 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       "Photo updates after service",
     ],
     secondaryKeyword: "affordable lawn mowing",
-    serviceArea: "Lawn mowing and yard cleanup in Central Arkansas",
+    serviceArea: "Lawn mowing and yard cleanup in Arkansas",
   },
   "window-washing": {
     aiAnswer:
-      "CastleCare provides window washing in Central Arkansas for exterior panes, inside-and-out glass, screens, and recurring window care. Customers choose window washing, enter stories and rough pane count, optionally add photos, and reserve a 2-hour appointment window with a $50 deposit.",
+      "CastleCare provides window washing in Arkansas for exterior panes, inside-and-out glass, screens, and recurring window care. Customers choose window washing, enter stories and rough pane count, optionally add photos, and reserve a 2-hour appointment window with a $50 deposit.",
     bookingPrefill:
       "The booking flow opens with Royal Pane selected, then asks for stories, pane estimate, screen cleaning, photos, and checkout preference.",
     cityExpansionNote:
-      "Royal Pane starts with Central Arkansas coverage and can expand as trained glass-care capacity is added in new cities.",
+      "Royal Pane starts with Arkansas coverage and can expand as trained glass-care capacity is added in new cities.",
     faq: [
       {
         answer:
@@ -342,7 +341,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       "Pane and story estimate",
       "$50 appointment deposit",
     ],
-    primaryKeyword: "window washing in Central Arkansas",
+    primaryKeyword: "window washing in Arkansas",
     process: [
       {
         description:
@@ -369,7 +368,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       "Photo-assisted estimate support",
     ],
     secondaryKeyword: "residential window cleaning",
-    serviceArea: "Residential window washing in Central Arkansas",
+    serviceArea: "Residential window washing in Arkansas",
   },
 };
 

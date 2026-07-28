@@ -1,16 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import EarnBenefits from "@/components/earn/earn-benefits";
+import EarnCoverage from "@/components/earn/earn-coverage";
 import EarnHero from "@/components/earn/earn-hero";
+import EarnOnboarding from "@/components/earn/earn-onboarding";
 import EarnServices from "@/components/earn/earn-services";
 import EarnTiers from "@/components/earn/earn-tiers";
 import MarketingLayout from "@/components/home/marketing-layout";
 
 const siteUrl = "https://callcastlecare.com";
 const earnUrl = `${siteUrl}/earn`;
-const earnTitle = "Earn with CastleCare | On-Demand Home Service Jobs";
+const earnTitle = "Earn with CastleCare | Home Service Jobs Across Arkansas";
 const earnDescription =
-  "Apply to provide lawn care, laundry pickup, and window washing on your schedule as CastleCare builds its on-demand home service provider network.";
+  "Apply to provide lawn care, laundry pickup, or window washing across Arkansas as CastleCare builds its on-demand home service provider network.";
 const earnImage = `${siteUrl}/callcastlecare/media/technician-van-night.png`;
 
 const EarnRoute = () => (
@@ -18,6 +20,8 @@ const EarnRoute = () => (
     <EarnHero />
     <EarnBenefits />
     <EarnServices />
+    <EarnCoverage />
+    <EarnOnboarding />
     <EarnTiers />
   </MarketingLayout>
 );
@@ -58,7 +62,7 @@ export const Route = createFileRoute("/earn")({
                 "lawn care provider opportunities",
                 "laundry pickup and wash and fold provider opportunities",
                 "window washing provider opportunities",
-                "on-demand home service jobs",
+                "on-demand home service jobs in Arkansas",
               ],
               description: earnDescription,
               image: earnImage,
