@@ -1,3 +1,9 @@
+import {
+  COMBO_SUBSCRIPTION_PRICES,
+  LAUNDRY_PLAN_PRICES,
+  LAWNCARE_PLAN_PRICES,
+  WINDOW_WASHING_SUBSCRIPTION_PRICES,
+} from "@callcastlecare/api";
 import { Button } from "@callcastlecare/ui/components/button";
 import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
@@ -61,72 +67,100 @@ const productsByService = {
   laundry: [
     {
       description: "Wash and fold pickup for standard weekly laundry.",
-      id: "royal_wash_basic",
-      name: "Royal Wash Basic",
-      priceCents: 4000,
+      id: "royal-wash-basic",
+      name: "Royal Wash",
+      priceCents: LAUNDRY_PLAN_PRICES["royal-wash-basic"],
       recurring: false,
     },
     {
       description:
-        "Eco wash, stain treatment, bedding support, folded and hung.",
-      id: "royal_wash_deluxe",
-      name: "Royal Wash Deluxe",
-      priceCents: 6000,
+        "Same-day wash and fold with bedding and heavier linens included.",
+      id: "royal-wash-bedding",
+      name: "Royal Wash + Bedding",
+      priceCents: LAUNDRY_PLAN_PRICES["royal-wash-deluxe"],
       recurring: false,
     },
     {
       description:
-        "Weekly pickup, wash, fold, and delivery for busy households.",
-      id: "weekly_wash_fold",
-      name: "Weekly Wash & Fold",
-      priceCents: 20_000,
+        "Weekly pickup, wash, fold, and delivery with bedding included.",
+      id: "royal-wash-supreme",
+      name: "Royal Wash Supreme",
+      priceCents: LAUNDRY_PLAN_PRICES["royal-wash-supreme"],
       recurring: true,
     },
   ],
   lawncare: [
     {
-      description: "A one-time mow, edge, trim, and cleanup.",
-      id: "standard_lawn",
-      name: "Groundskeeper",
-      priceCents: 7500,
+      description: "One-time mow, edge, trim, and cleanup under 0.55 acres.",
+      id: "groundskeeper-one-time",
+      name: "Groundskeeper Small Lot",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-one-time"],
       recurring: false,
     },
     {
-      description: "Recurring mowing and cleanup for steady curb appeal.",
-      id: "bi_weekly_lawn",
-      name: "Bi-Weekly Lawn Care",
-      priceCents: 12_500,
+      description: "One-time mow, edge, trim, and cleanup from 0.55 to 1 acre.",
+      id: "groundskeeper-one-time-medium",
+      name: "Groundskeeper Medium Lot",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-one-time-medium"],
+      recurring: false,
+    },
+    {
+      description: "One-time lawn care for 1 to 2 acre properties.",
+      id: "groundskeeper-one-time-large",
+      name: "Groundskeeper Large Lot",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-one-time-large"],
+      recurring: false,
+    },
+    {
+      description: "Bi-weekly care for steady curb appeal.",
+      id: "groundskeeper-bi-weekly",
+      name: "Groundskeeper Bi-Weekly Small",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-bi-weekly"],
       recurring: true,
     },
     {
-      description: "Commercial mowing, trimming, and grounds cleanup.",
-      id: "commercial_groundskeeper",
-      name: "Commercial Groundskeeper",
-      priceCents: 25_000,
+      description: "Monthly mowing and cleanup for small lots.",
+      id: "groundskeeper-monthly",
+      name: "Groundskeeper Monthly Small",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-monthly"],
+      recurring: true,
+    },
+    {
+      description:
+        "Reserve an in-person quote for lawn care over 2 acres or custom commercial work.",
+      id: "groundskeeper-custom-quote-deposit",
+      name: "Groundskeeper Custom Quote Deposit",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-custom-quote-deposit"],
       recurring: false,
     },
   ],
   "window-washing": [
     {
       description: "Exterior glass from $5 per pane with a $100 minimum.",
-      id: "exterior_panes",
+      id: "royal-pane-exterior",
       name: "Royal Pane Shine",
       priceCents: 10_000,
       recurring: false,
     },
     {
-      description: "Inside, outside, tracks, and brighter rooms.",
-      id: "royal_panes_detail",
-      name: "Royal Panes Detail",
-      priceCents: 18_000,
+      description: "Inside and outside glass care using the launch estimate.",
+      id: "royal-pane-detail",
+      name: "Royal Pane Detail",
+      priceCents: 20_000,
+      recurring: false,
+    },
+    {
+      description: "Monthly exterior glass care using the 20-pane minimum.",
+      id: "royal-pane-monthly",
+      name: "Royal Pane Monthly",
+      priceCents: WINDOW_WASHING_SUBSCRIPTION_PRICES["royal-pane-monthly"],
       recurring: true,
     },
     {
-      description:
-        "A seasonal reset for glass, screens, and first impressions.",
-      id: "bi_annual_glass_care",
-      name: "Bi-Annual Window Washing",
-      priceCents: 15_000,
+      description: "Two exterior window washing visits per year.",
+      id: "royal-pane-bi-annual",
+      name: "Royal Pane Bi-Annual",
+      priceCents: WINDOW_WASHING_SUBSCRIPTION_PRICES["royal-pane-bi-annual"],
       recurring: true,
     },
   ],
@@ -472,7 +506,7 @@ const getProductPriceCents = (
   serviceId: ServiceId,
   product: ProductOption
 ) => {
-  if (serviceId === "window-washing") {
+  if (serviceId === "window-washing" && !product.recurring) {
     return getWindowBasePriceCents(draft);
   }
 
@@ -677,16 +711,46 @@ const getPaymentOptionsForServices = (services: ServiceId[]) =>
     ? paymentOptions.filter((option) => option.id === "pay_full")
     : paymentOptions;
 
-const getComboDiscountMultiplier = (subscriptionId: string) => {
-  if (subscriptionId === "crown_estate_trio") {
-    return 0.7;
+const getLawnSubscriptionTier = (draft: BookingDraft) => {
+  const selectedLawnProduct = draft.products.lawncare ?? "";
+
+  if (selectedLawnProduct.includes("large")) {
+    return "large";
   }
 
-  if (subscriptionId && subscriptionId !== "one_time") {
-    return 0.8;
+  if (selectedLawnProduct.includes("medium")) {
+    return "medium";
   }
 
-  return 1;
+  return "small";
+};
+
+const getSubscriptionPriceCents = (draft: BookingDraft) => {
+  const tier = getLawnSubscriptionTier(draft);
+
+  if (draft.subscriptionId === "bi_weekly_royal_duo") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `bi-weekly-royal-duo-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
+  if (draft.subscriptionId === "monthly_castle_care") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `monthly-castle-care-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
+  if (draft.subscriptionId === "crown_estate_trio") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `crown-estate-trio-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
+  if (draft.subscriptionId === "royal_linen_panes_duo") {
+    return COMBO_SUBSCRIPTION_PRICES["royal-linen-panes-duo"];
+  }
+
+  return null;
 };
 
 const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
@@ -1397,13 +1461,13 @@ const BookingWizard = (props: BookingWizardProps) => {
     draft.subscriptionId && draft.subscriptionId !== "one_time"
       ? comboSubscriptions.find((combo) => combo.id === draft.subscriptionId)
       : null;
-  const comboMultiplier = getComboDiscountMultiplier(draft.subscriptionId);
-  const planEstimateCents =
-    selectedCombo && comboMultiplier < 1
-      ? Math.round(subtotalCents * comboMultiplier)
-      : null;
+  const planEstimateCents = selectedCombo
+    ? getSubscriptionPriceCents(draft)
+    : null;
   const planSavingsCents =
-    planEstimateCents === null ? 0 : subtotalCents - planEstimateCents;
+    planEstimateCents === null
+      ? 0
+      : Math.max(0, subtotalCents - planEstimateCents);
   const depositCents = 5000;
   const isLaundryOnly =
     draft.services.length === 1 && draft.services[0] === "laundry";

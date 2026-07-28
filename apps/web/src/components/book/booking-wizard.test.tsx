@@ -79,7 +79,13 @@ describe("BookingWizard", () => {
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /royal wash basic/iu }));
+    const [royalWashButton] = screen.getAllByRole("button", {
+      name: /royal wash/iu,
+    });
+    if (!royalWashButton) {
+      throw new Error("Royal Wash product was not rendered.");
+    }
+    fireEvent.click(royalWashButton);
 
     expect(await screen.findByText("Subscription options")).toBeTruthy();
     fireEvent.click(

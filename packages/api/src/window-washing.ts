@@ -28,7 +28,7 @@ export interface WindowWashingQuoteResult {
   stories: number;
   /** Estimated or specified total glass panes */
   estimatedPanes: number;
-  /** Rate per glass pane ($5/$10 for res, $10/$20 for commercial) */
+  /** Rate per glass pane ($5/$10 for res, $10/$15 for commercial) */
   ratePerPane: number;
   /** Base glass cost in dollars */
   baseGlassCost: number;
@@ -68,19 +68,18 @@ export function calculateWindowWashingQuote(
   const stories = Math.max(1, input.stories || 1);
 
   // 1. Determine Pane Count:
-  // If paneCount is passed, use it. Otherwise estimate 1 pane per 100 sqft with min 10 panes.
+  // If paneCount is passed, use it. Otherwise use a 20-pane launch estimate.
   let estimatedPanes = input.paneCount;
   if (!estimatedPanes || estimatedPanes <= 0) {
-    const livingArea = Math.max(0, input.livingArea || 1400);
-    estimatedPanes = Math.max(10, Math.round(livingArea / 100));
+    estimatedPanes = 20;
   }
 
   // 2. Base Glass Cost Calculation:
   // Residential: Outside Only = $5.00/pane, Inside & Out = $10.00/pane
-  // Commercial: Outside Only = $10.00/pane, Inside & Out = $20.00/pane
+  // Commercial: Outside Only = $10.00/pane, Inside & Out = $15.00/pane
   let ratePerPane = 5;
   if (propertyType === "commercial") {
-    ratePerPane = packageType === "FULL_SERVICE" ? 20 : 10;
+    ratePerPane = packageType === "FULL_SERVICE" ? 15 : 10;
   } else {
     ratePerPane = packageType === "FULL_SERVICE" ? 10 : 5;
   }
@@ -135,11 +134,11 @@ export function runMockWindowWashingTests() {
   }[] = [
     {
       expected: {
-        baseGlassCost: 70, // 14 panes * $5
+        baseGlassCost: 100, // 20 panes * $5
         depositAmount: 50,
-        estimatedPanes: 14, // 1400/100
-        finalPrice: 100, // floor override ($70 -> $100)
-        isMinimumFloorApplied: true,
+        estimatedPanes: 20,
+        finalPrice: 100,
+        isMinimumFloorApplied: false,
         ladderFee: 0,
         screenFee: 0,
       },
@@ -154,13 +153,13 @@ export function runMockWindowWashingTests() {
     },
     {
       expected: {
-        baseGlassCost: 280, // 28 panes * $10
+        baseGlassCost: 200, // 20 panes * $10
         depositAmount: 50,
-        estimatedPanes: 28, // 2800/100
-        finalPrice: 400, // 280 + 70 (28*$2.50) + 50
+        estimatedPanes: 20,
+        finalPrice: 300, // 200 + 50 (20*$2.50) + 50
         isMinimumFloorApplied: false,
         ladderFee: 50, // stories >= 2
-        screenFee: 70,
+        screenFee: 50,
       },
       input: {
         cleanScreens: true,
@@ -189,6 +188,24 @@ export function runMockWindowWashingTests() {
         stories: 1,
       },
       name: "Commercial 30 panes, EXTERIOR_ONLY ($10/pane)",
+    },
+    {
+      expected: {
+        baseGlassCost: 300, // 20 panes * $15
+        depositAmount: 50,
+        estimatedPanes: 20,
+        finalPrice: 300,
+        isMinimumFloorApplied: false,
+        ladderFee: 0,
+        screenFee: 0,
+      },
+      input: {
+        cleanScreens: false,
+        packageType: "FULL_SERVICE",
+        propertyType: "commercial",
+        stories: 1,
+      },
+      name: "Commercial launch estimate, FULL_SERVICE ($15/pane)",
     },
   ];
 

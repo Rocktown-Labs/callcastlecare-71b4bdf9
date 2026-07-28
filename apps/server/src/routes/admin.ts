@@ -66,41 +66,110 @@ const normalizeCouponRow = (row: typeof stripeCoupons.$inferSelect) => ({
 });
 
 const seedCatalogIfEmpty = async () => {
-  const existing = await db.query.stripeCatalogItems.findFirst();
-  if (existing) {
-    return;
-  }
+  const [existingItems, existingCoupons] = await Promise.all([
+    db.query.stripeCatalogItems.findMany(),
+    db.query.stripeCoupons.findMany(),
+  ]);
 
-  await db.insert(stripeCatalogItems).values(
-    defaultStripeCatalogItems.map((item) => ({
-      active: item.active,
-      amountCents: item.amountCents,
-      currency: item.currency,
-      description: item.description,
-      interval: item.interval,
-      metadataJson: {
-        source: "default",
-      },
-      name: item.name,
-      serviceType: item.serviceType,
-      slug: item.slug,
-    }))
+  const itemBySlug = new Map(existingItems.map((item) => [item.slug, item]));
+  const couponByCode = new Map(
+    existingCoupons.map((coupon) => [coupon.code, coupon])
   );
 
-  await db.insert(stripeCoupons).values(
-    defaultStripeCoupons.map((coupon) => ({
-      active: coupon.active,
-      amountOffCents: coupon.amountOffCents,
-      code: coupon.code,
-      currency: coupon.currency,
-      duration: coupon.duration,
-      durationInMonths: coupon.durationInMonths,
-      metadataJson: {
-        source: "default",
-      },
-      name: coupon.name,
-      percentOff: coupon.percentOff,
-    }))
+  await Promise.all(
+    defaultStripeCatalogItems.map((item) => {
+      const existing = itemBySlug.get(item.slug);
+      const metadata = existing?.metadataJson as
+        | { source?: string }
+        | null
+        | undefined;
+      const shouldRefresh = !existing || metadata?.source === "default";
+
+      if (!shouldRefresh) {
+        return null;
+      }
+
+      return db
+        .insert(stripeCatalogItems)
+        .values({
+          active: item.active,
+          amountCents: item.amountCents,
+          currency: item.currency,
+          description: item.description,
+          interval: item.interval,
+          metadataJson: {
+            source: "default",
+          },
+          name: item.name,
+          serviceType: item.serviceType,
+          slug: item.slug,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          set: {
+            active: item.active,
+            amountCents: item.amountCents,
+            currency: item.currency,
+            description: item.description,
+            interval: item.interval,
+            metadataJson: {
+              source: "default",
+            },
+            name: item.name,
+            serviceType: item.serviceType,
+            updatedAt: new Date(),
+          },
+          target: stripeCatalogItems.slug,
+        });
+    })
+  );
+
+  await Promise.all(
+    defaultStripeCoupons.map((coupon) => {
+      const existing = couponByCode.get(coupon.code);
+      const metadata = existing?.metadataJson as
+        | { source?: string }
+        | null
+        | undefined;
+      const shouldRefresh = !existing || metadata?.source === "default";
+
+      if (!shouldRefresh) {
+        return null;
+      }
+
+      return db
+        .insert(stripeCoupons)
+        .values({
+          active: coupon.active,
+          amountOffCents: coupon.amountOffCents,
+          code: coupon.code,
+          currency: coupon.currency,
+          duration: coupon.duration,
+          durationInMonths: coupon.durationInMonths,
+          metadataJson: {
+            source: "default",
+          },
+          name: coupon.name,
+          percentOff: coupon.percentOff,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          set: {
+            active: coupon.active,
+            amountOffCents: coupon.amountOffCents,
+            currency: coupon.currency,
+            duration: coupon.duration,
+            durationInMonths: coupon.durationInMonths,
+            metadataJson: {
+              source: "default",
+            },
+            name: coupon.name,
+            percentOff: coupon.percentOff,
+            updatedAt: new Date(),
+          },
+          target: stripeCoupons.code,
+        });
+    })
   );
 };
 
@@ -244,10 +313,11 @@ export const adminRoutes = new Hono<AppEnv>()
             amountCents: row.amountCents,
             currency: row.currency,
             description: row.description,
-            interval: row.interval === "one_time" ? "one_time" : "month",
+            interval: row.interval as "month" | "one_time" | "week" | "year",
             name: row.name,
             serviceType: row.serviceType as
               | "combo"
+              | "fee"
               | "laundry"
               | "lawncare"
               | "window_washing",

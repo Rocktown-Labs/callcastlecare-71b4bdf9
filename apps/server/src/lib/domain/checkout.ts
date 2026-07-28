@@ -7,12 +7,15 @@ import type {
 } from "@callcastlecare/api";
 import {
   HOME_PREORDER_DEPOSIT_CENTS,
+  LAUNDRY_PLAN_LABELS,
   LAUNDRY_PLAN_PRICES,
+  LAWNCARE_PLAN_LABELS,
   LAWNCARE_PLAN_PRICES,
   calculateWindowWashingQuote,
+  getLawncarePricingTier,
 } from "@callcastlecare/api";
 
-type PricingTier = "small" | "medium" | "large";
+type PricingTier = "custom" | "large" | "medium" | "small";
 
 const parsePlanPrice = (
   item: CheckoutPreviewItemInput
@@ -59,15 +62,12 @@ const parsePlanPrice = (
       throw new Error(`Unknown lawncare plan id: ${item.planId}`);
     }
 
-    const pricingTier = item.planId.includes("commercial")
-      ? "large"
-      : item.planId.includes("medium")
-        ? "medium"
-        : "small";
+    const planId = item.planId as keyof typeof LAWNCARE_PLAN_PRICES;
+    const pricingTier = getLawncarePricingTier(planId);
 
     return {
       basePriceCents: lawncarePrice,
-      label: item.planId,
+      label: LAWNCARE_PLAN_LABELS[planId],
       pricingTier,
       serviceType: "lawncare",
     };
@@ -82,7 +82,7 @@ const parsePlanPrice = (
 
   return {
     basePriceCents: laundryPrice,
-    label: item.planId,
+    label: LAUNDRY_PLAN_LABELS[item.planId as keyof typeof LAUNDRY_PLAN_LABELS],
     serviceType: "laundry",
   };
 };

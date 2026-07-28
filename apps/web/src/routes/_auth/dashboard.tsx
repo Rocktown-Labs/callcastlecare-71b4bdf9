@@ -16,7 +16,7 @@ interface CatalogItem {
   description: string;
   interval: "month" | "one_time" | "week" | "year";
   name: string;
-  serviceType: "combo" | "laundry" | "lawncare" | "window_washing";
+  serviceType: "combo" | "fee" | "laundry" | "lawncare" | "window_washing";
   slug: string;
   stripePriceId?: string | null;
   stripeProductId?: string | null;

@@ -132,36 +132,37 @@ export const serviceOptions = serviceCatalog.map(({ icon, id, shortName }) => ({
 
 export const comboSubscriptions = [
   {
-    description: "Bi-weekly lawn care plus bi-weekly Royal Wash laundry.",
-    discountLabel: "20% off total",
-    frequency: "Every 2 weeks",
+    description:
+      "Bi-weekly Groundskeeper service plus Royal Wash Supreme weekly pickup.",
+    discountLabel: "From $260/month",
+    frequency: "Monthly billing",
     id: "bi_weekly_royal_duo",
     name: "Bi-Weekly Royal Duo",
     requiredServices: ["lawncare", "laundry"],
   },
   {
     description:
-      "Bi-weekly Royal Wash laundry plus monthly Royal Pane window detailing.",
-    discountLabel: "20% off total",
-    frequency: "Blended monthly care",
+      "Royal Wash Supreme weekly pickup plus Royal Pane Monthly window care.",
+    discountLabel: "$240/month",
+    frequency: "Monthly billing",
     id: "royal_linen_panes_duo",
     name: "Royal Linen & Panes Duo",
     requiredServices: ["laundry", "window-washing"],
   },
   {
     description:
-      "Monthly lawn maintenance plus monthly Royal Pane window detail.",
-    discountLabel: "20% off total",
-    frequency: "Monthly",
+      "Monthly Groundskeeper service plus Royal Pane Monthly window care.",
+    discountLabel: "From $180/month",
+    frequency: "Monthly billing",
     id: "monthly_castle_care",
     name: "Monthly Castle Care",
     requiredServices: ["lawncare", "window-washing"],
   },
   {
     description:
-      "Bi-weekly lawn care, weekly laundry, and monthly Royal Pane detailing.",
-    discountLabel: "30% off total",
-    frequency: "Multi-frequency care plan",
+      "Bi-weekly Groundskeeper service, Royal Wash Supreme, and Royal Pane Monthly.",
+    discountLabel: "From $300/month",
+    frequency: "Monthly billing",
     id: "crown_estate_trio",
     name: "Crown Estate Trio",
     requiredServices: ["lawncare", "laundry", "window-washing"],
