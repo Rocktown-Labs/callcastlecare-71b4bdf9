@@ -1,4 +1,4 @@
-import { db,and,eq } from "@callcastlecare/db";
+import { db, and, eq } from "@callcastlecare/db";
 import { addresses } from "@callcastlecare/db/schema/index";
 import { Hono } from "hono";
 

@@ -17,6 +17,7 @@
     "@callcastlecare/env": "workspace:*",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
+    "resend": "^6.9.3",
     "stripe": "^20.4.0",
     "zod": "catalog:"
   },

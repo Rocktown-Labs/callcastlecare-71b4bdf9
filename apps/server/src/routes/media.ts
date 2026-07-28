@@ -1,4 +1,4 @@
-import { db,eq } from "@callcastlecare/db";
+import { db, eq } from "@callcastlecare/db";
 import {
   legMediaLinks,
   mediaAssets,

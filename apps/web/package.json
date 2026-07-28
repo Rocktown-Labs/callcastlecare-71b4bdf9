@@ -9,6 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@better-auth-ui/core": "^1.6.40",
+    "@better-auth-ui/react": "^1.6.40",
     "@callcastlecare/api": "workspace:*",
     "@callcastlecare/env": "workspace:*",
     "@callcastlecare/ui": "workspace:*",
@@ -20,6 +22,7 @@
     "@tanstack/react-start": "^1.168.27",
     "@tanstack/react-table": "^8.21.3",
     "better-auth": "catalog:",
+    "date-fns": "^4.4.0",
     "dotenv": "catalog:",
     "evlog": "catalog:",
     "lucide-react": "catalog:",

@@ -51,7 +51,7 @@ const ServiceAreaStatus = () => {
         setAreaLabel(`Near ${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
         setStatus("Exact coverage is verified during booking");
       },
-      () => setStatus("Central Arkansas coverage shown by default"),
+      () => setStatus("Arkansas coverage shown by default"),
       { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
     );
   };

@@ -1,4 +1,4 @@
-import { db,eq } from "@callcastlecare/db";
+import { db, eq } from "@callcastlecare/db";
 import { customers, workers } from "@callcastlecare/db/schema/index";
 import type { Context } from "hono";
 

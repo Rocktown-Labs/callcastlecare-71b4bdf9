@@ -8,6 +8,8 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins/admin";
 import StripeSdk from "stripe";
 
+import { sendAuthEmail } from "./email";
+
 const createStripePlugin = () => {
   if (!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET)) {
     return null;
@@ -69,6 +71,35 @@ export const createAuth = () => {
     }),
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: true,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ url, user }) => {
+        await Promise.resolve();
+        void sendAuthEmail({
+          body: "We received a request to reset your CastleCare password. This link will take you back to CastleCare to choose a new password.",
+          buttonLabel: "Reset password",
+          preview: "Reset your CastleCare password.",
+          subject: "Reset your CastleCare password",
+          title: "Reset your password",
+          to: user.email,
+          url,
+        });
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ url, user }) => {
+        await Promise.resolve();
+        void sendAuthEmail({
+          body: "Confirm this email address to finish setting up your CastleCare account and access your booking dashboard.",
+          buttonLabel: "Verify email",
+          preview: "Verify your CastleCare email address.",
+          subject: "Verify your CastleCare email",
+          title: "Verify your email",
+          to: user.email,
+          url,
+        });
+      },
     },
     plugins: [
       expo(),

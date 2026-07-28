@@ -5,7 +5,7 @@ import { logger } from "../logger";
 
 const resendClient = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
-const fromAddress = "CastleCare <updates@castlecare.app>";
+const fromAddress = "CastleCare <noreply@info.callcastlecare.com>";
 
 export const sendEmail = async (input: {
   html: string;

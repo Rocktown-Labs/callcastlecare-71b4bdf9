@@ -1,8 +1,10 @@
 import {
   defaultStripeCatalogItems,
   defaultStripeCoupons,
-  type StripeCatalogItemInput,
-  type StripeCouponInput,
+} from "@callcastlecare/api";
+import type {
+  StripeCatalogItemInput,
+  StripeCouponInput,
 } from "@callcastlecare/api";
 import { env } from "@callcastlecare/env/server";
 import Stripe from "stripe";
@@ -95,7 +97,9 @@ export const syncStripeCatalogItem = async (
       },
       product: product.id,
       recurring:
-        input.interval === "one_time" ? undefined : { interval: input.interval },
+        input.interval === "one_time"
+          ? undefined
+          : { interval: input.interval },
       unit_amount: input.amountCents,
     }));
 
@@ -113,7 +117,7 @@ export const syncStripeCoupon = async (
   stripe: Stripe,
   input: StripeCouponInput
 ) => {
-  const requestedId = input.code.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  const requestedId = input.code.toLowerCase().replaceAll(/[^a-z0-9_-]/g, "-");
   const existing = await stripe.coupons.retrieve(requestedId).catch(() => null);
 
   if (existing && !existing.deleted) {
