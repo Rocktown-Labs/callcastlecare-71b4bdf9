@@ -15,10 +15,12 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  ClipboardList,
   Clock,
   CreditCard,
   Crown,
   Mail,
+  PackageCheck,
   Phone,
   Sparkles,
   Upload,
@@ -188,6 +190,13 @@ const paymentOptions = [
     name: "Deposit now, cash later",
   },
 ] as const;
+
+const subscriptionPaymentOption = {
+  description:
+    "Start the recurring plan now. Your first plan charge is due today.",
+  id: "pay_full",
+  name: "Start subscription today",
+} as const satisfies (typeof paymentOptions)[number];
 
 const exteriorWindowRateCents = 500;
 const fullServiceWindowRateCents = 1000;
@@ -542,14 +551,23 @@ const getProductPriceCents = (
   return product.priceCents;
 };
 
+const getSelectedProduct = (draft: BookingDraft, serviceId: ServiceId) => {
+  const selectedProductId = draft.products[serviceId];
+  return productsByService[serviceId].find(
+    ({ id }) => id === selectedProductId
+  );
+};
+
+const hasSelectedRecurringProduct = (draft: BookingDraft) =>
+  draft.services.some(
+    (serviceId) => getSelectedProduct(draft, serviceId)?.recurring
+  );
+
 const selectedProductTotal = (draft: BookingDraft) => {
   let total = 0;
 
   for (const serviceId of draft.services) {
-    const selectedProductId = draft.products[serviceId];
-    const product = productsByService[serviceId].find(
-      ({ id }) => id === selectedProductId
-    );
+    const product = getSelectedProduct(draft, serviceId);
     total += product ? getProductPriceCents(draft, serviceId, product) : 0;
   }
 
@@ -731,6 +749,18 @@ const getPaymentOptionsForServices = (services: ServiceId[]) =>
     ? paymentOptions.filter((option) => option.id === "pay_full")
     : paymentOptions;
 
+const hasSubscriptionCheckout = (draft: BookingDraft) =>
+  Boolean(draft.subscriptionId && draft.subscriptionId !== "one_time") ||
+  hasSelectedRecurringProduct(draft);
+
+const getPaymentOptionsForDraft = (draft: BookingDraft) => {
+  if (hasSubscriptionCheckout(draft)) {
+    return [subscriptionPaymentOption];
+  }
+
+  return getPaymentOptionsForServices(draft.services);
+};
+
 const getLawnSubscriptionTier = (draft: BookingDraft) => {
   const selectedLawnProduct = draft.products.lawncare ?? "";
 
@@ -773,6 +803,33 @@ const getSubscriptionPriceCents = (draft: BookingDraft) => {
   return null;
 };
 
+const getProductSelectionName = (
+  product: ProductOption,
+  serviceId: ServiceId
+) => {
+  if (!product.recurring) {
+    return product.name;
+  }
+
+  if (serviceId === "laundry") {
+    return "Weekly";
+  }
+
+  if (product.id.includes("bi-weekly")) {
+    return "Bi-weekly";
+  }
+
+  if (product.id.includes("bi-annual")) {
+    return "Bi-annual";
+  }
+
+  if (product.id.includes("monthly")) {
+    return "Monthly";
+  }
+
+  return product.name;
+};
+
 const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
   const nextErrors: Record<string, string> = {};
 
@@ -808,7 +865,7 @@ const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
 
   if (
     step === 5 &&
-    !getPaymentOptionsForServices(draft.services).some(
+    !getPaymentOptionsForDraft(draft).some(
       (option) => option.id === draft.paymentOption
     )
   ) {
@@ -819,13 +876,16 @@ const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
 };
 
 const wizardSteps = [
-  "Schedule",
-  "Contact",
-  "Details",
-  "Products",
-  "Plans",
-  "Invoice",
-] as const;
+  { icon: Calendar, label: "Schedule" },
+  { icon: User, label: "Contact" },
+  { icon: ClipboardList, label: "Details" },
+  { icon: PackageCheck, label: "Products" },
+  { icon: Crown, label: "Plans" },
+  { icon: CreditCard, label: "Invoice" },
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+}[];
 
 const StepPanel = ({
   children,
@@ -871,37 +931,57 @@ const StepProgress = ({
   activeStep: WizardStep;
   onStepSelect: (step: WizardStep) => void;
 }) => (
-  <div className="mb-8 grid grid-cols-3 gap-3 lg:grid-cols-6">
-    {wizardSteps.map((label, index) => (
-      <button
-        className={cn(
-          "group relative flex flex-col items-center gap-2 rounded-2xl border bg-white p-3 text-center text-xs font-bold transition-colors",
-          index < activeStep &&
-            "border-lime-300 bg-lime-50 text-lime-800 hover:border-lime-400",
-          activeStep === index &&
-            "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200",
-          index > activeStep &&
-            "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 opacity-70"
-        )}
-        disabled={index > activeStep}
-        key={label}
-        onClick={() => onStepSelect(index as WizardStep)}
-        type="button"
-      >
-        <span
-          className={cn(
-            "flex size-8 items-center justify-center rounded-full border text-xs font-black",
-            index < activeStep && "border-lime-400 bg-lime-300 text-slate-950",
-            activeStep === index && "border-white/20 bg-white text-slate-950",
-            index > activeStep && "border-slate-200 bg-white text-slate-400"
-          )}
-        >
-          {index < activeStep ? <Check className="size-4" /> : index + 1}
-        </span>
-        <span>{label}</span>
-      </button>
-    ))}
-  </div>
+  <nav
+    aria-label="Booking progress"
+    className="rounded-[1.5rem] border border-slate-200 bg-white p-2 text-slate-950 shadow-xl shadow-slate-200/60 sm:p-3"
+  >
+    <ol className="grid grid-cols-6 gap-1.5 sm:gap-2">
+      {wizardSteps.map(({ icon: Icon, label }, index) => {
+        const isComplete = index < activeStep;
+        const isCurrent = activeStep === index;
+        const isLocked = index > activeStep;
+
+        return (
+          <li key={label}>
+            <button
+              aria-label={label}
+              aria-current={isCurrent ? "step" : undefined}
+              className={cn(
+                "group flex h-16 w-full flex-col items-center justify-center gap-1 rounded-2xl border bg-slate-50 px-1 text-center text-[10px] font-black transition-colors sm:h-[4.5rem] sm:gap-1.5 sm:text-xs",
+                isComplete &&
+                  "border-lime-300 bg-lime-50 text-lime-800 hover:border-lime-400",
+                isCurrent &&
+                  "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200",
+                isLocked &&
+                  "cursor-not-allowed border-slate-200 text-slate-400 opacity-70"
+              )}
+              disabled={isLocked}
+              onClick={() => onStepSelect(index as WizardStep)}
+              type="button"
+            >
+              <span
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-full border text-xs font-black sm:size-8",
+                  isComplete && "border-lime-400 bg-lime-300 text-slate-950",
+                  isCurrent && "border-white/20 bg-white text-slate-950",
+                  isLocked && "border-slate-200 bg-white text-slate-400"
+                )}
+              >
+                {isComplete ? (
+                  <Check className="size-3.5 sm:size-4" />
+                ) : (
+                  <Icon className="size-3.5 sm:size-4" />
+                )}
+              </span>
+              <span aria-hidden="true" className="hidden leading-none sm:block">
+                {label}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  </nav>
 );
 
 const StepButton = ({
@@ -1035,7 +1115,7 @@ const ScheduleDateTimePicker = ({
   }, [date, onTimeSlotChange, timeSlot]);
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4">
       <div className="relative flex flex-col gap-2">
         <RequiredLabel>Date</RequiredLabel>
         <Button
@@ -1285,6 +1365,43 @@ const ProductAccordion = ({
   serviceId: ServiceId;
 }) => {
   const selectedProduct = products.find(({ id }) => id === selectedProductId);
+  const oneTimeProducts = products.filter((product) => !product.recurring);
+  const recurringProducts = products.filter((product) => product.recurring);
+  const renderProductButton = (product: ProductOption) => (
+    <button
+      className={cn(
+        "rounded-2xl border p-4 text-left transition-colors",
+        selectedProductId === product.id
+          ? "border-lime-500 bg-lime-100"
+          : "border-slate-200 bg-white hover:border-slate-300"
+      )}
+      key={product.id}
+      onClick={() => onSelect(product.id)}
+      type="button"
+    >
+      <div className="flex h-full flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-slate-950">
+              {getProductSelectionName(product, serviceId)}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {product.description}
+            </p>
+          </div>
+          <span className="shrink-0 font-black text-lime-700">
+            {formatCents(product.priceCents)}
+          </span>
+        </div>
+        {product.recurring ? (
+          <p className="mt-auto inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">
+            <Sparkles className="size-3" />
+            Plan
+          </p>
+        ) : null}
+      </div>
+    </button>
+  );
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-slate-50">
@@ -1310,37 +1427,24 @@ const ProductAccordion = ({
       </button>
       {isOpen ? (
         <div className="grid gap-3 p-4 pt-0">
-          {products.map((product) => (
-            <button
-              className={cn(
-                "rounded-2xl border p-4 text-left transition-colors",
-                selectedProductId === product.id
-                  ? "border-lime-500 bg-lime-100"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-              )}
-              key={product.id}
-              onClick={() => onSelect(product.id)}
-              type="button"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-slate-950">{product.name}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {product.description}
-                  </p>
-                </div>
-                <span className="shrink-0 font-black text-lime-700">
-                  {formatCents(product.priceCents)}
-                </span>
+          <div className="grid gap-3">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+              One-time
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              {oneTimeProducts.map(renderProductButton)}
+            </div>
+          </div>
+          {recurringProducts.length > 0 ? (
+            <div className="grid gap-3 border-t border-slate-200 pt-3">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                Plans
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                {recurringProducts.map(renderProductButton)}
               </div>
-              {product.recurring ? (
-                <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">
-                  <Sparkles className="size-3" />
-                  Subscription eligible
-                </p>
-              ) : null}
-            </button>
-          ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1377,7 +1481,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
   }, [draft]);
 
-  const paymentOptionsForDraft = getPaymentOptionsForServices(draft.services);
+  const paymentOptionsForDraft = getPaymentOptionsForDraft(draft);
 
   const setDraftValue = <Key extends keyof BookingDraft>(
     key: Key,
@@ -1482,8 +1586,14 @@ const BookingWizard = (props: BookingWizardProps) => {
   };
 
   const selectProduct = (serviceId: ServiceId, productId: string) => {
+    const selectedProduct = productsByService[serviceId].find(
+      ({ id }) => id === productId
+    );
     setDraft((current) => ({
       ...current,
+      paymentOption: selectedProduct?.recurring
+        ? "pay_full"
+        : current.paymentOption,
       products: { ...current.products, [serviceId]: productId },
     }));
     const currentIndex = draft.services.indexOf(serviceId);
@@ -1537,6 +1647,8 @@ const BookingWizard = (props: BookingWizardProps) => {
     draft.subscriptionId && draft.subscriptionId !== "one_time"
       ? comboSubscriptions.find((combo) => combo.id === draft.subscriptionId)
       : null;
+  const hasRecurringProductSelected = hasSelectedRecurringProduct(draft);
+  const hasSubscriptionSelected = hasSubscriptionCheckout(draft);
   const planEstimateCents = selectedCombo
     ? getSubscriptionPriceCents(draft)
     : null;
@@ -1548,7 +1660,8 @@ const BookingWizard = (props: BookingWizardProps) => {
   const depositCents = 5000;
   const isLaundryOnly =
     draft.services.length === 1 && draft.services[0] === "laundry";
-  const dueTodayCents = isLaundryOnly
+  const shouldChargeFullAmountToday = isLaundryOnly || hasSubscriptionSelected;
+  const dueTodayCents = shouldChargeFullAmountToday
     ? estimatedTotalCents
     : Math.min(depositCents, estimatedTotalCents);
   const hasRecurringProduct = draft.services.some((serviceId) =>
@@ -1558,811 +1671,850 @@ const BookingWizard = (props: BookingWizardProps) => {
   );
 
   return (
-    <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-slate-950 shadow-2xl shadow-slate-200/70 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="min-h-8">
-          {shouldShowStoredDraft ? (
-            <button
-              className="text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
-              onClick={resumeStoredDraft}
-              type="button"
-            >
-              Continue where you left off
-            </button>
-          ) : null}
-        </div>
-        <button
-          className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-950"
-          onClick={clearDraft}
-          type="button"
-        >
-          Clear booking
-        </button>
-      </div>
+    <div className="grid gap-4">
       <StepProgress activeStep={activeStep} onStepSelect={goToStep} />
-      <StepPanel
-        isComplete={basicsSchema.safeParse(draft).success}
-        isOpen={activeStep === 0}
-        number="01"
-        title="Services and schedule"
-      >
-        <div className="grid gap-4">
-          <div className="grid grid-cols-3 gap-2">
-            {serviceCatalog.map((service) => {
-              const Icon = service.icon;
-              const selected = draft.services.includes(service.id);
-
-              return (
-                <button
-                  className={cn(
-                    "flex min-h-24 flex-col items-center justify-center gap-3 rounded-2xl border p-3 text-center transition-colors sm:p-4",
-                    selected
-                      ? "border-lime-500 bg-lime-100 text-slate-950"
-                      : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
-                  )}
-                  key={service.id}
-                  onClick={() => toggleService(service.id)}
-                  type="button"
-                >
-                  <Icon className="size-5" />
-                  <span className="text-xs font-semibold sm:text-sm">
-                    {service.shortName}
-                  </span>
-                </button>
-              );
-            })}
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-slate-950 shadow-2xl shadow-slate-200/70 sm:p-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-h-8">
+            {shouldShowStoredDraft ? (
+              <button
+                className="text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
+                onClick={resumeStoredDraft}
+                type="button"
+              >
+                Continue where you left off
+              </button>
+            ) : null}
           </div>
-          {errors.services ? (
-            <p className="text-sm text-rose-300">{errors.services}</p>
-          ) : null}
+          <button
+            className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-950"
+            onClick={clearDraft}
+            type="button"
+          >
+            Clear booking
+          </button>
+        </div>
+        <StepPanel
+          isComplete={basicsSchema.safeParse(draft).success}
+          isOpen={activeStep === 0}
+          number="01"
+          title="Services and schedule"
+        >
+          <div className="grid gap-4">
+            <div className="grid grid-cols-3 gap-2">
+              {serviceCatalog.map((service) => {
+                const Icon = service.icon;
+                const selected = draft.services.includes(service.id);
 
-          <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="flex flex-col gap-2">
-              <RequiredLabel>Service address</RequiredLabel>
-              <RadarAddressInput
-                className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
-                error={errors.address}
-                isValidated={isAddressValidated}
-                onChange={(address) => {
-                  setIsAddressValidated(false);
-                  setDraftValue("address", address);
-                }}
-                onSelectSuggestion={(suggestion: RadarAddressSuggestion) => {
-                  setDraftValue("address", suggestion.label);
-                  setIsAddressValidated(true);
-                  void validateSelectedAddress(suggestion);
-                }}
-                value={draft.address}
+                return (
+                  <button
+                    className={cn(
+                      "flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border p-2 text-center transition-colors sm:p-3",
+                      selected
+                        ? "border-lime-500 bg-lime-100 text-slate-950"
+                        : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
+                    )}
+                    key={service.id}
+                    onClick={() => toggleService(service.id)}
+                    type="button"
+                  >
+                    <Icon className="size-5" />
+                    <span className="text-xs font-semibold sm:text-sm">
+                      {service.shortName}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {errors.services ? (
+              <p className="text-sm text-rose-600">{errors.services}</p>
+            ) : null}
+
+            <div className="grid gap-4">
+              <div className="flex flex-col gap-2">
+                <RequiredLabel>Service address</RequiredLabel>
+                <RadarAddressInput
+                  className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
+                  error={errors.address}
+                  isValidated={isAddressValidated}
+                  onChange={(address) => {
+                    setIsAddressValidated(false);
+                    setDraftValue("address", address);
+                  }}
+                  onSelectSuggestion={(suggestion: RadarAddressSuggestion) => {
+                    setDraftValue("address", suggestion.label);
+                    setIsAddressValidated(true);
+                    void validateSelectedAddress(suggestion);
+                  }}
+                  value={draft.address}
+                />
+                {errors.address ? (
+                  <p className="text-sm text-rose-600">{errors.address}</p>
+                ) : null}
+              </div>
+
+              <ScheduleDateTimePicker
+                date={draft.date}
+                dateError={errors.date}
+                onDateChange={(value) => setDraftValue("date", value)}
+                onTimeSlotChange={(value) => setDraftValue("timeSlot", value)}
+                timeSlot={draft.timeSlot}
               />
-              {errors.address ? (
-                <p className="text-sm text-rose-600">{errors.address}</p>
-              ) : null}
             </div>
 
-            <ScheduleDateTimePicker
-              date={draft.date}
-              dateError={errors.date}
-              onDateChange={(value) => setDraftValue("date", value)}
-              onTimeSlotChange={(value) => setDraftValue("timeSlot", value)}
-              timeSlot={draft.timeSlot}
-            />
+            <StepButton onClick={() => continueFromStep(0)} />
           </div>
+        </StepPanel>
 
-          <StepButton onClick={() => continueFromStep(0)} />
-        </div>
-      </StepPanel>
-
-      <StepPanel
-        isComplete={contactSchema.safeParse(draft.contact).success}
-        isOpen={activeStep === 1}
-        number="02"
-        title="Contact information"
-      >
-        <div className="grid gap-4 md:grid-cols-3">
-          <RoundedField
-            error={errors["contact.name"]}
-            icon={User}
-            label="Name"
-            onChange={(event) =>
-              setDraftValue("contact", {
-                ...draft.contact,
-                name: event.target.value,
-              })
-            }
-            placeholder="Your name"
-            required
-            value={draft.contact.name}
-          />
-          <RoundedField
-            error={errors["contact.phone"]}
-            icon={Phone}
-            label="Phone"
-            onChange={(event) =>
-              setDraftValue("contact", {
-                ...draft.contact,
-                phone: event.target.value,
-              })
-            }
-            inputMode="tel"
-            placeholder="(501) 555-0123"
-            required
-            value={draft.contact.phone}
-          />
-          <RoundedField
-            error={errors["contact.email"]}
-            icon={Mail}
-            label="Email"
-            onChange={(event) =>
-              setDraftValue("contact", {
-                ...draft.contact,
-                email: event.target.value,
-              })
-            }
-            placeholder="you@example.com"
-            required
-            type="email"
-            value={draft.contact.email}
-          />
-          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:col-span-3">
-            <input
-              checked={draft.contact.smsUpdates}
-              className="size-4 rounded border-slate-300 accent-lime-500"
+        <StepPanel
+          isComplete={contactSchema.safeParse(draft.contact).success}
+          isOpen={activeStep === 1}
+          number="02"
+          title="Contact information"
+        >
+          <div className="grid gap-4 md:grid-cols-3">
+            <RoundedField
+              error={errors["contact.name"]}
+              icon={User}
+              label="Name"
               onChange={(event) =>
                 setDraftValue("contact", {
                   ...draft.contact,
-                  smsUpdates: event.target.checked,
+                  name: event.target.value,
                 })
               }
-              type="checkbox"
+              placeholder="Your name"
+              required
+              value={draft.contact.name}
             />
-            Yes, send text updates about this quote and appointment.
-          </label>
-        </div>
-        <StepButton onClick={() => continueFromStep(1)} />
-      </StepPanel>
+            <RoundedField
+              error={errors["contact.phone"]}
+              icon={Phone}
+              label="Phone"
+              onChange={(event) =>
+                setDraftValue("contact", {
+                  ...draft.contact,
+                  phone: event.target.value,
+                })
+              }
+              inputMode="tel"
+              placeholder="(501) 555-0123"
+              required
+              value={draft.contact.phone}
+            />
+            <RoundedField
+              error={errors["contact.email"]}
+              icon={Mail}
+              label="Email"
+              onChange={(event) =>
+                setDraftValue("contact", {
+                  ...draft.contact,
+                  email: event.target.value,
+                })
+              }
+              placeholder="you@example.com"
+              required
+              type="email"
+              value={draft.contact.email}
+            />
+            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 md:col-span-3">
+              <input
+                checked={draft.contact.smsUpdates}
+                className="size-4 rounded border-slate-300 accent-lime-500"
+                onChange={(event) =>
+                  setDraftValue("contact", {
+                    ...draft.contact,
+                    smsUpdates: event.target.checked,
+                  })
+                }
+                type="checkbox"
+              />
+              Yes, send text updates about this quote and appointment.
+            </label>
+          </div>
+          <StepButton onClick={() => continueFromStep(1)} />
+        </StepPanel>
 
-      <StepPanel
-        isComplete={Object.keys(errors).length === 0 && activeStep > 2}
-        isOpen={activeStep === 2}
-        number="03"
-        title="Service details"
-      >
-        <div className="grid gap-4">
-          {draft.services.includes("lawncare") ? (
-            <QuestionAccordion
-              icon={serviceQuestionIcons.grass}
-              isComplete={Boolean(draft.serviceDetails.lawncare.grassHeight)}
-              isOpen={openDetailService === "lawncare"}
-              onOpen={() => setOpenDetailService("lawncare")}
-              title="How tall is the grass?"
-            >
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {grassHeights.map((height, index) => (
-                  <button
-                    className={cn(
-                      "rounded-2xl border p-2 text-left transition-colors sm:p-4",
-                      draft.serviceDetails.lawncare.grassHeight === height.id
-                        ? "border-lime-500 bg-lime-100 text-slate-950"
-                        : "border-slate-200 bg-white text-slate-600"
-                    )}
-                    key={height.id}
-                    onClick={() => {
+        <StepPanel
+          isComplete={Object.keys(errors).length === 0 && activeStep > 2}
+          isOpen={activeStep === 2}
+          number="03"
+          title="Service details"
+        >
+          <div className="grid gap-4">
+            {draft.services.includes("lawncare") ? (
+              <QuestionAccordion
+                icon={serviceQuestionIcons.grass}
+                isComplete={Boolean(draft.serviceDetails.lawncare.grassHeight)}
+                isOpen={openDetailService === "lawncare"}
+                onOpen={() => setOpenDetailService("lawncare")}
+                title="How tall is the grass?"
+              >
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  {grassHeights.map((height, index) => (
+                    <button
+                      className={cn(
+                        "rounded-2xl border p-2 text-left transition-colors sm:p-4",
+                        draft.serviceDetails.lawncare.grassHeight === height.id
+                          ? "border-lime-500 bg-lime-100 text-slate-950"
+                          : "border-slate-200 bg-white text-slate-600"
+                      )}
+                      key={height.id}
+                      onClick={() => {
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          lawncare: {
+                            ...draft.serviceDetails.lawncare,
+                            grassHeight: height.id,
+                          },
+                        });
+                        completeServiceDetails("lawncare");
+                      }}
+                      type="button"
+                    >
+                      <GrassSvg level={index + 1} />
+                      <p className="mt-2 text-sm font-semibold sm:mt-3 sm:text-base">
+                        {height.name}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
+                        {height.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+                {errors.grassHeight ? (
+                  <p className="text-sm text-rose-300">{errors.grassHeight}</p>
+                ) : null}
+                <div className="mt-4">
+                  <ServicePhotoUpload
+                    count={draft.serviceDetails.lawncare.photoNames.length}
+                    onFiles={(photoNames) =>
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
                         lawncare: {
                           ...draft.serviceDetails.lawncare,
-                          grassHeight: height.id,
+                          photoNames,
                         },
-                      });
-                      completeServiceDetails("lawncare");
-                    }}
-                    type="button"
-                  >
-                    <GrassSvg level={index + 1} />
-                    <p className="mt-2 text-sm font-semibold sm:mt-3 sm:text-base">
-                      {height.name}
-                    </p>
-                    <p className="mt-1 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
-                      {height.description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-              {errors.grassHeight ? (
-                <p className="text-sm text-rose-300">{errors.grassHeight}</p>
-              ) : null}
-              <div className="mt-4">
-                <ServicePhotoUpload
-                  count={draft.serviceDetails.lawncare.photoNames.length}
-                  onFiles={(photoNames) =>
-                    setDraftValue("serviceDetails", {
-                      ...draft.serviceDetails,
-                      lawncare: {
-                        ...draft.serviceDetails.lawncare,
-                        photoNames,
-                      },
-                    })
-                  }
-                />
-              </div>
-            </QuestionAccordion>
-          ) : null}
+                      })
+                    }
+                  />
+                </div>
+              </QuestionAccordion>
+            ) : null}
 
-          {draft.services.includes("laundry") ? (
-            <QuestionAccordion
-              icon={serviceQuestionIcons.bedding}
-              isComplete={Boolean(draft.serviceDetails.laundry.bedding)}
-              isOpen={openDetailService === "laundry"}
-              onOpen={() => setOpenDetailService("laundry")}
-              title="Will this include bedding?"
-            >
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                {[
-                  ["none", "No bedding", "Clothes, towels, and basics."],
-                  [
-                    "with-bedding",
-                    "Include bedding",
-                    "Sheets, duvet covers, or heavier linens.",
-                  ],
-                ].map(([id, name, description]) => (
-                  <button
-                    className={cn(
-                      "rounded-2xl border p-3 text-left transition-colors sm:p-4",
-                      draft.serviceDetails.laundry.bedding === id
-                        ? "border-sky-500 bg-sky-50 text-slate-950"
-                        : "border-slate-200 bg-white text-slate-600"
-                    )}
-                    key={id}
-                    onClick={() => {
+            {draft.services.includes("laundry") ? (
+              <QuestionAccordion
+                icon={serviceQuestionIcons.bedding}
+                isComplete={Boolean(draft.serviceDetails.laundry.bedding)}
+                isOpen={openDetailService === "laundry"}
+                onOpen={() => setOpenDetailService("laundry")}
+                title="Will this include bedding?"
+              >
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  {[
+                    ["none", "No bedding", "Clothes, towels, and basics."],
+                    [
+                      "with-bedding",
+                      "Include bedding",
+                      "Sheets, duvet covers, or heavier linens.",
+                    ],
+                  ].map(([id, name, description]) => (
+                    <button
+                      className={cn(
+                        "rounded-2xl border p-3 text-left transition-colors sm:p-4",
+                        draft.serviceDetails.laundry.bedding === id
+                          ? "border-sky-500 bg-sky-50 text-slate-950"
+                          : "border-slate-200 bg-white text-slate-600"
+                      )}
+                      key={id}
+                      onClick={() => {
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          laundry: {
+                            ...draft.serviceDetails.laundry,
+                            bedding: id as "none" | "with-bedding",
+                          },
+                        });
+                        completeServiceDetails("laundry");
+                      }}
+                      type="button"
+                    >
+                      <p className="text-sm font-semibold sm:text-base">
+                        {name}
+                      </p>
+                      <p className="mt-2 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
+                        {description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+                {errors.bedding ? (
+                  <p className="text-sm text-rose-300">{errors.bedding}</p>
+                ) : null}
+                <div className="mt-4">
+                  <ServicePhotoUpload
+                    count={draft.serviceDetails.laundry.photoNames.length}
+                    onFiles={(photoNames) =>
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
                         laundry: {
                           ...draft.serviceDetails.laundry,
-                          bedding: id as "none" | "with-bedding",
+                          photoNames,
                         },
-                      });
-                      completeServiceDetails("laundry");
-                    }}
-                    type="button"
-                  >
-                    <p className="text-sm font-semibold sm:text-base">{name}</p>
-                    <p className="mt-2 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
-                      {description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-              {errors.bedding ? (
-                <p className="text-sm text-rose-300">{errors.bedding}</p>
-              ) : null}
-              <div className="mt-4">
-                <ServicePhotoUpload
-                  count={draft.serviceDetails.laundry.photoNames.length}
-                  onFiles={(photoNames) =>
-                    setDraftValue("serviceDetails", {
-                      ...draft.serviceDetails,
-                      laundry: {
-                        ...draft.serviceDetails.laundry,
-                        photoNames,
-                      },
-                    })
-                  }
-                />
-              </div>
-            </QuestionAccordion>
-          ) : null}
-
-          {draft.services.includes("window-washing") ? (
-            <QuestionAccordion
-              icon={serviceQuestionIcons.windows}
-              isComplete={
-                Boolean(
-                  draft.serviceDetails["window-washing"].cleaningScope &&
-                  draft.serviceDetails["window-washing"].stories
-                ) &&
-                (draft.serviceDetails["window-washing"].finalizeOnSite ||
-                  Boolean(
-                    draft.serviceDetails["window-washing"].windowEstimate
-                  ))
-              }
-              isOpen={openDetailService === "window-washing"}
-              onOpen={() => setOpenDetailService("window-washing")}
-              title="Tell us about the windows"
-            >
-              <div className="grid gap-4">
-                <div>
-                  <Label className="text-slate-600">Glass service</Label>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:gap-3">
-                    {[
-                      [
-                        "exterior",
-                        "Exterior only",
-                        "Outside glass wash for the selected panes.",
-                      ],
-                      [
-                        "both",
-                        "Inside and out",
-                        "Adds inside glass care based on pane estimate.",
-                      ],
-                    ].map(([id, name, description]) => (
-                      <button
-                        className={cn(
-                          "rounded-2xl border p-3 text-left transition-colors sm:p-4",
-                          draft.serviceDetails["window-washing"]
-                            .cleaningScope === id
-                            ? "border-cyan-500 bg-cyan-50 text-slate-950"
-                            : "border-slate-200 bg-white text-slate-600"
-                        )}
-                        key={id}
-                        onClick={() =>
-                          setDraftValue("serviceDetails", {
-                            ...draft.serviceDetails,
-                            "window-washing": {
-                              ...draft.serviceDetails["window-washing"],
-                              cleaningScope: id as "exterior" | "both",
-                            },
-                          })
-                        }
-                        type="button"
-                      >
-                        <p className="text-sm font-semibold sm:text-base">
-                          {name}
-                        </p>
-                        <p className="mt-2 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
-                          {description}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                  {errors.cleaningScope ? (
-                    <p className="mt-2 text-sm text-rose-300">
-                      {errors.cleaningScope}
-                    </p>
-                  ) : null}
+                      })
+                    }
+                  />
                 </div>
+              </QuestionAccordion>
+            ) : null}
 
-                <div className="grid gap-4 md:grid-cols-2">
+            {draft.services.includes("window-washing") ? (
+              <QuestionAccordion
+                icon={serviceQuestionIcons.windows}
+                isComplete={
+                  Boolean(
+                    draft.serviceDetails["window-washing"].cleaningScope &&
+                    draft.serviceDetails["window-washing"].stories
+                  ) &&
+                  (draft.serviceDetails["window-washing"].finalizeOnSite ||
+                    Boolean(
+                      draft.serviceDetails["window-washing"].windowEstimate
+                    ))
+                }
+                isOpen={openDetailService === "window-washing"}
+                onOpen={() => setOpenDetailService("window-washing")}
+                title="Tell us about the windows"
+              >
+                <div className="grid gap-4">
                   <div>
-                    <Label className="text-slate-600">Stories</Label>
-                    <div className="mt-2 grid grid-cols-3 gap-2">
-                      {["1", "2", "3"].map((story) => (
+                    <Label className="text-slate-600">Glass service</Label>
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:gap-3">
+                      {[
+                        [
+                          "exterior",
+                          "Exterior only",
+                          "Outside glass wash for the selected panes.",
+                        ],
+                        [
+                          "both",
+                          "Inside and out",
+                          "Adds inside glass care based on pane estimate.",
+                        ],
+                      ].map(([id, name, description]) => (
                         <button
                           className={cn(
-                            "rounded-2xl border p-4 text-center text-sm font-semibold transition-colors",
-                            draft.serviceDetails["window-washing"].stories ===
-                              story
+                            "rounded-2xl border p-3 text-left transition-colors sm:p-4",
+                            draft.serviceDetails["window-washing"]
+                              .cleaningScope === id
                               ? "border-cyan-500 bg-cyan-50 text-slate-950"
                               : "border-slate-200 bg-white text-slate-600"
                           )}
-                          key={story}
+                          key={id}
                           onClick={() =>
                             setDraftValue("serviceDetails", {
                               ...draft.serviceDetails,
                               "window-washing": {
                                 ...draft.serviceDetails["window-washing"],
-                                stories: story as "1" | "2" | "3",
+                                cleaningScope: id as "exterior" | "both",
                               },
                             })
                           }
                           type="button"
                         >
-                          {story}
+                          <p className="text-sm font-semibold sm:text-base">
+                            {name}
+                          </p>
+                          <p className="mt-2 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
+                            {description}
+                          </p>
                         </button>
                       ))}
                     </div>
-                    {errors.stories ? (
+                    {errors.cleaningScope ? (
                       <p className="mt-2 text-sm text-rose-300">
-                        {errors.stories}
+                        {errors.cleaningScope}
                       </p>
                     ) : null}
                   </div>
 
-                  <RoundedField
-                    disabled={
-                      draft.serviceDetails["window-washing"].finalizeOnSite
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <Label className="text-slate-600">Stories</Label>
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        {["1", "2", "3"].map((story) => (
+                          <button
+                            className={cn(
+                              "rounded-2xl border p-4 text-center text-sm font-semibold transition-colors",
+                              draft.serviceDetails["window-washing"].stories ===
+                                story
+                                ? "border-cyan-500 bg-cyan-50 text-slate-950"
+                                : "border-slate-200 bg-white text-slate-600"
+                            )}
+                            key={story}
+                            onClick={() =>
+                              setDraftValue("serviceDetails", {
+                                ...draft.serviceDetails,
+                                "window-washing": {
+                                  ...draft.serviceDetails["window-washing"],
+                                  stories: story as "1" | "2" | "3",
+                                },
+                              })
+                            }
+                            type="button"
+                          >
+                            {story}
+                          </button>
+                        ))}
+                      </div>
+                      {errors.stories ? (
+                        <p className="mt-2 text-sm text-rose-300">
+                          {errors.stories}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <RoundedField
+                      disabled={
+                        draft.serviceDetails["window-washing"].finalizeOnSite
+                      }
+                      error={errors.windowEstimate}
+                      label="Rough window estimate"
+                      onChange={(event) =>
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          "window-washing": {
+                            ...draft.serviceDetails["window-washing"],
+                            windowEstimate: event.target.value,
+                          },
+                        })
+                      }
+                      placeholder="Around 20"
+                      type="number"
+                      value={
+                        draft.serviceDetails["window-washing"].windowEstimate
+                      }
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start gap-3 text-sm text-slate-700">
+                      <input
+                        checked={
+                          draft.serviceDetails["window-washing"].finalizeOnSite
+                        }
+                        className="mt-1 size-4 rounded border-slate-300 accent-lime-500"
+                        onChange={(event) =>
+                          setDraftValue("serviceDetails", {
+                            ...draft.serviceDetails,
+                            "window-washing": {
+                              ...draft.serviceDetails["window-washing"],
+                              finalizeOnSite: event.target.checked,
+                            },
+                          })
+                        }
+                        id="window-finalize-on-site"
+                        type="checkbox"
+                      />
+                      <span>
+                        <Label
+                          className="block font-semibold text-slate-950"
+                          htmlFor="window-finalize-on-site"
+                        >
+                          Finalize glass count on site
+                        </Label>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">
+                          Skip exact pane or screen counts now. The provider can
+                          verify the quote during the visit.
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_180px]">
+                    <div className="flex items-start gap-3 text-sm text-slate-700">
+                      <input
+                        checked={
+                          draft.serviceDetails["window-washing"].washScreens
+                        }
+                        className="mt-1 size-4 rounded border-slate-300 accent-lime-500"
+                        id="window-screen-wash"
+                        onChange={(event) =>
+                          setDraftValue("serviceDetails", {
+                            ...draft.serviceDetails,
+                            "window-washing": {
+                              ...draft.serviceDetails["window-washing"],
+                              washScreens: event.target.checked,
+                            },
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>
+                        <Label
+                          className="block font-semibold text-slate-950"
+                          htmlFor="window-screen-wash"
+                        >
+                          Wash screens
+                        </Label>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">
+                          Adds {formatCents(screenWashFeePerScreenCents)} per
+                          screen.
+                        </span>
+                      </span>
+                    </div>
+
+                    {draft.serviceDetails["window-washing"].washScreens &&
+                    !draft.serviceDetails["window-washing"].finalizeOnSite ? (
+                      <RoundedField
+                        error={errors.screenCount}
+                        label="Screen count"
+                        onChange={(event) =>
+                          setDraftValue("serviceDetails", {
+                            ...draft.serviceDetails,
+                            "window-washing": {
+                              ...draft.serviceDetails["window-washing"],
+                              screenCount: event.target.value,
+                            },
+                          })
+                        }
+                        placeholder="12"
+                        type="number"
+                        value={
+                          draft.serviceDetails["window-washing"].screenCount
+                        }
+                      />
+                    ) : null}
+                  </div>
+
+                  <ServicePhotoUpload
+                    count={
+                      draft.serviceDetails["window-washing"].photoNames.length
                     }
-                    error={errors.windowEstimate}
-                    label="Rough window estimate"
-                    onChange={(event) =>
+                    onFiles={(photoNames) =>
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
                         "window-washing": {
                           ...draft.serviceDetails["window-washing"],
-                          windowEstimate: event.target.value,
+                          photoNames,
                         },
                       })
                     }
-                    placeholder="Around 20"
-                    type="number"
-                    value={
-                      draft.serviceDetails["window-washing"].windowEstimate
-                    }
                   />
+                  <Button
+                    className="h-11 w-full rounded-2xl bg-slate-950 font-bold text-white hover:bg-slate-800"
+                    onClick={() => completeServiceDetails("window-washing")}
+                    type="button"
+                  >
+                    Save Window Details
+                    <Check className="size-4" />
+                  </Button>
                 </div>
+              </QuestionAccordion>
+            ) : null}
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-start gap-3 text-sm text-slate-700">
-                    <input
-                      checked={
-                        draft.serviceDetails["window-washing"].finalizeOnSite
-                      }
-                      className="mt-1 size-4 rounded border-slate-300 accent-lime-500"
-                      onChange={(event) =>
-                        setDraftValue("serviceDetails", {
-                          ...draft.serviceDetails,
-                          "window-washing": {
-                            ...draft.serviceDetails["window-washing"],
-                            finalizeOnSite: event.target.checked,
-                          },
-                        })
-                      }
-                      id="window-finalize-on-site"
-                      type="checkbox"
-                    />
-                    <span>
-                      <Label
-                        className="block font-semibold text-slate-950"
-                        htmlFor="window-finalize-on-site"
-                      >
-                        Finalize glass count on site
-                      </Label>
-                      <span className="mt-1 block text-xs leading-5 text-slate-500">
-                        Skip exact pane or screen counts now. The provider can
-                        verify the quote during the visit.
-                      </span>
-                    </span>
-                  </div>
-                </div>
+            <StepButton onClick={() => continueFromStep(2)} />
+          </div>
+        </StepPanel>
 
-                <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_180px]">
-                  <div className="flex items-start gap-3 text-sm text-slate-700">
-                    <input
-                      checked={
-                        draft.serviceDetails["window-washing"].washScreens
-                      }
-                      className="mt-1 size-4 rounded border-slate-300 accent-lime-500"
-                      id="window-screen-wash"
-                      onChange={(event) =>
-                        setDraftValue("serviceDetails", {
-                          ...draft.serviceDetails,
-                          "window-washing": {
-                            ...draft.serviceDetails["window-washing"],
-                            washScreens: event.target.checked,
-                          },
-                        })
-                      }
-                      type="checkbox"
-                    />
-                    <span>
-                      <Label
-                        className="block font-semibold text-slate-950"
-                        htmlFor="window-screen-wash"
-                      >
-                        Wash screens
-                      </Label>
-                      <span className="mt-1 block text-xs leading-5 text-slate-500">
-                        Adds {formatCents(screenWashFeePerScreenCents)} per
-                        screen.
-                      </span>
-                    </span>
-                  </div>
-
-                  {draft.serviceDetails["window-washing"].washScreens &&
-                  !draft.serviceDetails["window-washing"].finalizeOnSite ? (
-                    <RoundedField
-                      error={errors.screenCount}
-                      label="Screen count"
-                      onChange={(event) =>
-                        setDraftValue("serviceDetails", {
-                          ...draft.serviceDetails,
-                          "window-washing": {
-                            ...draft.serviceDetails["window-washing"],
-                            screenCount: event.target.value,
-                          },
-                        })
-                      }
-                      placeholder="12"
-                      type="number"
-                      value={draft.serviceDetails["window-washing"].screenCount}
-                    />
-                  ) : null}
-                </div>
-
-                <ServicePhotoUpload
-                  count={
-                    draft.serviceDetails["window-washing"].photoNames.length
-                  }
-                  onFiles={(photoNames) =>
-                    setDraftValue("serviceDetails", {
-                      ...draft.serviceDetails,
-                      "window-washing": {
-                        ...draft.serviceDetails["window-washing"],
-                        photoNames,
-                      },
-                    })
-                  }
-                />
-                <Button
-                  className="h-11 w-full rounded-2xl bg-slate-950 font-bold text-white hover:bg-slate-800"
-                  onClick={() => completeServiceDetails("window-washing")}
-                  type="button"
-                >
-                  Save Window Details
-                  <Check className="size-4" />
-                </Button>
-              </div>
-            </QuestionAccordion>
-          ) : null}
-
-          <StepButton onClick={() => continueFromStep(2)} />
-        </div>
-      </StepPanel>
-
-      <StepPanel
-        isComplete={draft.services.every(
-          (serviceId) => draft.products[serviceId]
-        )}
-        isOpen={activeStep === 3}
-        number="04"
-        title="Choose products"
-      >
-        <div className="space-y-3">
-          {draft.services.map((serviceId) => (
-            <ProductAccordion
-              isOpen={openProductService === serviceId}
-              key={serviceId}
-              onOpen={() => setOpenProductService(serviceId)}
-              onSelect={(productId) => selectProduct(serviceId, productId)}
-              products={productsByService[serviceId]}
-              selectedProductId={draft.products[serviceId]}
-              serviceId={serviceId}
-            />
+        <StepPanel
+          isComplete={draft.services.every(
+            (serviceId) => draft.products[serviceId]
+          )}
+          isOpen={activeStep === 3}
+          number="04"
+          title="Choose products"
+        >
+          <div className="space-y-3">
+            {draft.services.map((serviceId) => (
+              <ProductAccordion
+                isOpen={openProductService === serviceId}
+                key={serviceId}
+                onOpen={() => setOpenProductService(serviceId)}
+                onSelect={(productId) => selectProduct(serviceId, productId)}
+                products={productsByService[serviceId]}
+                selectedProductId={draft.products[serviceId]}
+                serviceId={serviceId}
+              />
+            ))}
+          </div>
+          {Object.values(errors).map((error) => (
+            <p className="mt-3 text-sm text-rose-300" key={error}>
+              {error}
+            </p>
           ))}
-        </div>
-        {Object.values(errors).map((error) => (
-          <p className="mt-3 text-sm text-rose-300" key={error}>
-            {error}
-          </p>
-        ))}
-        <StepButton onClick={() => continueFromStep(3)} />
-      </StepPanel>
+          <StepButton onClick={() => continueFromStep(3)} />
+        </StepPanel>
 
-      <StepPanel
-        isComplete={Boolean(draft.subscriptionId) || !hasRecurringProduct}
-        isOpen={activeStep === 4}
-        number="05"
-        title="Subscription options"
-      >
-        <div className="grid gap-3">
-          <button
-            className={cn(
-              "rounded-2xl border p-4 text-left transition-colors",
-              draft.subscriptionId === "one_time"
-                ? "border-lime-500 bg-lime-100"
-                : "border-slate-200 bg-slate-50 hover:bg-white"
-            )}
-            onClick={() => setDraftValue("subscriptionId", "one_time")}
-            type="button"
-          >
-            <p className="font-semibold text-slate-950">
-              No subscription today
-            </p>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              Keep this as a single appointment and choose recurring care later.
-            </p>
-          </button>
-
-          {shownCombos.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="font-semibold text-slate-950">
-                Recurring service plan
-              </p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                Your selected item is eligible for recurring care. We will map
-                the exact billing cadence when Stripe products are synced.
-              </p>
-            </div>
-          ) : null}
-
-          {shownCombos.map((combo) => (
+        <StepPanel
+          isComplete={
+            Boolean(draft.subscriptionId) ||
+            !hasRecurringProduct ||
+            hasRecurringProductSelected
+          }
+          isOpen={activeStep === 4}
+          number="05"
+          title="Subscription options"
+        >
+          <div className="grid gap-3">
             <button
               className={cn(
                 "rounded-2xl border p-4 text-left transition-colors",
-                draft.subscriptionId === combo.id
+                draft.subscriptionId === "one_time"
                   ? "border-lime-500 bg-lime-100"
                   : "border-slate-200 bg-slate-50 hover:bg-white"
               )}
-              key={combo.id}
-              onClick={() => setDraftValue("subscriptionId", combo.id)}
+              onClick={() => {
+                setDraft((current) => ({
+                  ...current,
+                  paymentOption: "",
+                  subscriptionId: "one_time",
+                }));
+                setErrors({});
+              }}
               type="button"
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <Crown className="size-4 text-lime-700" />
-                <p className="font-semibold text-slate-950">{combo.name}</p>
-                <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
-                  {combo.discountLabel}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {combo.description}
+              <p className="font-semibold text-slate-950">
+                No subscription today
               </p>
-              <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
-                {combo.frequency}
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Keep this as a single appointment and choose recurring care
+                later.
               </p>
             </button>
-          ))}
-        </div>
-        <StepButton onClick={() => continueFromStep(4)} />
-      </StepPanel>
 
-      <StepPanel
-        isComplete={Boolean(draft.paymentOption)}
-        isOpen={activeStep === 5}
-        number="06"
-        title="Review and reserve"
-      >
-        <div className="mx-auto max-w-3xl">
-          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
-            <div className="border-b border-slate-100 bg-slate-950 p-5 text-white">
-              <div className="flex items-center gap-2">
-                <CreditCard className="size-5 text-lime-300" />
-                <h3 className="font-bold">Your CastleCare estimate</h3>
-              </div>
-              <p className="mt-2 text-sm text-white/55">
-                Confirm the services, plan, and payment choice before reserving
-                the appointment.
-              </p>
-            </div>
-            <div className="space-y-3 p-5 text-sm">
-              {draft.services.map((serviceId) => {
-                const product = productsByService[serviceId].find(
-                  ({ id }) => id === draft.products[serviceId]
-                );
-
-                return (
-                  <div
-                    className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3"
-                    key={serviceId}
-                  >
-                    <span>
-                      <span className="block font-semibold text-slate-950">
-                        {product?.name ?? getServiceLabel(serviceId)}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {getServiceLabel(serviceId)}
-                      </span>
-                    </span>
-                    <span className="font-black text-slate-950">
-                      {product
-                        ? formatCents(
-                            getProductPriceCents(draft, serviceId, product)
-                          )
-                        : formatCents(0)}
-                    </span>
-                  </div>
-                );
-              })}
-              {quoteAddOns.map((addOn) => (
-                <div
-                  className="flex justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3"
-                  key={addOn.name}
-                >
-                  <span>
-                    <span className="block font-semibold text-slate-950">
-                      {addOn.name}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {addOn.description}
-                    </span>
-                  </span>
-                  <span className="font-black text-slate-950">
-                    {formatCents(addOn.priceCents)}
-                  </span>
-                </div>
-              ))}
-              <div className="border-t border-slate-200 pt-3">
-                {selectedCombo && planEstimateCents !== null ? (
-                  <div className="mb-3 rounded-2xl border border-lime-200 bg-lime-50 p-3">
-                    <div className="flex justify-between gap-3">
-                      <span>
-                        <span className="block font-semibold text-slate-950">
-                          {selectedCombo.name}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          {selectedCombo.frequency} ·{" "}
-                          {selectedCombo.discountLabel}
-                        </span>
-                      </span>
-                      <span className="font-black text-lime-700">
-                        {formatCents(planEstimateCents)}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex justify-between text-xs font-semibold text-lime-700">
-                      <span>Estimated plan savings</span>
-                      <span>-{formatCents(planSavingsCents)}</span>
-                    </div>
-                    <div className="mt-2 flex justify-between text-xs text-lime-700">
-                      <span>One-time service estimate</span>
-                      <span>{formatCents(subtotalCents)}</span>
-                    </div>
-                  </div>
-                ) : null}
-                <div className="flex justify-between">
-                  <span className="text-slate-500">
-                    {isLaundryOnly ? "Due today" : "Deposit due today"}
-                  </span>
-                  <span className="font-semibold text-lime-700">
-                    {formatCents(dueTodayCents)}
-                  </span>
-                </div>
-                <div className="mt-2 flex justify-between text-base">
-                  <span className="font-semibold text-slate-950">
-                    {planEstimateCents === null
-                      ? "Estimated total"
-                      : "Estimated monthly plan"}
-                  </span>
-                  <span className="font-black text-slate-950">
-                    {formatCents(estimatedTotalCents)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-4">
-                <p className="mb-3 text-sm font-semibold text-slate-950">
-                  Choose how to pay
+            {shownCombos.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-semibold text-slate-950">
+                  Recurring service plan
                 </p>
-                <div className="grid gap-3 md:grid-cols-3">
-                  {paymentOptionsForDraft.map((option) => (
-                    <button
-                      className={cn(
-                        "rounded-2xl border p-3 text-left transition-colors",
-                        draft.paymentOption === option.id
-                          ? "border-lime-500 bg-lime-100"
-                          : "border-slate-200 bg-slate-50 hover:bg-white"
-                      )}
-                      key={option.id}
-                      onClick={() => setDraftValue("paymentOption", option.id)}
-                      type="button"
-                    >
-                      <p className="text-sm font-semibold text-slate-950">
-                        {option.name}
-                      </p>
-                      <p className="mt-2 text-xs leading-5 text-slate-600">
-                        {option.description}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-                {errors.paymentOption ? (
-                  <p className="mt-3 text-sm text-rose-300">
-                    {errors.paymentOption}
-                  </p>
-                ) : null}
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Your selected item is eligible for recurring care. We will map
+                  the exact billing cadence when Stripe products are synced.
+                </p>
               </div>
-              <Button
-                className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!draft.paymentOption}
-                onClick={() => {
-                  if (!validateStep(5)) {
-                    return;
-                  }
+            ) : null}
 
-                  void persistQuoteRequest({
-                    draft,
-                    lastCompletedStep: 6,
-                    status: "checkout_started",
-                    trackingId: quoteRequestTrackingId,
-                  });
+            {shownCombos.map((combo) => (
+              <button
+                className={cn(
+                  "rounded-2xl border p-4 text-left transition-colors",
+                  draft.subscriptionId === combo.id
+                    ? "border-lime-500 bg-lime-100"
+                    : "border-slate-200 bg-slate-50 hover:bg-white"
+                )}
+                key={combo.id}
+                onClick={() => {
+                  setDraft((current) => ({
+                    ...current,
+                    paymentOption: "pay_full",
+                    subscriptionId: combo.id,
+                  }));
+                  setErrors({});
                 }}
                 type="button"
               >
-                Continue to secure checkout
-                <ArrowRight className="size-4" />
-              </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Crown className="size-4 text-lime-700" />
+                  <p className="font-semibold text-slate-950">{combo.name}</p>
+                  <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
+                    {combo.discountLabel}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {combo.description}
+                </p>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                  {combo.frequency}
+                </p>
+              </button>
+            ))}
+          </div>
+          <StepButton onClick={() => continueFromStep(4)} />
+        </StepPanel>
+
+        <StepPanel
+          isComplete={Boolean(draft.paymentOption)}
+          isOpen={activeStep === 5}
+          number="06"
+          title="Review and reserve"
+        >
+          <div className="mx-auto max-w-3xl">
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
+              <div className="border-b border-slate-100 bg-slate-950 p-5 text-white">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="size-5 text-lime-300" />
+                  <h3 className="font-bold">Your CastleCare estimate</h3>
+                </div>
+                <p className="mt-2 text-sm text-white/55">
+                  Confirm the services, plan, and payment choice before
+                  reserving the appointment.
+                </p>
+              </div>
+              <div className="space-y-3 p-5 text-sm">
+                {draft.services.map((serviceId) => {
+                  const product = productsByService[serviceId].find(
+                    ({ id }) => id === draft.products[serviceId]
+                  );
+
+                  return (
+                    <div
+                      className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3"
+                      key={serviceId}
+                    >
+                      <span>
+                        <span className="block font-semibold text-slate-950">
+                          {product?.name ?? getServiceLabel(serviceId)}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {getServiceLabel(serviceId)}
+                        </span>
+                      </span>
+                      <span className="font-black text-slate-950">
+                        {product
+                          ? formatCents(
+                              getProductPriceCents(draft, serviceId, product)
+                            )
+                          : formatCents(0)}
+                      </span>
+                    </div>
+                  );
+                })}
+                {quoteAddOns.map((addOn) => (
+                  <div
+                    className="flex justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3"
+                    key={addOn.name}
+                  >
+                    <span>
+                      <span className="block font-semibold text-slate-950">
+                        {addOn.name}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {addOn.description}
+                      </span>
+                    </span>
+                    <span className="font-black text-slate-950">
+                      {formatCents(addOn.priceCents)}
+                    </span>
+                  </div>
+                ))}
+                <div className="border-t border-slate-200 pt-3">
+                  {selectedCombo && planEstimateCents !== null ? (
+                    <div className="mb-3 rounded-2xl border border-lime-200 bg-lime-50 p-3">
+                      <div className="flex justify-between gap-3">
+                        <span>
+                          <span className="block font-semibold text-slate-950">
+                            {selectedCombo.name}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {selectedCombo.frequency} ·{" "}
+                            {selectedCombo.discountLabel}
+                          </span>
+                        </span>
+                        <span className="font-black text-lime-700">
+                          {formatCents(planEstimateCents)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex justify-between text-xs font-semibold text-lime-700">
+                        <span>Estimated plan savings</span>
+                        <span>-{formatCents(planSavingsCents)}</span>
+                      </div>
+                      <div className="mt-2 flex justify-between text-xs text-lime-700">
+                        <span>One-time service estimate</span>
+                        <span>{formatCents(subtotalCents)}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                  {hasSubscriptionSelected ? null : (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">
+                        {isLaundryOnly ? "Due today" : "Deposit due today"}
+                      </span>
+                      <span className="font-semibold text-lime-700">
+                        {formatCents(dueTodayCents)}
+                      </span>
+                    </div>
+                  )}
+                  {hasSubscriptionSelected ? (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Due today</span>
+                      <span className="font-semibold text-lime-700">
+                        {formatCents(dueTodayCents)}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="mt-2 flex justify-between text-base">
+                    <span className="font-semibold text-slate-950">
+                      {hasSubscriptionSelected
+                        ? "Estimated plan"
+                        : "Estimated total"}
+                    </span>
+                    <span className="font-black text-slate-950">
+                      {formatCents(estimatedTotalCents)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="mb-3 text-sm font-semibold text-slate-950">
+                    {hasSubscriptionSelected
+                      ? "Subscription checkout"
+                      : "Choose how to pay"}
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {paymentOptionsForDraft.map((option) => (
+                      <button
+                        className={cn(
+                          "rounded-2xl border p-3 text-left transition-colors",
+                          draft.paymentOption === option.id
+                            ? "border-lime-500 bg-lime-100"
+                            : "border-slate-200 bg-slate-50 hover:bg-white"
+                        )}
+                        key={option.id}
+                        onClick={() =>
+                          setDraftValue("paymentOption", option.id)
+                        }
+                        type="button"
+                      >
+                        <p className="text-sm font-semibold text-slate-950">
+                          {option.name}
+                        </p>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">
+                          {option.description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.paymentOption ? (
+                    <p className="mt-3 text-sm text-rose-300">
+                      {errors.paymentOption}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!draft.paymentOption}
+                  onClick={() => {
+                    if (!validateStep(5)) {
+                      return;
+                    }
+
+                    void persistQuoteRequest({
+                      draft,
+                      lastCompletedStep: 6,
+                      status: "checkout_started",
+                      trackingId: quoteRequestTrackingId,
+                    });
+                  }}
+                  type="button"
+                >
+                  Continue to secure checkout
+                  <ArrowRight className="size-4" />
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </StepPanel>
+        </StepPanel>
+      </div>
     </div>
   );
 };
