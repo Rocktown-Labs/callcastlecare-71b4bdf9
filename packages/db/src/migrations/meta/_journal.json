@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1772548470887,
+      "tag": "0000_rare_next_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772559600000,
+      "tag": "0001_sturdy_lunar_checkout",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772565600000,
+      "tag": "0002_quick_dispatch_waves",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772674500000,
+      "tag": "0003_hybrid_postgis_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774751700000,
+      "tag": "0004_stripe_admin_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774755300000,
+      "tag": "0005_window_washing_launch_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774755600000,
+      "tag": "0006_public_quote_requests",
+      "breakpoints": true
+    }
+  ]
+}

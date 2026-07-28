@@ -13,11 +13,18 @@
     "check-types": {
       "dependsOn": ["^check-types"]
     },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true
     },
     "db:push": {
+      "cache": false
+    },
+    "db:reset": {
       "cache": false
     },
     "db:generate": {

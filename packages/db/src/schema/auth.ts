@@ -1,13 +1,25 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
+  banExpires: timestamp("ban_expires"),
+  banReason: text("ban_reason"),
+  banned: boolean("banned").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
+  id: text("id").primaryKey(),
   image: text("image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  name: text("name").notNull(),
+  role: text("role").default("user"),
+  stripeCustomerId: text("stripe_customer_id"),
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
@@ -17,65 +29,96 @@ export const user = pgTable("user", {
 export const session = pgTable(
   "session",
   {
-    id: text("id").primaryKey(),
-    expiresAt: timestamp("expires_at").notNull(),
-    token: text("token").notNull().unique(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    id: text("id").primaryKey(),
+    impersonatedBy: text("impersonated_by"),
+    ipAddress: text("ip_address"),
+    token: text("token").notNull().unique(),
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
-    ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
   },
-  (table) => [index("session_userId_idx").on(table.userId)],
+  (table) => [index("session_userId_idx").on(table.userId)]
+);
+
+export const subscription = pgTable(
+  "subscription",
+  {
+    billingInterval: text("billing_interval"),
+    cancelAt: timestamp("cancel_at"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+    canceledAt: timestamp("canceled_at"),
+    endedAt: timestamp("ended_at"),
+    id: text("id").primaryKey(),
+    periodEnd: timestamp("period_end"),
+    periodStart: timestamp("period_start"),
+    plan: text("plan").notNull(),
+    referenceId: text("reference_id").notNull(),
+    seats: integer("seats"),
+    status: text("status").default("incomplete").notNull(),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeScheduleId: text("stripe_schedule_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    trialEnd: timestamp("trial_end"),
+    trialStart: timestamp("trial_start"),
+  },
+  (table) => [
+    index("subscription_reference_id_idx").on(table.referenceId),
+    index("subscription_stripe_customer_id_idx").on(table.stripeCustomerId),
+    index("subscription_stripe_subscription_id_idx").on(
+      table.stripeSubscriptionId
+    ),
+  ]
 );
 
 export const account = pgTable(
   "account",
   {
-    id: text("id").primaryKey(),
-    accountId: text("account_id").notNull(),
-    providerId: text("provider_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
     accessToken: text("access_token"),
-    refreshToken: text("refresh_token"),
-    idToken: text("id_token"),
     accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    accountId: text("account_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    idToken: text("id_token"),
+    password: text("password"),
+    providerId: text("provider_id").notNull(),
+    refreshToken: text("refresh_token"),
     refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
     scope: text("scope"),
-    password: text("password"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
   },
-  (table) => [index("account_userId_idx").on(table.userId)],
+  (table) => [index("account_userId_idx").on(table.userId)]
 );
 
 export const verification = pgTable(
   "verification",
   {
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
-    value: text("value").notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
+    value: text("value").notNull(),
   },
-  (table) => [index("verification_identifier_idx").on(table.identifier)],
+  (table) => [index("verification_identifier_idx").on(table.identifier)]
 );
 
 export const userRelations = relations(user, ({ many }) => ({
-  sessions: many(session),
   accounts: many(account),
+  sessions: many(session),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({

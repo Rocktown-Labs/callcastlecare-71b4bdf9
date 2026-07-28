@@ -20,16 +20,15 @@ Credentials (roles) are branch-specific and cannot be recovered after creation.
 postgresql://<user>:<password>@<host>.horizon.psdb.cloud:5432/<database>?sslmode=verify-full&sslrootcert=system&sslnegotiation=direct
 ```
 
-Use port **6432** for PgBouncer (applications/OLTP).
-Use port **5432** for DDL, admin tasks, and migrations.
+Use port **6432** for PgBouncer (applications/OLTP). Use port **5432** for DDL, admin tasks, and migrations.
 
 ## Troubleshooting
 
-| Error                            | Fix                                          |
-| -------------------------------- | -------------------------------------------- |
-| `password authentication failed` | Check role format: `<role>.<branch_id>`      |
-| `too many clients already`       | Use PgBouncer (port 6432)                    |
-| `SSL connection is required`     | Add `sslmode=verify-full&sslrootcert=system` |
+| Error | Fix |
+| --- | --- |
+| `password authentication failed` | Check role format: `<role>.<branch_id>` |
+| `too many clients already` | Use PgBouncer (port 6432) |
+| `SSL connection is required` | Add `sslmode=verify-full&sslrootcert=system` |
 
 **Best practices:**
 

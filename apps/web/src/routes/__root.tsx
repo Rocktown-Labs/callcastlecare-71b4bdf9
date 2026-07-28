@@ -1,59 +1,65 @@
 import { Toaster } from "@callcastlecare/ui/components/sonner";
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
+import {
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRouteWithContext,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { createMiddleware } from "@tanstack/react-start";
+import { Analytics } from "@vercel/analytics/react";
 import { evlogErrorHandler } from "evlog/nitro/v3";
 
-import Header from "../components/header";
+import Providers from "@/components/providers";
 
 import appCss from "../index.css?url";
 
-export interface RouterAppContext {}
+export type RouterAppContext = Record<string, never>;
+
+const RootDocument = () => (
+  <html lang="en" className="dark">
+    <head>
+      <HeadContent />
+    </head>
+    <body>
+      <Providers>
+        <div className="min-h-svh">
+          <Outlet />
+        </div>
+        <Toaster richColors />
+        <TanStackRouterDevtools position="bottom-left" />
+        <Analytics />
+        <Scripts />
+      </Providers>
+    </body>
+  </html>
+);
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
-  server: {
-    middleware: [createMiddleware().server(evlogErrorHandler)],
-  },
+  component: RootDocument,
 
   head: () => ({
+    links: [
+      {
+        href: appCss,
+        rel: "stylesheet",
+      },
+    ],
     meta: [
       {
         charSet: "utf-8",
       },
       {
-        name: "viewport",
         content: "width=device-width, initial-scale=1",
+        name: "viewport",
       },
       {
-        title: "My App",
-      },
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
+        title: "CastleCare",
       },
     ],
   }),
 
-  component: RootDocument,
+  server: {
+    middleware: [createMiddleware().server(evlogErrorHandler)],
+  },
 });
-
-function RootDocument() {
-  return (
-    <html lang="en" className="dark">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <div className="grid h-svh grid-rows-[auto_1fr]">
-          <Header />
-          <Outlet />
-        </div>
-        <Toaster richColors />
-        <TanStackRouterDevtools position="bottom-left" />
-        <Scripts />
-      </body>
-    </html>
-  );
-}

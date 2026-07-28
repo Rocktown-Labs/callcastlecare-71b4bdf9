@@ -34,6 +34,7 @@
     "db:studio": "turbo run db:studio -F @callcastlecare/db",
     "db:generate": "turbo run db:generate -F @callcastlecare/db",
     "db:migrate": "turbo run db:migrate -F @callcastlecare/db",
+    "db:reset": "turbo run db:reset -F @callcastlecare/db",
     "deploy:setup": "vercel link",
     "dev:vercel": "vercel dev -L",
     "env:preview": "tsx scripts/sync-vercel-env.ts preview",
@@ -41,12 +42,14 @@
     "deploy": "vercel deploy",
     "deploy:prod": "vercel deploy --prod",
     "deploy:check": "vercel deploy --dry",
+    "test": "turbo run test",
     "check": "ultracite check",
     "fix": "ultracite fix"
   },
   "dependencies": {
     "@callcastlecare/env": "workspace:*",
     "dotenv": "catalog:",
+    "marketingskills": "coreyhaines31/marketingskills",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -59,7 +62,8 @@
     "turbo": "^2.10.2",
     "typescript": "^6",
     "ultracite": "7.9.3",
-    "vercel": "^54.18.6"
+    "vercel": "^57.0.0",
+    "vitest": "^4.1.10"
   },
   "packageManager": "bun@1.3.14"
 }

@@ -2,14 +2,16 @@ import "dotenv/config";
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
-function getVercelOrigin() {
+const getVercelOrigin = () => {
   const vercelUrl =
     process.env.VERCEL_ENV === "production"
       ? (process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL)
       : (process.env.VERCEL_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL);
-  if (!vercelUrl) return undefined;
+  if (!vercelUrl) {
+    return;
+  }
   return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
-}
+};
 
 const vercelOrigin = getVercelOrigin();
 
@@ -18,21 +20,34 @@ const runtimeEnv = {
   // Public auth base: /api/auth bypasses the rewrite's path strip, so the
   // same URL works for incoming matching and generated callbacks
   BETTER_AUTH_URL:
-    process.env.BETTER_AUTH_URL ?? (vercelOrigin ? `${vercelOrigin}/api/auth` : undefined),
+    process.env.BETTER_AUTH_URL ??
+    (vercelOrigin ? `${vercelOrigin}/api/auth` : undefined),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? vercelOrigin,
 };
 
 export const env = createEnv({
+  emptyStringAsUndefined: true,
+  runtimeEnv,
   server: {
-    DATABASE_HOST: z.string().min(1),
-    DATABASE_USERNAME: z.string().min(1),
-    DATABASE_PASSWORD: z.string().min(1),
+    ADMIN_EMAIL: z.email().default("cg@rocktownlabs.com"),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     CORS_ORIGIN: z.url(),
-    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    DATABASE_URL: z.string().min(1),
+    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    NODE_ENV: z
+      .enum(["development", "production", "test"])
+      .default("development"),
+    RADAR_API_KEY: z.string().min(1).optional(),
+    RAPIDAPI_KEY: z.string().min(1).optional(),
+    RAPIDAPI_ZILLOW_HOST: z.string().min(1).optional(),
+    RESEND_API_KEY: z.string().min(1).optional(),
+    STRIPE_PRICE_BASIC_MONTHLY: z.string().min(1).optional(),
+    STRIPE_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_WEBHOOK_PUBLIC_URL: z.url().optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+    VERCEL_BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
   },
-  runtimeEnv: runtimeEnv,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
-  emptyStringAsUndefined: true,
 });

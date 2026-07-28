@@ -1,0 +1,279 @@
+import { env } from "@callcastlecare/env/server";
+
+export interface RadarAddressSuggestion {
+  formattedAddress: string;
+  latitude: number | null;
+  longitude: number | null;
+  placeId: string | null;
+  raw: Record<string, unknown>;
+}
+
+export interface VerifiedAddress {
+  city: string;
+  country: string;
+  formattedAddress: string;
+  latitude: number | null;
+  longitude: number | null;
+  placeId: string | null;
+  raw: Record<string, unknown>;
+  state: string;
+  street: string;
+  verdict: {
+    hasUnconfirmedComponents: boolean;
+    isComplete: boolean;
+    verificationStatus: string | null;
+  };
+  zip: string;
+}
+
+const parseAddressFromInput = (input: string): VerifiedAddress => {
+  const segments = input.split(",").map((segment) => segment.trim());
+  const [street = input, city = "Unknown", stateZip = "AR 00000"] = segments;
+  const stateZipParts = stateZip.split(/\s+/u).filter(Boolean);
+  const [state = "VA", zip = "00000"] = stateZipParts;
+
+  return {
+    city,
+    country: "US",
+    formattedAddress: input,
+    latitude: null,
+    longitude: null,
+    placeId: null,
+    raw: { fallback: true, input },
+    state,
+    street,
+    verdict: {
+      hasUnconfirmedComponents: true,
+      isComplete: false,
+      verificationStatus: null,
+    },
+    zip,
+  };
+};
+
+const toStringOrNull = (value: unknown) =>
+  typeof value === "string" && value.length > 0 ? value : null;
+
+const toNumberOrNull = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const toBoolean = (value: unknown) => value === true;
+
+const getRadarHeaders = () => ({
+  Authorization: env.RADAR_API_KEY ?? "",
+});
+
+const radarGet = async (path: string, searchParams: URLSearchParams) => {
+  if (!env.RADAR_API_KEY) {
+    return null;
+  }
+
+  const url = new URL(path, "https://api.radar.com");
+  for (const [key, value] of searchParams) {
+    url.searchParams.set(key, value);
+  }
+
+  const response = await fetch(url, {
+    headers: getRadarHeaders(),
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return response.json() as Promise<Record<string, unknown>>;
+};
+
+const getAddressList = (payload: Record<string, unknown> | null) =>
+  Array.isArray(payload?.addresses)
+    ? (payload.addresses as Record<string, unknown>[])
+    : [];
+
+const getAddressLabel = (address: Record<string, unknown>) =>
+  toStringOrNull(address.formattedAddress) ??
+  toStringOrNull(address.addressLabel) ??
+  toStringOrNull(address.fullAddress) ??
+  [
+    toStringOrNull(address.number),
+    toStringOrNull(address.street),
+    toStringOrNull(address.city),
+    toStringOrNull(address.stateCode),
+    toStringOrNull(address.postalCode),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+const toSuggestion = (
+  address: Record<string, unknown>
+): RadarAddressSuggestion | null => {
+  const formattedAddress = getAddressLabel(address);
+  if (!formattedAddress) {
+    return null;
+  }
+
+  return {
+    formattedAddress,
+    latitude: toNumberOrNull(address.latitude),
+    longitude: toNumberOrNull(address.longitude),
+    placeId: toStringOrNull(address.placeId) ?? toStringOrNull(address.id),
+    raw: address,
+  };
+};
+
+const toVerifiedAddress = (
+  input: string,
+  payload: Record<string, unknown> | null
+) => {
+  const [first] = getAddressList(payload);
+  if (!first) {
+    return parseAddressFromInput(input);
+  }
+
+  const formattedAddress = getAddressLabel(first) || input;
+  const verificationStatus =
+    toStringOrNull(first.verificationStatus) ??
+    toStringOrNull(first.verdict) ??
+    null;
+  const isComplete =
+    toBoolean(first.complete) ||
+    toBoolean(first.addressComplete) ||
+    verificationStatus === "verified";
+
+  return {
+    city: toStringOrNull(first.city) ?? "Unknown",
+    country: toStringOrNull(first.countryCode) ?? "US",
+    formattedAddress,
+    latitude: toNumberOrNull(first.latitude),
+    longitude: toNumberOrNull(first.longitude),
+    placeId: toStringOrNull(first.placeId) ?? toStringOrNull(first.id),
+    raw: (payload ?? first) as Record<string, unknown>,
+    state: toStringOrNull(first.stateCode) ?? "AR",
+    street:
+      [toStringOrNull(first.number), toStringOrNull(first.street)]
+        .filter(Boolean)
+        .join(" ") ||
+      toStringOrNull(first.street) ||
+      formattedAddress,
+    verdict: {
+      hasUnconfirmedComponents: !isComplete,
+      isComplete,
+      verificationStatus,
+    },
+    zip: toStringOrNull(first.postalCode) ?? "00000",
+  } satisfies VerifiedAddress;
+};
+
+export const autocompleteRadarAddresses = async (
+  input: string
+): Promise<RadarAddressSuggestion[]> => {
+  const trimmed = input.trim();
+  if (trimmed.length < 3) {
+    return [];
+  }
+
+  const payload = await radarGet(
+    "/v1/search/autocomplete",
+    new URLSearchParams({
+      country: "US",
+      limit: "8",
+      query: trimmed,
+    })
+  );
+
+  return getAddressList(payload)
+    .map(toSuggestion)
+    .filter((suggestion): suggestion is RadarAddressSuggestion =>
+      Boolean(suggestion)
+    );
+};
+
+export const reverseGeocodeWithRadar = async (
+  latitude: number,
+  longitude: number
+): Promise<VerifiedAddress> => {
+  const payload = await radarGet(
+    "/v1/geocode/reverse",
+    new URLSearchParams({
+      coordinates: `${latitude},${longitude}`,
+    })
+  );
+
+  return toVerifiedAddress(`${latitude}, ${longitude}`, payload);
+};
+
+const forwardGeocodeWithRadar = (input: string) =>
+  radarGet(
+    "/v1/geocode/forward",
+    new URLSearchParams({
+      query: input.trim(),
+    })
+  );
+
+const validateStructuredAddress = (
+  address: Record<string, unknown>,
+  fallbackInput: string
+) => {
+  const params = new URLSearchParams({
+    country: toStringOrNull(address.countryCode) ?? "US",
+  });
+  const mappedFields = [
+    ["city", toStringOrNull(address.city)],
+    ["number", toStringOrNull(address.number)],
+    ["postalCode", toStringOrNull(address.postalCode)],
+    ["state", toStringOrNull(address.stateCode)],
+    ["street", toStringOrNull(address.street)],
+  ] as const;
+
+  for (const [key, value] of mappedFields) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  const hasEnoughStructuredData = params.has("street") && params.has("city");
+  if (!hasEnoughStructuredData) {
+    return null;
+  }
+
+  return radarGet("/v1/addresses/validate", params).then((payload) =>
+    payload ? toVerifiedAddress(fallbackInput, payload) : null
+  );
+};
+
+export const validateRadarAddress = async (
+  input: string
+): Promise<VerifiedAddress> => {
+  const trimmed = input.trim();
+  if (trimmed.length < 5) {
+    return parseAddressFromInput(input);
+  }
+
+  const coordinateMatch = trimmed.match(
+    /^\s*(?<latitude>-?\d+(?:\.\d+)?)\s*,\s*(?<longitude>-?\d+(?:\.\d+)?)\s*$/u
+  );
+  if (coordinateMatch) {
+    const { latitude, longitude } = coordinateMatch.groups ?? {};
+    return reverseGeocodeWithRadar(Number(latitude), Number(longitude));
+  }
+
+  const forwardPayload = await forwardGeocodeWithRadar(trimmed);
+  const [first] = getAddressList(forwardPayload);
+  if (!first) {
+    return parseAddressFromInput(input);
+  }
+
+  const validated =
+    (await validateStructuredAddress(first, trimmed)) ??
+    toVerifiedAddress(trimmed, forwardPayload);
+
+  return {
+    ...validated,
+    raw: {
+      forward: forwardPayload,
+      validate: validated.raw,
+    },
+  };
+};
+
+export const verifyAddressWithRadar = validateRadarAddress;

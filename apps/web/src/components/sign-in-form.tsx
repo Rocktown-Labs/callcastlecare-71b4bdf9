@@ -3,6 +3,7 @@ import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
+import { CircleUserRound } from "lucide-react";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -10,7 +11,11 @@ import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
+export default function SignInForm({
+  onSwitchToSignUp,
+}: {
+  onSwitchToSignUp: () => void;
+}) {
   const navigate = useNavigate({
     from: "/",
   });
@@ -28,16 +33,16 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
           password: value.password,
         },
         {
+          onError: (error) => {
+            toast.error(error.error.message || error.error.statusText);
+          },
           onSuccess: () => {
             navigate({
               to: "/dashboard",
             });
             toast.success("Sign in successful");
           },
-          onError: (error) => {
-            toast.error(error.error.message || error.error.statusText);
-          },
-        },
+        }
       );
     },
     validators: {
@@ -51,6 +56,20 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
   if (isPending) {
     return <Loader />;
   }
+
+  const signInWithGoogle = async () => {
+    await authClient.signIn.social(
+      {
+        callbackURL: "/dashboard",
+        provider: "google",
+      },
+      {
+        onError: (error) => {
+          toast.error(error.error.message || error.error.statusText);
+        },
+      }
+    );
+  };
 
   return (
     <div className="mx-auto w-full mt-10 max-w-md p-6">
@@ -111,15 +130,38 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
         </div>
 
         <form.Subscribe
-          selector={(state) => ({ canSubmit: state.canSubmit, isSubmitting: state.isSubmitting })}
+          selector={(state) => ({
+            canSubmit: state.canSubmit,
+            isSubmitting: state.isSubmitting,
+          })}
         >
           {({ canSubmit, isSubmitting }) => (
-            <Button type="submit" className="w-full" disabled={!canSubmit || isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!canSubmit || isSubmitting}
+            >
               {isSubmitting ? "Submitting..." : "Sign In"}
             </Button>
           )}
         </form.Subscribe>
       </form>
+
+      <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+        <span className="h-px flex-1 bg-slate-200" />
+        or
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      <Button
+        className="h-11 w-full rounded-full border-slate-200"
+        onClick={signInWithGoogle}
+        type="button"
+        variant="outline"
+      >
+        <CircleUserRound className="size-4" />
+        Continue with Google
+      </Button>
 
       <div className="mt-4 text-center">
         <Button

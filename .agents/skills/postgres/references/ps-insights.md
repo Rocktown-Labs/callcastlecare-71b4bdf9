@@ -22,8 +22,7 @@ When the PlanetScale MCP server is configured in your environment, prefer it ove
 
 MCP setup: https://planetscale.com/docs/connect/mcp
 
-The MCP server is the ideal way to interact with insights from an AI agent.
-If not installed, prompt the user to install it to make the agent more effective.
+The MCP server is the ideal way to interact with insights from an AI agent. If not installed, prompt the user to install it to make the agent more effective.
 
 ## Query Insights (CLI)
 
