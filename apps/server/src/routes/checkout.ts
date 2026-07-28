@@ -9,15 +9,22 @@ import {
   orders,
   quoteRequests,
 } from "@callcastlecare/db/schema/index";
+import { env } from "@callcastlecare/env/server";
 import { Hono } from "hono";
+import type { Context as HonoContext } from "hono";
 
-import { requireUser, getOrCreateCustomerForUser } from "../lib/auth";
+import {
+  getOrCreateCustomerForCheckoutContact,
+  requireUser,
+  getOrCreateCustomerForUser,
+} from "../lib/auth";
 import { computeCheckoutPreview } from "../lib/domain/checkout";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
 import {
-  createStripePaymentIntent,
+  createStripeCheckoutSession,
   parseStripeWebhookEvent,
 } from "../lib/integrations/stripe-payments";
+import type { StripeWebhookEvent } from "../lib/integrations/stripe-payments";
 import { logger } from "../lib/logger";
 import { createAddressRecord, finalizeCheckoutPayment } from "../lib/orders";
 import type { AppEnv } from "../types";
@@ -44,6 +51,151 @@ const parseScheduledDate = (value: string | undefined) => {
   }
 
   return parsed;
+};
+
+const depositCents = 5000;
+
+const getCheckoutOrigin = (c: HonoContext) => {
+  const requestOrigin = new URL(c.req.url).origin;
+  if (env.CORS_ORIGIN && env.CORS_ORIGIN !== "*") {
+    return env.CORS_ORIGIN;
+  }
+  return requestOrigin;
+};
+
+const getAmountDueCents = (input: {
+  paymentOption: "deposit_cash" | "deposit_invoice" | "pay_full";
+  totalCents: number;
+}) =>
+  input.paymentOption === "pay_full"
+    ? input.totalCents
+    : Math.min(depositCents, input.totalCents);
+
+const getObjectMetadata = (value: Record<string, unknown>) =>
+  typeof value.metadata === "object" && value.metadata
+    ? (value.metadata as Record<string, unknown>)
+    : null;
+
+const finalizeFromMetadata = async (input: {
+  metadata: Record<string, unknown> | null;
+  stripePaymentIntentId?: string;
+}) => {
+  const checkoutSessionId = input.metadata
+    ? Number(input.metadata.checkoutSessionId)
+    : null;
+
+  if (!(checkoutSessionId && Number.isInteger(checkoutSessionId))) {
+    return false;
+  }
+
+  await finalizeCheckoutPayment({
+    checkoutSessionId,
+    ...(input.stripePaymentIntentId
+      ? { stripePaymentIntentId: input.stripePaymentIntentId }
+      : {}),
+  });
+  return true;
+};
+
+const handleCheckoutSessionCompleted = async (event: StripeWebhookEvent) => {
+  const checkoutObject = event.data.object;
+  const stripeCheckoutSessionId =
+    typeof checkoutObject.id === "string" ? checkoutObject.id : null;
+  const stripePaymentIntentId =
+    typeof checkoutObject.payment_intent === "string"
+      ? checkoutObject.payment_intent
+      : undefined;
+
+  const finalizedFromMetadata = await finalizeFromMetadata({
+    metadata: getObjectMetadata(checkoutObject),
+    ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
+  });
+  if (finalizedFromMetadata || !stripeCheckoutSessionId) {
+    return;
+  }
+
+  const checkoutSession = await db.query.checkoutSessions.findFirst({
+    where: eq(
+      checkoutSessions.stripeCheckoutSessionId,
+      stripeCheckoutSessionId
+    ),
+  });
+
+  if (!checkoutSession) {
+    logger.warn(
+      {
+        stripeCheckoutSessionId,
+      },
+      "stripe_webhook:checkout_session_not_found"
+    );
+    return;
+  }
+
+  await finalizeCheckoutPayment({
+    checkoutSessionId: checkoutSession.id,
+    ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
+  });
+};
+
+const handlePaymentIntentSucceeded = async (event: StripeWebhookEvent) => {
+  const paymentIntentObject = event.data.object;
+  const paymentIntentId =
+    typeof paymentIntentObject.id === "string" ? paymentIntentObject.id : null;
+
+  if (!paymentIntentId) {
+    return;
+  }
+
+  const finalizedFromMetadata = await finalizeFromMetadata({
+    metadata: getObjectMetadata(paymentIntentObject),
+    stripePaymentIntentId: paymentIntentId,
+  });
+  if (finalizedFromMetadata) {
+    return;
+  }
+
+  const checkoutSession = await db.query.checkoutSessions.findFirst({
+    where: eq(checkoutSessions.stripePaymentIntentId, paymentIntentId),
+  });
+
+  if (!checkoutSession) {
+    logger.warn(
+      {
+        paymentIntentId,
+      },
+      "stripe_webhook:session_not_found"
+    );
+    return;
+  }
+
+  await finalizeCheckoutPayment({
+    checkoutSessionId: checkoutSession.id,
+    stripePaymentIntentId: paymentIntentId,
+  });
+};
+
+export const handleStripeWebhook = async (c: HonoContext) => {
+  const rawBody = await c.req.text();
+
+  const parsedEvent = await parseStripeWebhookEvent({
+    rawBody,
+    signatureHeader: c.req.header("stripe-signature"),
+  });
+
+  if (!parsedEvent) {
+    return c.json({ error: "invalid webhook payload" }, 400);
+  }
+
+  if (parsedEvent.type === "checkout.session.completed") {
+    await handleCheckoutSessionCompleted(parsedEvent);
+    return c.json({ received: true }, 200);
+  }
+
+  if (parsedEvent.type === "payment_intent.succeeded") {
+    await handlePaymentIntentSucceeded(parsedEvent);
+  }
+
+  return c.json({ received: true }, 200);
 };
 
 interface PublicQuoteRequestInput {
@@ -233,27 +385,16 @@ export const checkoutRoutes = new Hono<AppEnv>()
     );
   })
   .post("/confirm", async (c) => {
-    const userResult = requireUser(c);
-    if (userResult.error) {
-      return userResult.error;
-    }
-
     const body = await c.req.json();
     const parsed = checkoutConfirmRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
-    const customer = await getOrCreateCustomerForUser(userResult.user);
-    if (!customer.phone || customer.phone.trim().length < 7) {
-      return c.json(
-        {
-          error:
-            "Phone number is required before checkout confirmation. Please update your profile.",
-        },
-        409
-      );
-    }
+    const user = c.get("user");
+    const customer = user
+      ? await getOrCreateCustomerForUser(user)
+      : await getOrCreateCustomerForCheckoutContact(parsed.data.contact);
 
     let address: { id: number } | null = null;
 
@@ -292,6 +433,10 @@ export const checkoutRoutes = new Hono<AppEnv>()
     }
 
     const preview = computeCheckoutPreview(parsed.data);
+    const amountDueCents = getAmountDueCents({
+      paymentOption: parsed.data.paymentOption,
+      totalCents: preview.totalCents,
+    });
 
     const [checkoutSession] = await db
       .insert(checkoutSessions)
@@ -299,6 +444,9 @@ export const checkoutRoutes = new Hono<AppEnv>()
         addressId: address.id,
         customerId: customer.id,
         metadataJson: {
+          amountDueCents,
+          contact: parsed.data.contact,
+          paymentOption: parsed.data.paymentOption,
           requestId: c.get("requestId"),
         },
         status: "pending_payment",
@@ -367,18 +515,27 @@ export const checkoutRoutes = new Hono<AppEnv>()
       })
     );
 
-    const paymentIntent = await createStripePaymentIntent({
-      amountCents: preview.totalCents,
+    const origin = getCheckoutOrigin(c);
+    const successUrl = `${origin}/book?checkout=success&stripe_session_id={CHECKOUT_SESSION_ID}`;
+    const stripeCheckoutSession = await createStripeCheckoutSession({
+      amountDueCents,
+      cancelUrl: `${origin}/book?checkout=cancelled`,
+      checkoutSessionId: checkoutSession.id,
+      customerEmail: parsed.data.contact.email,
       metadata: {
+        amountDueCents: String(amountDueCents),
         checkoutSessionId: String(checkoutSession.id),
         customerId: String(customer.id),
+        paymentOption: parsed.data.paymentOption,
+        totalCents: String(preview.totalCents),
       },
+      successUrl,
     });
 
     await db
       .update(checkoutSessions)
       .set({
-        stripePaymentIntentId: paymentIntent.id,
+        stripeCheckoutSessionId: stripeCheckoutSession.id,
         updatedAt: new Date(),
       })
       .where(eq(checkoutSessions.id, checkoutSession.id));
@@ -386,9 +543,9 @@ export const checkoutRoutes = new Hono<AppEnv>()
     return c.json(
       {
         checkoutSessionId: checkoutSession.id,
-        clientSecret: paymentIntent.clientSecret,
-        paymentIntentId: paymentIntent.id,
+        checkoutUrl: stripeCheckoutSession.url,
         status: "pending_payment",
+        stripeCheckoutSessionId: stripeCheckoutSession.id,
       },
       200
     );
@@ -524,71 +681,4 @@ export const checkoutRoutes = new Hono<AppEnv>()
       200
     );
   })
-  .post("/webhook/stripe", async (c) => {
-    const rawBody = await c.req.text();
-
-    const parsedEvent = await parseStripeWebhookEvent({
-      rawBody,
-      signatureHeader: c.req.header("stripe-signature"),
-    });
-
-    if (!parsedEvent) {
-      return c.json({ error: "invalid webhook payload" }, 400);
-    }
-
-    if (parsedEvent.type !== "payment_intent.succeeded") {
-      return c.json({ received: true }, 200);
-    }
-
-    const paymentIntentObject = parsedEvent.data.object;
-    const paymentIntentId =
-      typeof paymentIntentObject.id === "string"
-        ? paymentIntentObject.id
-        : null;
-
-    if (!paymentIntentId) {
-      return c.json({ received: true }, 200);
-    }
-
-    const metadata =
-      typeof paymentIntentObject.metadata === "object" &&
-      paymentIntentObject.metadata
-        ? (paymentIntentObject.metadata as Record<string, unknown>)
-        : null;
-
-    const checkoutSessionIdFromMetadata = metadata
-      ? Number(metadata.checkoutSessionId)
-      : null;
-
-    if (
-      checkoutSessionIdFromMetadata &&
-      Number.isInteger(checkoutSessionIdFromMetadata)
-    ) {
-      await finalizeCheckoutPayment({
-        checkoutSessionId: checkoutSessionIdFromMetadata,
-        stripePaymentIntentId: paymentIntentId,
-      });
-      return c.json({ received: true }, 200);
-    }
-
-    const checkoutSession = await db.query.checkoutSessions.findFirst({
-      where: eq(checkoutSessions.stripePaymentIntentId, paymentIntentId),
-    });
-
-    if (!checkoutSession) {
-      logger.warn(
-        {
-          paymentIntentId,
-        },
-        "stripe_webhook:session_not_found"
-      );
-      return c.json({ received: true }, 200);
-    }
-
-    await finalizeCheckoutPayment({
-      checkoutSessionId: checkoutSession.id,
-      stripePaymentIntentId: paymentIntentId,
-    });
-
-    return c.json({ received: true }, 200);
-  });
+  .post("/webhook/stripe", handleStripeWebhook);

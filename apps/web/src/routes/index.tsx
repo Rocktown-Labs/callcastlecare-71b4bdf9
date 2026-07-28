@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import EarnCtaSection from "@/components/home/earn-cta";
 import HeroSection from "@/components/home/hero";
 import MarketingLayout from "@/components/home/marketing-layout";
 import ServicesSection from "@/components/home/services";
@@ -14,6 +15,7 @@ const HomeComponent = () => (
   <MarketingLayout>
     <HeroSection />
     <ServicesSection />
+    <EarnCtaSection />
   </MarketingLayout>
 );
 

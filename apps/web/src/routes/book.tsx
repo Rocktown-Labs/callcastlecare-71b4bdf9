@@ -9,6 +9,7 @@ import type { ServiceId } from "@/lib/service-catalog";
 
 const bookingSearchSchema = z.object({
   address: z.string().optional(),
+  checkout: z.enum(["cancelled", "success"]).optional(),
   date: z.string().optional(),
   resume: z
     .preprocess((value) => {
@@ -26,6 +27,7 @@ const bookingSearchSchema = z.object({
   step: z
     .enum(["schedule", "contact", "details", "products", "plans", "invoice"])
     .optional(),
+  stripe_session_id: z.string().optional(),
   timeSlot: z.preprocess(
     (value) =>
       typeof value === "string" &&
@@ -61,10 +63,7 @@ const BookPage = () => {
     <MarketingLayout>
       <section className="min-h-[calc(100vh-5rem)] bg-slate-50 px-4 pb-24 pt-28 text-slate-950 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
-          <span className="inline-flex rounded-full border border-lime-300 bg-lime-100 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-lime-700">
-            Arkansas
-          </span>
-          <h1 className="mx-auto mt-5 max-w-2xl text-pretty text-4xl font-black leading-tight sm:text-5xl">
+          <h1 className="mx-auto max-w-2xl text-pretty text-4xl font-black leading-tight sm:text-5xl">
             Reserve the care your place needs.
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-slate-600">

@@ -14,6 +14,7 @@ import { meRoutes } from "./routes/me";
 import { notificationRoutes } from "./routes/notifications";
 import { orderRoutes } from "./routes/orders";
 import { supportRoutes } from "./routes/support";
+import { webhookRoutes } from "./routes/webhooks";
 import type { AppEnv } from "./types";
 
 const app = new Hono<AppEnv>();
@@ -137,6 +138,7 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)
   .route("/support", supportRoutes)
+  .route("/webhooks", webhookRoutes)
   .route("/admin", adminRoutes);
 
 const routes = app

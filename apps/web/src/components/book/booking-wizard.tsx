@@ -1,9 +1,12 @@
 import {
+  CheckoutItemKind,
   COMBO_SUBSCRIPTION_PRICES,
+  getScheduledWindowForSlot,
   LAUNDRY_PLAN_PRICES,
   LAWNCARE_PLAN_PRICES,
   WINDOW_WASHING_SUBSCRIPTION_PRICES,
 } from "@callcastlecare/api";
+import type { CheckoutPreviewItemInput } from "@callcastlecare/api";
 import {
   normalizeIntegerInput,
   normalizePhoneInput,
@@ -18,6 +21,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
+  ArrowLeft,
   Calendar,
   Check,
   ChevronDown,
@@ -750,6 +754,57 @@ const hasSubscriptionCheckout = (draft: BookingDraft) =>
   Boolean(draft.subscriptionId && draft.subscriptionId !== "one_time") ||
   hasSelectedRecurringProduct(draft);
 
+const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
+  const scheduledWindow = getScheduledWindowForSlot(
+    draft.date,
+    draft.timeSlot as (typeof bookingTimeSlots)[number]
+  );
+
+  return draft.services.flatMap((serviceId) => {
+    const selectedProductId = draft.products[serviceId];
+    if (!selectedProductId) {
+      return [];
+    }
+
+    const baseItem = {
+      ...scheduledWindow,
+      timingType: "scheduled" as const,
+    };
+
+    if (serviceId === "window-washing") {
+      const details = draft.serviceDetails["window-washing"];
+      return [
+        {
+          ...baseItem,
+          cleanScreens: details.washScreens,
+          itemKind: CheckoutItemKind.WindowWashing,
+          packageType:
+            details.cleaningScope === "both"
+              ? ("FULL_SERVICE" as const)
+              : ("EXTERIOR_ONLY" as const),
+          paneCount: details.finalizeOnSite
+            ? undefined
+            : parsePositiveCount(details.windowEstimate) || undefined,
+          planId: selectedProductId,
+          propertyType: "residential" as const,
+          stories: Number(details.stories) || 1,
+        },
+      ];
+    }
+
+    return [
+      {
+        ...baseItem,
+        itemKind:
+          serviceId === "lawncare"
+            ? CheckoutItemKind.Lawncare
+            : CheckoutItemKind.Laundry,
+        planId: selectedProductId,
+      },
+    ];
+  });
+};
+
 const getPaymentOptionsForDraft = (draft: BookingDraft) => {
   if (hasSubscriptionCheckout(draft)) {
     return [subscriptionPaymentOption];
@@ -1046,6 +1101,27 @@ const StepButton = ({
     {children}
     <ArrowRight className="size-4" />
   </Button>
+);
+
+const StepActions = ({
+  children,
+  onBack,
+}: {
+  children: React.ReactNode;
+  onBack: () => void;
+}) => (
+  <div className="mt-4 flex flex-wrap items-center gap-3">
+    <Button
+      className="h-11 rounded-full border-slate-200 bg-white px-5 font-bold text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+      onClick={onBack}
+      type="button"
+      variant="outline"
+    >
+      <ArrowLeft className="size-4" />
+      Back
+    </Button>
+    {children}
+  </div>
 );
 
 const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
@@ -1523,6 +1599,8 @@ const BookingWizard = (props: BookingWizardProps) => {
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isAddressValidated, setIsAddressValidated] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
@@ -1671,6 +1749,62 @@ const BookingWizard = (props: BookingWizardProps) => {
     }
     setDraftValue("address", validated.label);
     setIsAddressValidated(true);
+  };
+
+  const startSecureCheckout = async () => {
+    if (!validateStep(5)) {
+      return;
+    }
+
+    setCheckoutError("");
+    setIsCheckoutSubmitting(true);
+
+    try {
+      await persistQuoteRequest({
+        draft,
+        lastCompletedStep: 6,
+        status: "checkout_started",
+        trackingId: quoteRequestTrackingId,
+      });
+
+      const response = await fetch(
+        new URL("/api/checkout/confirm", getServerUrl()),
+        {
+          body: JSON.stringify({
+            address: draft.address,
+            contact: draft.contact,
+            items: getCheckoutItems(draft),
+            paymentOption: draft.paymentOption,
+          }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        }
+      );
+
+      const payload = (await response.json()) as {
+        checkoutUrl?: string;
+        error?: unknown;
+      };
+
+      if (!(response.ok && payload.checkoutUrl)) {
+        setCheckoutError(
+          typeof payload.error === "string"
+            ? payload.error
+            : "Checkout could not be started. Please review your details and try again."
+        );
+        return;
+      }
+
+      window.location.assign(payload.checkoutUrl);
+    } catch {
+      setCheckoutError(
+        "Checkout could not be started. Please try again in a moment."
+      );
+    } finally {
+      setIsCheckoutSubmitting(false);
+    }
   };
 
   const selectedCombos = comboSubscriptions.filter((combo) =>
@@ -1881,7 +2015,9 @@ const BookingWizard = (props: BookingWizardProps) => {
               Yes, send text updates about this quote and appointment.
             </label>
           </div>
-          <StepButton onClick={() => continueFromStep(1)} />
+          <StepActions onBack={() => goToStep(0)}>
+            <StepButton onClick={() => continueFromStep(1)} />
+          </StepActions>
         </StepPanel>
 
         <StepPanel
@@ -2255,19 +2391,13 @@ const BookingWizard = (props: BookingWizardProps) => {
                       })
                     }
                   />
-                  <Button
-                    className="h-11 w-full rounded-2xl bg-slate-950 font-bold text-white hover:bg-slate-800"
-                    onClick={() => completeServiceDetails("window-washing")}
-                    type="button"
-                  >
-                    Save Window Details
-                    <Check className="size-4" />
-                  </Button>
                 </div>
               </QuestionAccordion>
             ) : null}
 
-            <StepButton onClick={() => continueFromStep(2)} />
+            <StepActions onBack={() => goToStep(1)}>
+              <StepButton onClick={() => continueFromStep(2)} />
+            </StepActions>
           </div>
         </StepPanel>
 
@@ -2297,7 +2427,9 @@ const BookingWizard = (props: BookingWizardProps) => {
               {error}
             </p>
           ))}
-          <StepButton onClick={() => continueFromStep(3)} />
+          <StepActions onBack={() => goToStep(2)}>
+            <StepButton onClick={() => continueFromStep(3)} />
+          </StepActions>
         </StepPanel>
 
         <StepPanel
@@ -2417,7 +2549,9 @@ const BookingWizard = (props: BookingWizardProps) => {
               </button>
             ))}
           </div>
-          <StepButton onClick={() => continueFromStep(4)} />
+          <StepActions onBack={() => goToStep(3)}>
+            <StepButton onClick={() => continueFromStep(4)} />
+          </StepActions>
         </StepPanel>
 
         <StepPanel
@@ -2602,25 +2736,21 @@ const BookingWizard = (props: BookingWizardProps) => {
                       {errors.paymentOption}
                     </p>
                   ) : null}
+                  {checkoutError ? (
+                    <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                      {checkoutError}
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!draft.paymentOption}
-                  onClick={() => {
-                    if (!validateStep(5)) {
-                      return;
-                    }
-
-                    void persistQuoteRequest({
-                      draft,
-                      lastCompletedStep: 6,
-                      status: "checkout_started",
-                      trackingId: quoteRequestTrackingId,
-                    });
-                  }}
+                  disabled={!draft.paymentOption || isCheckoutSubmitting}
+                  onClick={() => void startSecureCheckout()}
                   type="button"
                 >
-                  Continue to secure checkout
+                  {isCheckoutSubmitting
+                    ? "Starting secure checkout..."
+                    : "Continue to secure checkout"}
                   <ArrowRight className="size-4" />
                 </Button>
               </div>

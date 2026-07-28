@@ -1,4 +1,7 @@
-import { optionalPhoneSchema } from "@callcastlecare/api/validation";
+import {
+  optionalPhoneSchema,
+  phoneSchema,
+} from "@callcastlecare/api/validation";
 import { z } from "zod";
 
 export const timingTypeSchema = z.enum(["asap", "scheduled"]);
@@ -73,7 +76,13 @@ export const checkoutPreviewRequestSchema = z
 
 export const checkoutConfirmRequestSchema = checkoutPreviewRequestSchema.extend(
   {
+    contact: z.object({
+      email: z.email(),
+      name: z.string().trim().min(2),
+      phone: phoneSchema,
+    }),
     paymentMethodId: z.string().min(1).optional(),
+    paymentOption: z.enum(["deposit_invoice", "pay_full", "deposit_cash"]),
   }
 );
 

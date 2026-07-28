@@ -94,13 +94,21 @@ export interface CheckoutPreviewResponse {
 }
 
 export interface CheckoutConfirmRequest extends CheckoutPreviewRequest {
+  contact: {
+    email: string;
+    name: string;
+    phone: string;
+  };
+  paymentOption: "deposit_cash" | "deposit_invoice" | "pay_full";
   paymentMethodId?: string;
 }
 
 export interface CheckoutConfirmResponse {
   checkoutSessionId: number;
   clientSecret?: string;
+  checkoutUrl?: string;
   paymentIntentId?: string;
+  stripeCheckoutSessionId?: string;
   status: "pending_payment" | "paid";
 }
 

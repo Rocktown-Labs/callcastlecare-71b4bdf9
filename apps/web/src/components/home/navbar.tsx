@@ -134,57 +134,84 @@ export default function Navbar() {
 
           <Button
             aria-expanded={isMenuOpen}
-            aria-label="Toggle menu"
-            className="text-white md:hidden"
+            aria-label="Open menu"
+            className="rounded-full text-white md:hidden"
             onClick={toggleMenu}
             size="icon"
             variant="ghost"
           >
-            {isMenuOpen ? (
-              <X className="size-5" />
-            ) : (
-              <Menu className="size-5" />
-            )}
+            <Menu className="size-5" />
           </Button>
         </div>
-
-        {isMenuOpen ? (
-          <div className="border-t border-white/10 py-4 md:hidden">
+      </div>
+      {isMenuOpen ? (
+        <div className="fixed inset-0 top-20 z-40 md:hidden">
+          <button
+            aria-label="Close menu"
+            className="absolute inset-0 bg-slate-950/70"
+            onClick={closeMenu}
+            type="button"
+          />
+          <dialog
+            aria-modal="true"
+            className="absolute inset-x-0 bottom-0 rounded-t-[2rem] border border-white/10 bg-slate-950 p-5 text-white shadow-2xl shadow-slate-950/60"
+            open
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <p className="text-sm font-black uppercase tracking-widest text-white/50">
+                Menu
+              </p>
+              <Button
+                aria-label="Close menu"
+                className="rounded-full text-white"
+                onClick={closeMenu}
+                size="icon"
+                variant="ghost"
+              >
+                <X className="size-5" />
+              </Button>
+            </div>
             <nav className="grid gap-3">
               <a
-                className="text-base font-medium text-white/80"
+                className="rounded-full border border-white/10 px-4 py-3 text-base font-bold text-white/85"
                 href={sectionLinks[0].href}
                 onClick={closeMenu}
               >
                 Services
               </a>
-              {serviceCatalog.map((service) => (
-                <Link
-                  className="rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70"
-                  key={service.id}
-                  onClick={closeMenu}
-                  params={{ serviceId: service.id }}
-                  to="/services/$serviceId"
-                >
-                  {service.shortName}
-                </Link>
-              ))}
+              <div className="grid gap-2">
+                {serviceCatalog.map((service) => {
+                  const Icon = service.icon;
+                  return (
+                    <Link
+                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/75"
+                      key={service.id}
+                      onClick={closeMenu}
+                      params={{ serviceId: service.id }}
+                      to="/services/$serviceId"
+                    >
+                      <Icon className="size-4 text-lime-300" />
+                      {service.shortName}
+                    </Link>
+                  );
+                })}
+              </div>
               <Link
-                className="text-base font-medium text-white/80"
+                className="rounded-full border border-white/10 px-4 py-3 text-base font-bold text-white/85"
                 onClick={closeMenu}
                 to="/earn"
               >
                 Earn
               </Link>
               <Link onClick={closeMenu} search={{}} to="/book">
-                <Button className="mt-2 w-full rounded-full bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200">
+                <Button className="mt-2 h-12 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
                   Get started
                 </Button>
               </Link>
             </nav>
-          </div>
-        ) : null}
-      </div>
+          </dialog>
+        </div>
+      ) : null}
     </header>
   );
 }
