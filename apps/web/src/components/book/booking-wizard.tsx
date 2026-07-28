@@ -803,6 +803,56 @@ const getSubscriptionPriceCents = (draft: BookingDraft) => {
   return null;
 };
 
+const getComboPriceCents = (draft: BookingDraft, comboId: string) =>
+  getSubscriptionPriceCents({ ...draft, subscriptionId: comboId });
+
+const getLawnTierLabel = (draft: BookingDraft) => {
+  const tier = getLawnSubscriptionTier(draft);
+
+  if (tier === "large") {
+    return "large lot";
+  }
+
+  if (tier === "medium") {
+    return "medium lot";
+  }
+
+  return "small lot";
+};
+
+const getComboIncludedItems = (
+  combo: (typeof comboSubscriptions)[number],
+  draft: BookingDraft
+) =>
+  combo.requiredServices.map((serviceId) => {
+    if (serviceId === "lawncare") {
+      const cadence =
+        combo.id === "monthly_castle_care" ? "Monthly" : "Bi-weekly";
+      return {
+        description: `${getLawnTierLabel(draft)} Groundskeeper service`,
+        name: `${cadence} lawn care`,
+      };
+    }
+
+    if (serviceId === "laundry") {
+      return {
+        description: "Weekly pickup and delivery with bedding included",
+        name: "Royal Wash Supreme",
+      };
+    }
+
+    return {
+      description: "Monthly exterior glass care using the standard estimate",
+      name: "Royal Pane Monthly",
+    };
+  });
+
+const formatServiceList = (serviceIds: readonly ServiceId[]) =>
+  new Intl.ListFormat("en-US", {
+    style: "long",
+    type: "conjunction",
+  }).format(serviceIds.map(getServiceLabel));
+
 const getProductSelectionName = (
   product: ProductOption,
   serviceId: ServiceId
@@ -2256,6 +2306,18 @@ const BookingWizard = (props: BookingWizardProps) => {
           title="Subscription options"
         >
           <div className="grid gap-3">
+            {shownCombos.length > 0 ? (
+              <div className="rounded-2xl border border-lime-200 bg-lime-50 p-4">
+                <p className="text-sm font-bold text-slate-950">
+                  You picked {formatServiceList(draft.services)}.
+                </p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Upgrade these services into one recurring CastleCare plan and
+                  save on the monthly care package.
+                </p>
+              </div>
+            ) : null}
+
             <button
               className={cn(
                 "rounded-2xl border p-4 text-left transition-colors",
@@ -2313,19 +2375,40 @@ const BookingWizard = (props: BookingWizardProps) => {
                 }}
                 type="button"
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <Crown className="size-4 text-lime-700" />
-                  <p className="font-semibold text-slate-950">{combo.name}</p>
-                  <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
-                    {combo.discountLabel}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Crown className="size-4 text-lime-700" />
+                    <p className="font-semibold text-slate-950">{combo.name}</p>
+                    <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
+                      Recommended
+                    </span>
+                  </div>
+                  <span className="font-black text-lime-700">
+                    {formatCents(getComboPriceCents(draft, combo.id) ?? 0)}
                   </span>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   {combo.description}
                 </p>
-                <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
-                  {combo.frequency}
-                </p>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  {getComboIncludedItems(combo, draft).map((item) => (
+                    <span
+                      className="rounded-2xl border border-white/70 bg-white/80 p-3"
+                      key={item.name}
+                    >
+                      <span className="block text-xs font-bold text-slate-950">
+                        {item.name}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        {item.description}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                  <span>{combo.frequency}</span>
+                  <span>{combo.discountLabel}</span>
+                </div>
               </button>
             ))}
           </div>
@@ -2351,76 +2434,101 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </p>
               </div>
               <div className="space-y-3 p-5 text-sm">
-                {draft.services.map((serviceId) => {
-                  const product = productsByService[serviceId].find(
-                    ({ id }) => id === draft.products[serviceId]
-                  );
-
-                  return (
-                    <div
-                      className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3"
-                      key={serviceId}
-                    >
+                {selectedCombo && planEstimateCents !== null ? (
+                  <div className="rounded-2xl border border-lime-200 bg-lime-50 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                       <span>
                         <span className="block font-semibold text-slate-950">
-                          {product?.name ?? getServiceLabel(serviceId)}
+                          {selectedCombo.name}
                         </span>
                         <span className="text-xs text-slate-500">
-                          {getServiceLabel(serviceId)}
+                          {selectedCombo.frequency} · recurring package
                         </span>
                       </span>
-                      <span className="font-black text-slate-950">
-                        {product
-                          ? formatCents(
-                              getProductPriceCents(draft, serviceId, product)
-                            )
-                          : formatCents(0)}
+                      <span className="font-black text-lime-700">
+                        {formatCents(planEstimateCents)}
                       </span>
                     </div>
-                  );
-                })}
-                {quoteAddOns.map((addOn) => (
-                  <div
-                    className="flex justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3"
-                    key={addOn.name}
-                  >
-                    <span>
-                      <span className="block font-semibold text-slate-950">
-                        {addOn.name}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {addOn.description}
-                      </span>
-                    </span>
-                    <span className="font-black text-slate-950">
-                      {formatCents(addOn.priceCents)}
-                    </span>
+                    <div className="mt-3 grid gap-2 md:grid-cols-3">
+                      {getComboIncludedItems(selectedCombo, draft).map(
+                        (item) => (
+                          <span
+                            className="rounded-2xl bg-white/80 p-3"
+                            key={item.name}
+                          >
+                            <span className="block text-xs font-bold text-slate-950">
+                              {item.name}
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-500">
+                              {item.description}
+                            </span>
+                          </span>
+                        )
+                      )}
+                    </div>
+                    <div className="mt-3 flex justify-between text-xs font-semibold text-lime-700">
+                      <span>One-time service estimate</span>
+                      <span>{formatCents(subtotalCents)}</span>
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  <>
+                    {draft.services.map((serviceId) => {
+                      const product = getSelectedProduct(draft, serviceId);
+
+                      return (
+                        <div
+                          className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3"
+                          key={serviceId}
+                        >
+                          <span>
+                            <span className="block font-semibold text-slate-950">
+                              {product?.name ?? getServiceLabel(serviceId)}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {getServiceLabel(serviceId)}
+                            </span>
+                          </span>
+                          <span className="font-black text-slate-950">
+                            {product
+                              ? formatCents(
+                                  getProductPriceCents(
+                                    draft,
+                                    serviceId,
+                                    product
+                                  )
+                                )
+                              : formatCents(0)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {quoteAddOns.map((addOn) => (
+                      <div
+                        className="flex justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3"
+                        key={addOn.name}
+                      >
+                        <span>
+                          <span className="block font-semibold text-slate-950">
+                            {addOn.name}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {addOn.description}
+                          </span>
+                        </span>
+                        <span className="font-black text-slate-950">
+                          {formatCents(addOn.priceCents)}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
                 <div className="border-t border-slate-200 pt-3">
                   {selectedCombo && planEstimateCents !== null ? (
                     <div className="mb-3 rounded-2xl border border-lime-200 bg-lime-50 p-3">
-                      <div className="flex justify-between gap-3">
-                        <span>
-                          <span className="block font-semibold text-slate-950">
-                            {selectedCombo.name}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {selectedCombo.frequency} ·{" "}
-                            {selectedCombo.discountLabel}
-                          </span>
-                        </span>
-                        <span className="font-black text-lime-700">
-                          {formatCents(planEstimateCents)}
-                        </span>
-                      </div>
                       <div className="mt-2 flex justify-between text-xs font-semibold text-lime-700">
                         <span>Estimated plan savings</span>
                         <span>-{formatCents(planSavingsCents)}</span>
-                      </div>
-                      <div className="mt-2 flex justify-between text-xs text-lime-700">
-                        <span>One-time service estimate</span>
-                        <span>{formatCents(subtotalCents)}</span>
                       </div>
                     </div>
                   ) : null}
