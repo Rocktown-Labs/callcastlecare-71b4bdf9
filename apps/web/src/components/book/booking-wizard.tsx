@@ -575,6 +575,20 @@ const selectedProductTotal = (draft: BookingDraft) => {
   return total;
 };
 
+const selectedProductTotalForServices = (
+  draft: BookingDraft,
+  serviceIds: readonly ServiceId[]
+) => {
+  let total = 0;
+
+  for (const serviceId of serviceIds) {
+    const product = getSelectedProduct(draft, serviceId);
+    total += product ? getProductPriceCents(draft, serviceId, product) : 0;
+  }
+
+  return total;
+};
+
 const getQuoteAddOns = (draft: BookingDraft) => {
   const addOns: {
     description: string;
@@ -615,6 +629,25 @@ const getQuoteAddOns = (draft: BookingDraft) => {
   }
 
   return addOns;
+};
+
+const getQuoteAddOnTotalForServices = (
+  draft: BookingDraft,
+  serviceIds: readonly ServiceId[]
+) => {
+  let total = 0;
+  const scopedDraft = {
+    ...draft,
+    services: serviceIds.filter((serviceId) =>
+      draft.services.includes(serviceId)
+    ),
+  };
+
+  for (const addOn of getQuoteAddOns(scopedDraft)) {
+    total += addOn.priceCents;
+  }
+
+  return total;
 };
 
 const getServiceLabel = (serviceId: ServiceId) =>
@@ -857,6 +890,55 @@ const getSubscriptionPriceCents = (draft: BookingDraft) => {
 
 const getComboPriceCents = (draft: BookingDraft, comboId: string) =>
   getSubscriptionPriceCents({ ...draft, subscriptionId: comboId });
+
+const getEligibleCombos = (serviceIds: readonly ServiceId[]) => {
+  const selectedServiceIds = new Set(serviceIds);
+  const selectedCombos = comboSubscriptions.filter((combo) =>
+    combo.requiredServices.every((serviceId) =>
+      selectedServiceIds.has(serviceId)
+    )
+  );
+
+  return serviceIds.length === 3
+    ? selectedCombos.filter((combo) => combo.requiredServices.length === 3)
+    : selectedCombos.filter(
+        (combo) => combo.requiredServices.length === serviceIds.length
+      );
+};
+
+const isSubscriptionValidForDraft = (draft: BookingDraft) => {
+  if (!draft.subscriptionId || draft.subscriptionId === "one_time") {
+    return true;
+  }
+
+  return getEligibleCombos(draft.services).some(
+    (combo) => combo.id === draft.subscriptionId
+  );
+};
+
+const pruneProductsForServices = (draft: BookingDraft) =>
+  Object.fromEntries(
+    Object.entries(draft.products).filter(([id]) =>
+      draft.services.includes(id as ServiceId)
+    )
+  ) as BookingDraft["products"];
+
+const sanitizeDraftForCurrentCart = (draft: BookingDraft): BookingDraft => {
+  const nextDraft = {
+    ...draft,
+    products: pruneProductsForServices(draft),
+  };
+
+  if (isSubscriptionValidForDraft(nextDraft)) {
+    return nextDraft;
+  }
+
+  return {
+    ...nextDraft,
+    paymentOption: "",
+    subscriptionId: "",
+  };
+};
 
 const getLawnTierLabel = (draft: BookingDraft) => {
   const tier = getLawnSubscriptionTier(draft);
@@ -1587,7 +1669,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     useState(hasStoredDraft);
   const quoteRequestTrackingId = getOrCreateTrackingId();
   const [draft, setDraft] = useState<BookingDraft>(() =>
-    buildInitialDraft(props, storedDraft)
+    sanitizeDraftForCurrentCart(buildInitialDraft(props, storedDraft))
   );
   const [activeStep, setActiveStep] = useState<WizardStep>(() =>
     resolveInitialStep(props, storedDraft)
@@ -1647,9 +1729,8 @@ const BookingWizard = (props: BookingWizardProps) => {
   };
 
   const resumeStoredDraft = () => {
-    const nextDraft = buildInitialDraft(
-      { ...props, initialResumeDraft: true },
-      storedDraft
+    const nextDraft = sanitizeDraftForCurrentCart(
+      buildInitialDraft({ ...props, initialResumeDraft: true }, storedDraft)
     );
     setDraft(nextDraft);
     setOpenDetailService(nextDraft.services[0] ?? null);
@@ -1672,6 +1753,16 @@ const BookingWizard = (props: BookingWizardProps) => {
         ? current.services.filter((id) => id !== serviceId)
         : [...current.services, serviceId];
       const nextServices = services;
+      const nextDraft = {
+        ...current,
+        paymentOption: "",
+        products: pruneProductsForServices({
+          ...current,
+          services: nextServices,
+        }),
+        services: nextServices,
+        subscriptionId: "",
+      };
 
       if (!openDetailService || !nextServices.includes(openDetailService)) {
         setOpenDetailService(nextServices[0] ?? null);
@@ -1680,10 +1771,7 @@ const BookingWizard = (props: BookingWizardProps) => {
         setOpenProductService(nextServices[0] ?? null);
       }
 
-      return {
-        ...current,
-        services: nextServices,
-      };
+      return nextDraft;
     });
   };
 
@@ -1716,10 +1804,9 @@ const BookingWizard = (props: BookingWizardProps) => {
     );
     setDraft((current) => ({
       ...current,
-      paymentOption: selectedProduct?.recurring
-        ? "pay_full"
-        : current.paymentOption,
+      paymentOption: selectedProduct?.recurring ? "pay_full" : "",
       products: { ...current.products, [serviceId]: productId },
+      subscriptionId: "",
     }));
     const currentIndex = draft.services.indexOf(serviceId);
     const nextService = draft.services[currentIndex + 1];
@@ -1807,17 +1894,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     }
   };
 
-  const selectedCombos = comboSubscriptions.filter((combo) =>
-    combo.requiredServices.every((serviceId) =>
-      draft.services.includes(serviceId)
-    )
-  );
-  const shownCombos =
-    draft.services.length === 3
-      ? selectedCombos.filter((combo) => combo.requiredServices.length === 3)
-      : selectedCombos.filter(
-          (combo) => combo.requiredServices.length === draft.services.length
-        );
+  const shownCombos = getEligibleCombos(draft.services);
   const quoteAddOns = getQuoteAddOns(draft);
   let addOnTotalCents = 0;
   for (const addOn of quoteAddOns) {
@@ -1828,6 +1905,11 @@ const BookingWizard = (props: BookingWizardProps) => {
     draft.subscriptionId && draft.subscriptionId !== "one_time"
       ? comboSubscriptions.find((combo) => combo.id === draft.subscriptionId)
       : null;
+  const selectedComboServiceIds = selectedCombo?.requiredServices ?? [];
+  const selectedComboOneTimeCents = selectedCombo
+    ? selectedProductTotalForServices(draft, selectedComboServiceIds) +
+      getQuoteAddOnTotalForServices(draft, selectedComboServiceIds)
+    : 0;
   const hasRecurringProductSelected = hasSelectedRecurringProduct(draft);
   const hasSubscriptionSelected = hasSubscriptionCheckout(draft);
   const planEstimateCents = selectedCombo
@@ -1836,7 +1918,7 @@ const BookingWizard = (props: BookingWizardProps) => {
   const planSavingsCents =
     planEstimateCents === null
       ? 0
-      : Math.max(0, subtotalCents - planEstimateCents);
+      : selectedComboOneTimeCents - planEstimateCents;
   const estimatedTotalCents = planEstimateCents ?? subtotalCents;
   const depositCents = 5000;
   const isLaundryOnly =
@@ -2481,7 +2563,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               </p>
             </button>
 
-            {shownCombos.length === 0 ? (
+            {shownCombos.length === 0 && hasRecurringProductSelected ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <p className="font-semibold text-slate-950">
                   Recurring service plan
@@ -2607,7 +2689,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                     </div>
                     <div className="mt-3 flex justify-between text-xs font-semibold text-lime-700">
                       <span>One-time service estimate</span>
-                      <span>{formatCents(subtotalCents)}</span>
+                      <span>{formatCents(selectedComboOneTimeCents)}</span>
                     </div>
                   </div>
                 ) : (
@@ -2667,7 +2749,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                     <div className="mb-3 rounded-2xl border border-lime-200 bg-lime-50 p-3">
                       <div className="mt-2 flex justify-between text-xs font-semibold text-lime-700">
                         <span>Estimated plan savings</span>
-                        <span>-{formatCents(planSavingsCents)}</span>
+                        <span>
+                          {planSavingsCents >= 0 ? "-" : "+"}
+                          {formatCents(Math.abs(planSavingsCents))}
+                        </span>
                       </div>
                     </div>
                   ) : null}

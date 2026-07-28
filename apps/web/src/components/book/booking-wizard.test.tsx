@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BookingWizard from "./booking-wizard";
 
@@ -33,7 +33,20 @@ const clickFirstContinue = () => {
   fireEvent.click(button);
 };
 
+const clickLastText = (text: string) => {
+  const element = screen.getAllByText(text).at(-1);
+  if (!element) {
+    throw new Error(`${text} was not rendered.`);
+  }
+  fireEvent.click(element);
+};
+
 describe("BookingWizard", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    navigate.mockClear();
+  });
+
   it("starts blank on /book and validates the schedule step", async () => {
     mockFetch();
 
@@ -148,5 +161,63 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Enter a valid phone number.")).toBeTruthy();
     expect(screen.queryByText("Service details")).toBeNull();
+  });
+
+  it("keeps combo savings in sync with the selected one-time products", async () => {
+    mockFetch();
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-07-28"
+        initialServices={["lawncare", "laundry", "window-washing"]}
+      />
+    );
+
+    clickFirstContinue();
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), {
+      target: { value: "Taylor Customer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "5015550123" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "customer@example.com" },
+    });
+    clickFirstContinue();
+
+    expect(await screen.findByText("Service details")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /low/iu }));
+    clickLastText("Include bedding");
+    fireEvent.click(screen.getByRole("button", { name: /inside and out/iu }));
+    fireEvent.click(screen.getByRole("button", { name: /^1$/u }));
+    fireEvent.change(screen.getByPlaceholderText("Around 20"), {
+      target: { value: "20" },
+    });
+    clickFirstContinue();
+
+    expect(await screen.findByText("Choose products")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /groundskeeper small lot/iu })
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /royal wash \+ bedding/iu })
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /royal pane detail/iu })
+    );
+
+    expect(await screen.findByText("Subscription options")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /crown estate trio/iu })
+    );
+    clickFirstContinue();
+
+    expect(await screen.findByText("Review and reserve")).toBeTruthy();
+    expect(screen.getByText("One-time service estimate")).toBeTruthy();
+    expect(screen.getAllByText("$335.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("-$35.00")).toBeTruthy();
   });
 });
