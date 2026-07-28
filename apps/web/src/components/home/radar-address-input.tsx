@@ -123,7 +123,7 @@ export const RadarAddressInput = ({
       ) : null}
 
       {shouldShowSuggestions ? (
-        <ul className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <ul className="absolute z-50 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
           {shownSuggestions.map((suggestion) => (
             <li key={suggestion.id}>
               <button

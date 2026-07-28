@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import BookingWizard from "@/components/book/booking-wizard";
 import MarketingLayout from "@/components/home/marketing-layout";
+import { bookingTimeSlots } from "@/lib/scheduling";
 import { serviceIdSchema } from "@/lib/service-catalog";
 import type { ServiceId } from "@/lib/service-catalog";
 
@@ -25,7 +26,14 @@ const bookingSearchSchema = z.object({
   step: z
     .enum(["schedule", "contact", "details", "products", "plans", "invoice"])
     .optional(),
-  timeSlot: z.string().optional(),
+  timeSlot: z.preprocess(
+    (value) =>
+      typeof value === "string" &&
+      bookingTimeSlots.some((slot) => slot === value)
+        ? value
+        : undefined,
+    z.enum(bookingTimeSlots).optional()
+  ),
 });
 
 const parseServices = (services?: string, service?: ServiceId) => {

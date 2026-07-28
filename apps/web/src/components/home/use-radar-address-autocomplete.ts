@@ -19,35 +19,55 @@ const toStringOrNull = (value: unknown) =>
 const toNumberOrNull = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-export const parseRadarSuggestions = (
-  payload: unknown
-): RadarAddressSuggestion[] => {
+const getRawSuggestions = (payload: unknown) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
   if (!payload || typeof payload !== "object") {
     return [];
   }
 
   const response = payload as Record<string, unknown>;
-  const rawSuggestions = Array.isArray(response.suggestions)
-    ? response.suggestions
-    : [];
+  if (Array.isArray(response.suggestions)) {
+    return response.suggestions;
+  }
+  if (Array.isArray(response.addresses)) {
+    return response.addresses;
+  }
+  if (Array.isArray(response.results)) {
+    return response.results;
+  }
 
+  return [];
+};
+
+const getSuggestionLabel = (candidate: Record<string, unknown>) =>
+  toStringOrNull(candidate.formattedAddress) ??
+  toStringOrNull(candidate.label) ??
+  toStringOrNull(candidate.address) ??
+  toStringOrNull(candidate.description);
+
+const getSuggestionId = (candidate: Record<string, unknown>, index: number) =>
+  `${toStringOrNull(candidate.placeId) ?? toStringOrNull(candidate.id) ?? "address"}-${index}`;
+
+export const parseRadarSuggestions = (
+  payload: unknown
+): RadarAddressSuggestion[] => {
   const suggestions: RadarAddressSuggestion[] = [];
-  for (const [index, rawSuggestion] of rawSuggestions.entries()) {
+  for (const [index, rawSuggestion] of getRawSuggestions(payload).entries()) {
     if (!rawSuggestion || typeof rawSuggestion !== "object") {
       continue;
     }
 
     const candidate = rawSuggestion as Record<string, unknown>;
-    const label =
-      toStringOrNull(candidate.formattedAddress) ??
-      toStringOrNull(candidate.label) ??
-      toStringOrNull(candidate.address);
+    const label = getSuggestionLabel(candidate);
     if (!label) {
       continue;
     }
 
     suggestions.push({
-      id: `${toStringOrNull(candidate.placeId) ?? "google"}-${index}`,
+      id: getSuggestionId(candidate, index),
       label,
       latitude:
         toNumberOrNull(candidate.latitude) ??

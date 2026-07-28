@@ -2,7 +2,7 @@ import { Button } from "@callcastlecare/ui/components/button";
 import { Label } from "@callcastlecare/ui/components/label";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
-import { Calendar, Clock } from "lucide-react";
+import { Calendar, ChevronDown, Clock } from "lucide-react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,11 +15,20 @@ import { RadarAddressInput } from "./radar-address-input";
 import ServiceAvailability from "./service-availability";
 import type { RadarAddressSuggestion } from "./use-radar-address-autocomplete";
 
+const todayDateValue = () => new Date().toISOString().slice(0, 10);
+
 const bookingSchema = z.object({
   address: z.string().min(5, "Enter a service address."),
-  date: z.string().min(1, "Choose a date."),
+  date: z
+    .string()
+    .min(1, "Choose a date.")
+    .refine((value) => !value || value >= todayDateValue(), {
+      message: "Choose today or a future date.",
+    }),
   services: z.array(serviceIdSchema).min(1),
-  timeSlot: z.string().min(1, "Choose a time."),
+  timeSlot: z.enum(bookingTimeSlots, {
+    message: "Choose one of the available time windows.",
+  }),
 });
 
 type ServiceId = (typeof serviceOptions)[number]["id"];
@@ -183,14 +192,18 @@ export default function HeroSection() {
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
                 <input
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
-                  min={new Date().toISOString().slice(0, 10)}
+                  className="h-11 w-full appearance-none rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-10 text-sm text-white outline-none focus:border-lime-300/50 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
+                  min={todayDateValue()}
                   onChange={(event) => {
                     setDate(event.target.value);
                     setErrors((current) => ({ ...current, date: undefined }));
                   }}
                   type="date"
                   value={date}
+                />
+                <ChevronDown
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-white/45"
                 />
               </div>
               {errors.date ? (
@@ -203,7 +216,7 @@ export default function HeroSection() {
               <div className="relative">
                 <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
                 <select
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-slate-950 pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/50"
+                  className="h-11 w-full appearance-none truncate rounded-2xl border border-white/10 bg-slate-950 pl-10 pr-10 text-sm font-semibold text-white outline-none focus:border-lime-300/50"
                   onChange={(event) => setSelectedTimeSlot(event.target.value)}
                   value={selectedTimeSlot}
                 >
@@ -211,6 +224,10 @@ export default function HeroSection() {
                     <option key={timeSlot}>{timeSlot}</option>
                   ))}
                 </select>
+                <ChevronDown
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-lime-200"
+                />
               </div>
             </div>
           </div>

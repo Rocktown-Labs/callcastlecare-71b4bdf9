@@ -44,6 +44,7 @@ import type { RadarAddressSuggestion } from "../home/use-radar-address-autocompl
 
 const storageKey = "callcastlecare.booking-draft.v1";
 const trackingKey = "callcastlecare.quote-request-id.v1";
+const todayDateValue = () => new Date().toISOString().slice(0, 10);
 
 const grassHeights = [
   {
@@ -192,8 +193,6 @@ const fullServiceWindowRateCents = 1000;
 const windowJobMinimumCents = 10_000;
 const tallGrassFeeCents = 5000;
 const screenWashFeePerScreenCents = 250;
-const minutesPerHour = 60;
-const serviceWindowHours = 2;
 const stepKeys = [
   "schedule",
   "contact",
@@ -205,9 +204,16 @@ const stepKeys = [
 
 const basicsSchema = z.object({
   address: z.string().min(5, "Enter a service address."),
-  date: z.string().min(1, "Choose a date."),
+  date: z
+    .string()
+    .min(1, "Choose a date.")
+    .refine((value) => !value || value >= todayDateValue(), {
+      message: "Choose today or a future date.",
+    }),
   services: z.array(serviceIdSchema).min(1, "Select at least one service."),
-  timeSlot: z.string().min(1, "Choose a time."),
+  timeSlot: z.enum(bookingTimeSlots, {
+    message: "Choose one of the available time windows.",
+  }),
 });
 
 const contactSchema = z.object({
@@ -218,6 +224,66 @@ const contactSchema = z.object({
     .regex(/^\D*(?:\d\D*){10,}$/u, "Enter a valid phone number."),
   smsUpdates: z.boolean(),
 });
+
+const lawncareDetailsSchema = z.object({
+  grassHeight: z.enum(["low", "medium", "tall"], {
+    message: "Choose a grass height.",
+  }),
+});
+
+const laundryDetailsSchema = z.object({
+  bedding: z.enum(["none", "with-bedding"], {
+    message: "Choose a bedding option.",
+  }),
+});
+
+const positiveCountStringSchema = z
+  .string()
+  .trim()
+  .refine((value) => Number.isInteger(Number(value)) && Number(value) > 0, {
+    message: "Enter a positive whole number.",
+  });
+
+const windowDetailsSchema = z
+  .object({
+    cleaningScope: z.enum(["both", "exterior"], {
+      message: "Choose exterior only or inside and out.",
+    }),
+    finalizeOnSite: z.boolean(),
+    screenCount: z.string(),
+    stories: z.enum(["1", "2", "3"], {
+      message: "Choose the number of stories.",
+    }),
+    washScreens: z.boolean(),
+    windowEstimate: z.string(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.finalizeOnSite) {
+      const parsedWindowEstimate = positiveCountStringSchema.safeParse(
+        value.windowEstimate
+      );
+      if (!parsedWindowEstimate.success) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Enter a positive window estimate or choose on-site quote.",
+          path: ["windowEstimate"],
+        });
+      }
+    }
+
+    if (value.washScreens && !value.finalizeOnSite) {
+      const parsedScreenCount = positiveCountStringSchema.safeParse(
+        value.screenCount
+      );
+      if (!parsedScreenCount.success) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Enter the number of screens.",
+          path: ["screenCount"],
+        });
+      }
+    }
+  });
 
 interface ProductOption {
   description: string;
@@ -350,44 +416,6 @@ const getCalendarDays = (monthDate: Date) => {
     ...Array.from({ length: leadingBlankCount }, () => null),
     ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
-};
-
-const timeSlotToInputTime = (slot: string) => {
-  const match = /^(?<hour>\d{1,2}):(?<minute>\d{2})\s(?<meridiem>AM|PM)/u.exec(
-    slot
-  );
-  const groups = match?.groups;
-  if (!groups) {
-    return "10:00";
-  }
-
-  const hour = Number(groups.hour);
-  let normalizedHour = hour;
-  if (groups.meridiem === "PM" && hour !== 12) {
-    normalizedHour = hour + 12;
-  }
-  if (groups.meridiem === "AM" && hour === 12) {
-    normalizedHour = 0;
-  }
-
-  return `${String(normalizedHour).padStart(2, "0")}:${groups.minute}`;
-};
-
-const formatTimeRange = (value: string) => {
-  const [hourValue = "10", minuteValue = "00"] = value.split(":");
-  const hour = Number(hourValue);
-  const minute = Number(minuteValue);
-  const start = new Date();
-  start.setHours(hour, minute, 0, 0);
-  const end = new Date(
-    start.getTime() + serviceWindowHours * minutesPerHour * 60_000
-  );
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
-  return `${formatter.format(start)} - ${formatter.format(end)}`;
 };
 
 const parseStoredDraft = () => {
@@ -581,13 +609,13 @@ const addServiceDetailErrors = (
 ) => {
   if (
     draft.services.includes("lawncare") &&
-    !draft.serviceDetails.lawncare.grassHeight
+    !lawncareDetailsSchema.safeParse(draft.serviceDetails.lawncare).success
   ) {
     nextErrors.grassHeight = "Choose a grass height.";
   }
   if (
     draft.services.includes("laundry") &&
-    !draft.serviceDetails.laundry.bedding
+    !laundryDetailsSchema.safeParse(draft.serviceDetails.laundry).success
   ) {
     nextErrors.bedding = "Choose a bedding option.";
   }
@@ -596,22 +624,13 @@ const addServiceDetailErrors = (
   }
 
   const windowDetails = draft.serviceDetails["window-washing"];
+  const result = windowDetailsSchema.safeParse(windowDetails);
+  if (result.success) {
+    return;
+  }
 
-  if (!windowDetails.cleaningScope) {
-    nextErrors.cleaningScope = "Choose exterior only or inside and out.";
-  }
-  if (!windowDetails.stories) {
-    nextErrors.stories = "Choose the number of stories.";
-  }
-  if (!(windowDetails.finalizeOnSite || windowDetails.windowEstimate)) {
-    nextErrors.windowEstimate = "Estimate the number of windows.";
-  }
-  if (
-    windowDetails.washScreens &&
-    !windowDetails.finalizeOnSite &&
-    parsePositiveCount(windowDetails.screenCount) === 0
-  ) {
-    nextErrors.screenCount = "Enter the number of screens.";
+  for (const issue of result.error.issues) {
+    nextErrors[String(issue.path[0])] = issue.message;
   }
 };
 
@@ -963,7 +982,7 @@ const ScheduleDateTimePicker = ({
   const [visibleMonth, setVisibleMonth] = useState(
     new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
   );
-  const today = toDateInputValue(new Date());
+  const today = todayDateValue();
   const visibleMonthLabel = new Intl.DateTimeFormat("en-US", {
     month: "long",
     year: "numeric",
@@ -1075,17 +1094,20 @@ const ScheduleDateTimePicker = ({
         <RequiredLabel>Time</RequiredLabel>
         <div className="relative">
           <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            className="h-11 rounded-2xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-950 focus-visible:border-lime-500"
-            onChange={(event) =>
-              onTimeSlotChange(formatTimeRange(event.target.value))
-            }
-            step="900"
-            type="time"
-            value={timeSlotToInputTime(timeSlot)}
+          <select
+            className="h-11 w-full appearance-none truncate rounded-2xl border border-slate-300 bg-white pl-10 pr-10 text-sm font-semibold text-slate-950 shadow-sm outline-none transition-colors focus:border-lime-500"
+            onChange={(event) => onTimeSlotChange(event.target.value)}
+            value={timeSlot}
+          >
+            {bookingTimeSlots.map((slot) => (
+              <option key={slot}>{slot}</option>
+            ))}
+          </select>
+          <ChevronDown
+            aria-hidden="true"
+            className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
           />
         </div>
-        <p className="text-xs font-bold text-slate-500">{timeSlot}</p>
       </div>
     </div>
   );
