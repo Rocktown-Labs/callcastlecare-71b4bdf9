@@ -1141,7 +1141,7 @@ const ScheduleDateTimePicker = ({
         <div className="relative">
           <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <select
-            className="h-11 w-full appearance-none truncate rounded-2xl border border-slate-300 bg-white pl-10 pr-10 text-sm font-semibold text-slate-950 shadow-sm outline-none transition-colors focus:border-lime-500"
+            className="h-11 w-full appearance-none truncate rounded-2xl border border-slate-300 bg-white pl-10 pr-10 text-sm text-slate-950 shadow-sm outline-none transition-colors focus:border-lime-500"
             onChange={(event) => onTimeSlotChange(event.target.value)}
             value={timeSlot}
           >
@@ -1544,12 +1544,13 @@ const BookingWizard = (props: BookingWizardProps) => {
     planEstimateCents === null
       ? 0
       : Math.max(0, subtotalCents - planEstimateCents);
+  const estimatedTotalCents = planEstimateCents ?? subtotalCents;
   const depositCents = 5000;
   const isLaundryOnly =
     draft.services.length === 1 && draft.services[0] === "laundry";
   const dueTodayCents = isLaundryOnly
-    ? subtotalCents
-    : Math.min(depositCents, subtotalCents);
+    ? estimatedTotalCents
+    : Math.min(depositCents, estimatedTotalCents);
   const hasRecurringProduct = draft.services.some((serviceId) =>
     productsByService[serviceId].some(
       (product) => product.id === draft.products[serviceId] && product.recurring
@@ -2280,6 +2281,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                       <span>Estimated plan savings</span>
                       <span>-{formatCents(planSavingsCents)}</span>
                     </div>
+                    <div className="mt-2 flex justify-between text-xs text-lime-700">
+                      <span>One-time service estimate</span>
+                      <span>{formatCents(subtotalCents)}</span>
+                    </div>
                   </div>
                 ) : null}
                 <div className="flex justify-between">
@@ -2292,10 +2297,12 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
                 <div className="mt-2 flex justify-between text-base">
                   <span className="font-semibold text-slate-950">
-                    Estimated total
+                    {planEstimateCents === null
+                      ? "Estimated total"
+                      : "Estimated monthly plan"}
                   </span>
                   <span className="font-black text-slate-950">
-                    {formatCents(subtotalCents)}
+                    {formatCents(estimatedTotalCents)}
                   </span>
                 </div>
               </div>
