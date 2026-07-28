@@ -4,9 +4,9 @@
     "declaration": true,
     "declarationMap": true,
     "jsx": "react-jsx",
-    "sourceMap": true,
     "outDir": "dist",
-    "composite": true,
+    "sourceMap": true,
     "strictNullChecks": true
-  }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

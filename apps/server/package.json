@@ -14,6 +14,7 @@
     "@callcastlecare/api": "workspace:*",
     "@callcastlecare/auth": "workspace:*",
     "@callcastlecare/db": "workspace:*",
+    "@callcastlecare/email": "workspace:*",
     "@callcastlecare/env": "workspace:*",
     "@hono/node-server": "^2.0.8",
     "@hono/zod-openapi": "^1.5.1",
