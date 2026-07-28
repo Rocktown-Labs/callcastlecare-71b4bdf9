@@ -15,7 +15,7 @@ export default function ServiceAvailability() {
   return (
     <div className="flex flex-wrap gap-3">
       {services.map((service) => {
-        const open = currentHour >= 6 && currentHour < 20;
+        const open = currentHour >= 6 && currentHour < 18;
         const option = serviceOptions.find(({ id }) => id === service.id);
         const Icon = option?.icon ?? Clock;
 

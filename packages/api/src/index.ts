@@ -3,6 +3,7 @@ import { hc } from "hono/client";
 
 export * from "./contracts";
 export * from "./pricing";
+export * from "./scheduling";
 export * from "./stripe-catalog";
 export * from "./window-washing";
 

@@ -4,11 +4,16 @@ import { cn } from "@callcastlecare/ui/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { Calendar, ChevronDown, Clock } from "lucide-react";
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { bookingTimeSlots } from "@/lib/scheduling";
+import {
+  bookingTimeSlots,
+  fetchBookingAvailability,
+  isBookingTimeSlot,
+} from "@/lib/scheduling";
+import type { BookingTimeSlot } from "@/lib/scheduling";
 import { serviceIdSchema, serviceOptions } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "./radar-address-input";
@@ -41,11 +46,45 @@ export default function HeroSection() {
   const [selectedServices, setSelectedServices] = useState<ServiceId[]>([]);
   const [address, setAddress] = useState("");
   const [date, setDate] = useState("");
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>(
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<BookingTimeSlot>(
     bookingTimeSlots[2] ?? "10:00 AM - 12:00 PM"
   );
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<
+    BookingTimeSlot[]
+  >([...bookingTimeSlots]);
   const [isAddressValidated, setIsAddressValidated] = useState(false);
   const [errors, setErrors] = useState<BookingErrors>({});
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const loadAvailability = async () => {
+      try {
+        const availability = await fetchBookingAvailability(date);
+        if (!isCurrent) {
+          return;
+        }
+
+        setAvailableTimeSlots(availability.availableSlots);
+        if (
+          availability.nextAvailableSlot &&
+          !availability.availableSlots.includes(selectedTimeSlot)
+        ) {
+          setSelectedTimeSlot(availability.nextAvailableSlot);
+        }
+      } catch {
+        if (isCurrent) {
+          setAvailableTimeSlots([...bookingTimeSlots]);
+        }
+      }
+    };
+
+    void loadAvailability();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [date, selectedTimeSlot]);
 
   const toggleService = (serviceId: ServiceId) => {
     setSelectedServices((current) =>
@@ -217,12 +256,20 @@ export default function HeroSection() {
                 <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
                 <select
                   className="h-11 w-full appearance-none truncate rounded-2xl border border-white/10 bg-slate-950 pl-10 pr-10 text-sm font-semibold text-white outline-none focus:border-lime-300/50"
-                  onChange={(event) => setSelectedTimeSlot(event.target.value)}
+                  onChange={(event) => {
+                    if (isBookingTimeSlot(event.target.value)) {
+                      setSelectedTimeSlot(event.target.value);
+                    }
+                  }}
                   value={selectedTimeSlot}
                 >
-                  {bookingTimeSlots.map((timeSlot) => (
-                    <option key={timeSlot}>{timeSlot}</option>
-                  ))}
+                  {availableTimeSlots.length > 0 ? (
+                    availableTimeSlots.map((timeSlot) => (
+                      <option key={timeSlot}>{timeSlot}</option>
+                    ))
+                  ) : (
+                    <option>No slots open</option>
+                  )}
                 </select>
                 <ChevronDown
                   aria-hidden="true"

@@ -4,7 +4,10 @@ import { Loader2, MapPin } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { RadarAddressSuggestion } from "./use-radar-address-autocomplete";
-import { useRadarAddressAutocomplete } from "./use-radar-address-autocomplete";
+import {
+  reverseGeocodeAddress,
+  useRadarAddressAutocomplete,
+} from "./use-radar-address-autocomplete";
 
 interface RadarAddressInputProps {
   className?: string;
@@ -58,9 +61,13 @@ export const RadarAddressInput = ({
     setLocationError(null);
     setIsLocating(true);
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
+    const selectCurrentPosition = async (position: GeolocationPosition) => {
+      const { latitude, longitude } = position.coords;
+      try {
+        const suggestion = await reverseGeocodeAddress(latitude, longitude);
+        onSelectSuggestion(suggestion);
+        setIsFocused(false);
+      } catch {
         onSelectSuggestion({
           id: `current-location-${Date.now()}`,
           label: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
@@ -68,8 +75,14 @@ export const RadarAddressInput = ({
           longitude,
           raw: { latitude, longitude },
         });
-        setIsFocused(false);
+      } finally {
         setIsLocating(false);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void selectCurrentPosition(position);
       },
       () => {
         setLocationError("Unable to fetch your current location.");

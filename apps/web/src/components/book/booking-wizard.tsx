@@ -28,7 +28,8 @@ import type { ChangeEvent } from "react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
-import { bookingTimeSlots } from "@/lib/scheduling";
+import { bookingTimeSlots, fetchBookingAvailability } from "@/lib/scheduling";
+import type { BookingTimeSlot } from "@/lib/scheduling";
 import { getServerUrl } from "@/lib/server-url";
 import {
   comboSubscriptions,
@@ -979,6 +980,12 @@ const ScheduleDateTimePicker = ({
 }) => {
   const selectedDate = date ? new Date(`${date}T12:00:00`) : new Date();
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<
+    BookingTimeSlot[]
+  >([...bookingTimeSlots]);
+  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(
+    null
+  );
   const [visibleMonth, setVisibleMonth] = useState(
     new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
   );
@@ -987,6 +994,45 @@ const ScheduleDateTimePicker = ({
     month: "long",
     year: "numeric",
   }).format(visibleMonth);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const loadAvailability = async () => {
+      try {
+        const availability = await fetchBookingAvailability(date);
+        if (!isCurrent) {
+          return;
+        }
+
+        setAvailableTimeSlots(availability.availableSlots);
+        if (
+          date &&
+          availability.nextAvailableSlot &&
+          !availability.availableSlots.some((slot) => slot === timeSlot)
+        ) {
+          onTimeSlotChange(availability.nextAvailableSlot);
+          setAvailabilityMessage(
+            `That window is booked, so we moved you to ${availability.nextAvailableSlot}.`
+          );
+          return;
+        }
+
+        setAvailabilityMessage(null);
+      } catch {
+        if (isCurrent) {
+          setAvailableTimeSlots([...bookingTimeSlots]);
+          setAvailabilityMessage(null);
+        }
+      }
+    };
+
+    void loadAvailability();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [date, onTimeSlotChange, timeSlot]);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -1099,15 +1145,23 @@ const ScheduleDateTimePicker = ({
             onChange={(event) => onTimeSlotChange(event.target.value)}
             value={timeSlot}
           >
-            {bookingTimeSlots.map((slot) => (
+            {availableTimeSlots.map((slot) => (
               <option key={slot}>{slot}</option>
             ))}
+            {availableTimeSlots.length === 0 ? (
+              <option>No slots open</option>
+            ) : null}
           </select>
           <ChevronDown
             aria-hidden="true"
             className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
           />
         </div>
+        {availabilityMessage ? (
+          <p className="text-xs font-medium text-lime-700">
+            {availabilityMessage}
+          </p>
+        ) : null}
       </div>
     </div>
   );

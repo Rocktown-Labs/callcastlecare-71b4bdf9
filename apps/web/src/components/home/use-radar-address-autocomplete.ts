@@ -133,13 +133,33 @@ export const reverseGeocodeAddress = async (
   latitude: number,
   longitude: number
 ) => {
-  const label = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+  const url = new URL(
+    "/api/locations/addresses/reverse-geocode",
+    getServerUrl()
+  );
+  url.searchParams.set("latitude", String(latitude));
+  url.searchParams.set("longitude", String(longitude));
 
-  const response = await validateAddress(label);
-  if (response) {
-    return response;
+  const payload = await fetchJson(url);
+  if (payload && typeof payload === "object") {
+    const response = payload as Record<string, unknown>;
+    const rawAddress = response.address;
+    if (rawAddress && typeof rawAddress === "object") {
+      const candidate = rawAddress as Record<string, unknown>;
+      const label = toStringOrNull(candidate.formattedAddress);
+      if (label) {
+        return {
+          id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
+          label,
+          latitude: toNumberOrNull(candidate.latitude),
+          longitude: toNumberOrNull(candidate.longitude),
+          raw: candidate,
+        };
+      }
+    }
   }
 
+  const label = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
   return {
     id: `current-location-${latitude}-${longitude}`,
     label,

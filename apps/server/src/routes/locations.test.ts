@@ -4,13 +4,37 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppEnv } from "../types";
 import { locationRoutes } from "./locations";
 
-const autocompleteGoogleAddresses = vi.hoisted(() => vi.fn());
+const autocompleteRadarAddresses = vi.hoisted(() => vi.fn());
+const findManyOrders = vi.hoisted(() => vi.fn());
 const lookupPropertyWithZillow = vi.hoisted(() => vi.fn());
-const validateGoogleAddress = vi.hoisted(() => vi.fn());
+const reverseGeocodeWithRadar = vi.hoisted(() => vi.fn());
+const validateRadarAddress = vi.hoisted(() => vi.fn());
 
-vi.mock("../lib/integrations/google-maps", () => ({
-  autocompleteGoogleAddresses,
-  validateGoogleAddress,
+vi.mock("@callcastlecare/db", () => ({
+  and: vi.fn(),
+  db: {
+    query: {
+      orders: {
+        findMany: findManyOrders,
+      },
+    },
+  },
+  gte: vi.fn(),
+  inArray: vi.fn(),
+  lt: vi.fn(),
+}));
+
+vi.mock("@callcastlecare/db/schema/index", () => ({
+  orders: {
+    scheduledStartAt: "scheduledStartAt",
+    status: "status",
+  },
+}));
+
+vi.mock("../lib/integrations/radar", () => ({
+  autocompleteRadarAddresses,
+  reverseGeocodeWithRadar,
+  validateRadarAddress,
 }));
 
 vi.mock("../lib/integrations/zillow", () => ({
@@ -22,6 +46,7 @@ const app = new Hono<AppEnv>().route("/locations", locationRoutes);
 describe("location routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    findManyOrders.mockResolvedValue([]);
   });
 
   it("returns an empty autocomplete result for short input", async () => {
@@ -31,11 +56,11 @@ describe("location routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ suggestions: [] });
-    expect(autocompleteGoogleAddresses).not.toHaveBeenCalled();
+    expect(autocompleteRadarAddresses).not.toHaveBeenCalled();
   });
 
-  it("returns Google address suggestions for valid autocomplete input", async () => {
-    autocompleteGoogleAddresses.mockResolvedValue([
+  it("returns Radar address suggestions for valid autocomplete input", async () => {
+    autocompleteRadarAddresses.mockResolvedValue([
       {
         formattedAddress: "123 Main St, Little Rock, AR 72201, USA",
         placeId: "place-123",
@@ -55,11 +80,11 @@ describe("location routes", () => {
         },
       ],
     });
-    expect(autocompleteGoogleAddresses).toHaveBeenCalledWith("123 Main");
+    expect(autocompleteRadarAddresses).toHaveBeenCalledWith("123 Main");
   });
 
   it("validates an address and returns property enrichment", async () => {
-    validateGoogleAddress.mockResolvedValue({
+    validateRadarAddress.mockResolvedValue({
       city: "Little Rock",
       country: "US",
       formattedAddress: "123 Main St, Little Rock, AR 72201, USA",
@@ -112,7 +137,63 @@ describe("location routes", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(validateGoogleAddress).not.toHaveBeenCalled();
+    expect(validateRadarAddress).not.toHaveBeenCalled();
     expect(lookupPropertyWithZillow).not.toHaveBeenCalled();
+  });
+
+  it("reverse geocodes a current location coordinate pair", async () => {
+    reverseGeocodeWithRadar.mockResolvedValue({
+      city: "Searcy",
+      country: "US",
+      formattedAddress: "100 E Race Ave, Searcy, AR 72143, USA",
+      latitude: 35.2506,
+      longitude: -91.7362,
+      placeId: "radar-place-123",
+      raw: {},
+      state: "AR",
+      street: "100 E Race Ave",
+      verdict: {
+        hasUnconfirmedComponents: false,
+        isComplete: true,
+      },
+      zip: "72143",
+    });
+
+    const response = await app.request(
+      "/locations/addresses/reverse-geocode?latitude=35.2506&longitude=-91.7362"
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      address: {
+        formattedAddress: "100 E Race Ave, Searcy, AR 72143, USA",
+      },
+    });
+    expect(reverseGeocodeWithRadar).toHaveBeenCalledWith(35.2506, -91.7362);
+  });
+
+  it("removes booked launch slots from availability", async () => {
+    findManyOrders.mockResolvedValue([
+      {
+        scheduledStartAt: new Date("2026-07-28T10:00:00.000Z"),
+      },
+    ]);
+
+    const response = await app.request(
+      "/locations/availability?date=2026-07-28"
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      availableSlots: [
+        "6:00 AM - 8:00 AM",
+        "8:00 AM - 10:00 AM",
+        "12:00 PM - 2:00 PM",
+        "2:00 PM - 4:00 PM",
+        "4:00 PM - 6:00 PM",
+      ],
+      bookedSlots: ["10:00 AM - 12:00 PM"],
+      nextAvailableSlot: "6:00 AM - 8:00 AM",
+    });
   });
 });
