@@ -148,6 +148,11 @@ export const reverseGeocodeAddress = async (
       const candidate = rawAddress as Record<string, unknown>;
       const label = toStringOrNull(candidate.formattedAddress);
       if (label) {
+        const validated = await validateAddress(label);
+        if (validated) {
+          return validated;
+        }
+
         return {
           id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
           label,
@@ -159,14 +164,7 @@ export const reverseGeocodeAddress = async (
     }
   }
 
-  const label = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-  return {
-    id: `current-location-${latitude}-${longitude}`,
-    label,
-    latitude,
-    longitude,
-    raw: { latitude, longitude },
-  };
+  throw new Error("Unable to reverse geocode current location.");
 };
 
 export const useRadarAddressAutocomplete = (query: string) => {

@@ -68,13 +68,7 @@ export const RadarAddressInput = ({
         onSelectSuggestion(suggestion);
         setIsFocused(false);
       } catch {
-        onSelectSuggestion({
-          id: `current-location-${Date.now()}`,
-          label: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-          latitude,
-          longitude,
-          raw: { latitude, longitude },
-        });
+        setLocationError("Unable to turn your location into an address.");
       } finally {
         setIsLocating(false);
       }
