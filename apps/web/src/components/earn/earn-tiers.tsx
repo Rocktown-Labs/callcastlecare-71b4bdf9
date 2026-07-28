@@ -1,4 +1,5 @@
 import { Button } from "@callcastlecare/ui/components/button";
+import { Link } from "@tanstack/react-router";
 import { CheckCircle2, ShieldCheck, Zap } from "lucide-react";
 
 const standardFeatures = [
@@ -24,8 +25,9 @@ export default function EarnTiers() {
             The economics of independence
           </h2>
           <p className="mt-4 text-lg leading-8 text-white/60">
-            Transparent splits reward high-quality providers. Upgrade to
-            CallCastleCare Pro for express onboarding and higher starting rates.
+            Transparent splits reward high-quality providers. CastleCare Pro is
+            a one-time upgrade for faster review, priority setup, and higher
+            starting rates.
           </p>
         </div>
 
@@ -64,12 +66,14 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Button
-              className="mt-8 h-12 w-full rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
-              variant="outline"
-            >
-              Join for free
-            </Button>
+            <Link className="mt-8" to="/login">
+              <Button
+                className="h-12 w-full rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
+                variant="outline"
+              >
+                Join for free
+              </Button>
+            </Link>
           </article>
 
           <article className="relative flex flex-col overflow-hidden rounded-3xl border border-lime-300/50 bg-lime-300/10 p-6 lg:p-8">
@@ -77,14 +81,15 @@ export default function EarnTiers() {
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-bold text-lime-200">
                 <ShieldCheck className="size-4" />
-                CallCastleCare Pro
+                CastleCare Pro
               </span>
               <div className="mt-5 flex items-baseline gap-2">
                 <span className="text-5xl font-bold text-white">$50</span>
-                <span className="text-white/60">/ quarter</span>
+                <span className="text-white/60">one-time</span>
               </div>
               <p className="mt-3 text-white/70">
-                Covers background and MVR checks for express access.
+                One-time onboarding upgrade for express review, priority setup,
+                and Pro access.
               </p>
             </div>
 
@@ -114,9 +119,11 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Button className="mt-8 h-12 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
-              Apply as Pro
-            </Button>
+            <Link className="mt-8" to="/login">
+              <Button className="h-12 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
+                Apply as Pro
+              </Button>
+            </Link>
           </article>
         </div>
       </div>

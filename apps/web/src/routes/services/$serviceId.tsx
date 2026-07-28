@@ -12,6 +12,7 @@ import {
   Check,
   CircleDollarSign,
   ClipboardCheck,
+  Handshake,
   LocateFixed,
   MapPin,
   MessagesSquare,
@@ -56,9 +57,9 @@ const ServiceAreaStatus = () => {
   };
 
   return (
-    <div className="border border-white/10 bg-white/[0.04] p-5">
+    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-lime-300/10 text-lime-300">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-lime-300/10 text-lime-300">
           <MapPin className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -170,7 +171,7 @@ const ServiceDetailPage = () => {
               <div className="mt-10 grid gap-3 sm:grid-cols-3">
                 {page.localProof.map((item) => (
                   <div
-                    className="border border-white/10 bg-white/[0.04] px-4 py-3"
+                    className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"
                     key={item}
                   >
                     <Check className="mb-2 size-4 text-lime-300" />
@@ -184,7 +185,7 @@ const ServiceDetailPage = () => {
 
             <aside className="space-y-4" aria-label="Service quote summary">
               <ServiceAreaStatus />
-              <div className="border border-white/10 bg-slate-950/80 p-6 shadow-2xl backdrop-blur">
+              <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-2xl backdrop-blur">
                 <p className="text-sm font-semibold uppercase tracking-widest text-white/45">
                   Starting at
                 </p>
@@ -244,7 +245,7 @@ const ServiceDetailPage = () => {
               <div className="grid gap-4 sm:grid-cols-2">
                 {page.quoteDetails.map((item) => (
                   <div
-                    className="border border-slate-200 bg-white p-5 shadow-sm"
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
                     key={item}
                   >
                     <ClipboardCheck className="mb-4 size-6 text-cyan-700" />
@@ -257,7 +258,7 @@ const ServiceDetailPage = () => {
             </div>
 
             <div className="mt-14 grid gap-4 md:grid-cols-3">
-              <div className="border border-slate-200 bg-white p-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6">
                 <CalendarCheck className="mb-4 size-6 text-lime-700" />
                 <h3 className="text-lg font-black">2-hour windows</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -265,7 +266,7 @@ const ServiceDetailPage = () => {
                   appointment windows reserved in 2-hour blocks.
                 </p>
               </div>
-              <div className="border border-slate-200 bg-white p-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6">
                 <CircleDollarSign className="mb-4 size-6 text-cyan-700" />
                 <h3 className="text-lg font-black">Clear checkout</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -274,7 +275,7 @@ const ServiceDetailPage = () => {
                     : "Lawn care and window washing reserve the appointment with a $50 deposit."}
                 </p>
               </div>
-              <div className="border border-slate-200 bg-white p-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6">
                 <MessagesSquare className="mb-4 size-6 text-violet-700" />
                 <h3 className="text-lg font-black">Status updates</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -305,7 +306,7 @@ const ServiceDetailPage = () => {
               <div className="grid gap-4 md:grid-cols-3">
                 {page.process.map((step, index) => (
                   <div
-                    className="border border-white/10 bg-white/[0.045] p-6"
+                    className="rounded-3xl border border-white/10 bg-white/[0.045] p-6"
                     key={step.title}
                   >
                     <span className="text-sm font-black text-lime-300">
@@ -320,7 +321,7 @@ const ServiceDetailPage = () => {
               </div>
             </div>
 
-            <div className="mt-14 border border-white/10 bg-white/[0.04] p-6 sm:p-8">
+            <div className="mt-14 rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 sm:p-8">
               <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
                 <div>
                   <h2 className="text-2xl font-black">{page.serviceArea}</h2>
@@ -366,7 +367,7 @@ const ServiceDetailPage = () => {
             <div className="grid gap-3 sm:grid-cols-2">
               {service.included.map((item) => (
                 <div
-                  className="border border-slate-200 bg-slate-50 p-5"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
                   key={item}
                 >
                   <Check className="mb-4 size-5 text-lime-700" />
@@ -439,7 +440,7 @@ const ServiceDetailPage = () => {
 
                     return (
                       <Link
-                        className="flex items-start gap-4 border border-white/10 bg-white/[0.04] p-4 transition-colors hover:border-lime-300/40 hover:bg-white/[0.07]"
+                        className="flex items-start gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-4 transition-colors hover:border-lime-300/40 hover:bg-white/[0.07]"
                         key={otherService.id}
                         params={{ serviceId: otherService.id }}
                         to="/services/$serviceId"
@@ -456,6 +457,21 @@ const ServiceDetailPage = () => {
                       </Link>
                     );
                   })}
+                  <Link
+                    className="flex items-start gap-4 rounded-3xl border border-lime-300/25 bg-lime-300/10 p-4 transition-colors hover:border-lime-300/50 hover:bg-lime-300/15"
+                    to="/earn"
+                  >
+                    <Handshake className="mt-1 size-5 shrink-0 text-lime-300" />
+                    <span>
+                      <span className="block font-semibold text-white">
+                        Want to earn with CastleCare?
+                      </span>
+                      <span className="mt-1 block text-sm leading-6 text-white/60">
+                        See provider lanes for lawn care, laundry pickup, and
+                        window washing, then start the onboarding path.
+                      </span>
+                    </span>
+                  </Link>
                 </div>
               </div>
             </div>

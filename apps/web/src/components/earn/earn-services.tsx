@@ -1,4 +1,5 @@
 import { Button } from "@callcastlecare/ui/components/button";
+import { Link } from "@tanstack/react-router";
 import { ArrowRight, Box, Grid2x2, Scissors } from "lucide-react";
 
 const services = [
@@ -44,7 +45,7 @@ export default function EarnServices() {
           </h2>
           <p className="mt-4 text-lg leading-8 text-white/60">
             Whether you want flexible side income or a full-time service
-            business, CallCastleCare gives you a path to get moving.
+            business, CastleCare gives you a path to get moving.
           </p>
         </div>
 
@@ -101,10 +102,12 @@ export default function EarnServices() {
                     </ul>
                   </div>
 
-                  <Button className="mt-6 h-11 w-full rounded-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/10">
-                    Apply now
-                    <ArrowRight className="ml-2 size-4" />
-                  </Button>
+                  <Link className="mt-6" to="/login">
+                    <Button className="h-11 w-full rounded-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/10">
+                      Apply now
+                      <ArrowRight className="ml-2 size-4" />
+                    </Button>
+                  </Link>
                 </div>
               </article>
             )

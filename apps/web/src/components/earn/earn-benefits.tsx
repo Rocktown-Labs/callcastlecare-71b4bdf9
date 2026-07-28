@@ -11,21 +11,21 @@ const benefits = [
   {
     color: "text-sky-300",
     description:
-      "Start at 60% and scale up to 80% as a CallCastleCare Pro. The people doing the work should keep the most.",
+      "Start at 60% and scale up to 80% as a CastleCare Pro. The people doing the work should keep the most.",
     icon: DollarSign,
     title: "Keep more of your money",
   },
   {
     color: "text-violet-300",
     description:
-      "For laundry, we provide the custom bags. You bring a car, a connected smartphone, and reliable service.",
+      "For laundry, CastleCare supplies custom bags. You bring a car, a connected smartphone, and reliable service.",
     icon: Smartphone,
     title: "Low-friction setup",
   },
   {
     color: "text-amber-300",
     description:
-      "Quality metrics and incentives unlock higher payouts, express onboarding, and Pro status.",
+      "Quality metrics unlock better opportunities, higher payouts, and Pro status as the network grows.",
     icon: TrendingUp,
     title: "Built for growth",
   },
@@ -37,7 +37,7 @@ export default function EarnBenefits() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto mb-12 max-w-3xl text-center">
           <h2 className="text-3xl font-bold text-white sm:text-4xl">
-            Why provide services with CallCastleCare?
+            Why provide services with CastleCare?
           </h2>
           <p className="mt-4 text-lg leading-8 text-white/55">
             We are building a network that respects your time, values your
