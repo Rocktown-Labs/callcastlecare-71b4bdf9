@@ -137,13 +137,13 @@ export function SignIn({
   return (
     <Card className={cn("w-full max-w-sm", className)}>
       <AuthPrompts view="signIn" />
-      <CardHeader>
-        <CardTitle className="text-xl font-semibold">
+      <CardHeader className="px-5 pt-5 sm:px-6">
+        <CardTitle className="text-xl font-semibold text-white">
           {localization.auth.signIn}
         </CardTitle>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="px-5 pb-5 sm:px-6">
         <div className="flex flex-col gap-6">
           {socialPosition === "top" && (
             <>
@@ -152,7 +152,7 @@ export function SignIn({
               )}
 
               {showSeparator && (
-                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card m-0 text-xs flex items-center">
+                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-transparent m-0 text-xs flex items-center text-white/40">
                   {localization.auth.or}
                 </FieldSeparator>
               )}
@@ -168,6 +168,7 @@ export function SignIn({
                   </FieldLabel>
 
                   <Input
+                    className="h-11 rounded-full border-white/10 bg-white/[0.04] px-4 text-sm text-white placeholder:text-white/36"
                     id="email"
                     name="email"
                     type="email"
@@ -204,8 +205,9 @@ export function SignIn({
                     {localization.auth.password}
                   </FieldLabel>
 
-                  <InputGroup>
+                  <InputGroup className="h-11 rounded-full border-white/10 bg-white/[0.04]">
                     <InputGroupInput
+                      className="px-4 text-sm text-white placeholder:text-white/36"
                       id="password"
                       name="password"
                       type={isPasswordVisible ? "text" : "password"}
@@ -251,6 +253,7 @@ export function SignIn({
 
                     <InputGroupAddon align="inline-end">
                       <InputGroupButton
+                        className="rounded-full text-white/55 hover:bg-white/10 hover:text-white"
                         size="icon-xs"
                         aria-label={
                           isPasswordVisible
@@ -300,7 +303,7 @@ export function SignIn({
                 <div className="flex flex-col gap-3">
                   <Button
                     type="submit"
-                    className="relative overflow-visible"
+                    className="relative h-11 overflow-visible rounded-full bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200"
                     disabled={isPending}
                   >
                     {signInEmailPending && <Spinner />}
@@ -326,7 +329,7 @@ export function SignIn({
           {socialPosition === "bottom" && (
             <>
               {showSeparator && (
-                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card text-xs flex items-center">
+                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-transparent text-xs flex items-center text-white/40">
                   {localization.auth.or}
                 </FieldSeparator>
               )}
@@ -342,7 +345,7 @@ export function SignIn({
           {emailAndPassword?.enabled && emailAndPassword?.forgotPassword && (
             <Link
               href={`${basePaths.auth}/${viewPaths.auth.forgotPassword}`}
-              className="self-center text-sm underline-offset-4 hover:underline"
+              className="self-center text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline"
             >
               {localization.auth.forgotPasswordLink}
             </Link>
@@ -353,7 +356,7 @@ export function SignIn({
               {localization.auth.needToCreateAnAccount}{" "}
               <Link
                 href={`${basePaths.auth}/${viewPaths.auth.signUp}`}
-                className="underline underline-offset-4"
+                className="font-medium text-lime-200 underline underline-offset-4 hover:text-lime-100"
               >
                 {localization.auth.signUp}
               </Link>

@@ -63,7 +63,7 @@ export default function EarnOnboarding() {
         </div>
 
         <div className="mt-8 text-center">
-          <Link to="/login">
+          <Link to="/sign-in">
             <Button className="h-12 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200">
               Start my provider application
               <ArrowRight className="size-4" />

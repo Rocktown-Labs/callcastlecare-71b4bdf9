@@ -12,7 +12,7 @@ const authViewPaths = {
   redirect: "auth/redirect",
   resetLinkSent: "reset-link-sent",
   resetPassword: "reset-password",
-  signIn: "login",
+  signIn: "sign-in",
   signOut: "sign-out",
   signUp: "sign-up",
   verifyEmail: "verify-email",

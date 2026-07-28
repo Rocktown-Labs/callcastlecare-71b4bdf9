@@ -117,7 +117,7 @@ export default function Navbar() {
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Link to="/login">
+            <Link to="/sign-in">
               <Button
                 className="rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
                 variant="outline"

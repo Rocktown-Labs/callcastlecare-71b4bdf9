@@ -66,7 +66,7 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Link className="mt-8" to="/login">
+            <Link className="mt-8" to="/sign-in">
               <Button
                 className="h-12 w-full rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
                 variant="outline"
@@ -119,7 +119,7 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Link className="mt-8" to="/login">
+            <Link className="mt-8" to="/sign-in">
               <Button className="h-12 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
                 Apply as Pro
               </Button>

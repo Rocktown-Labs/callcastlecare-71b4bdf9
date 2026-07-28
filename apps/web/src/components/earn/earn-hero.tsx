@@ -32,7 +32,7 @@ export default function EarnHero() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link to="/login">
+            <Link to="/sign-in">
               <Button
                 className="h-12 rounded-full bg-lime-300 px-6 text-sm font-semibold text-slate-950 hover:bg-lime-200"
                 size="lg"
