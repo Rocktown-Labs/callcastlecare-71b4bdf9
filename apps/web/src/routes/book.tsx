@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import BookingWizard from "@/components/book/booking-wizard";
 import MarketingLayout from "@/components/home/marketing-layout";
-import { centralArkansasArea, serviceIdSchema } from "@/lib/service-catalog";
+import { serviceIdSchema } from "@/lib/service-catalog";
 import type { ServiceId } from "@/lib/service-catalog";
 
 const bookingSearchSchema = z.object({
@@ -54,14 +54,14 @@ const BookPage = () => {
       <section className="min-h-[calc(100vh-5rem)] bg-slate-50 px-4 pb-24 pt-28 text-slate-950 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
           <span className="inline-flex rounded-full border border-lime-300 bg-lime-100 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-lime-700">
-            Guided booking
+            Central Arkansas
           </span>
           <h1 className="mx-auto mt-5 max-w-2xl text-pretty text-4xl font-black leading-tight sm:text-5xl">
-            Build your CastleCare quote.
+            Reserve the care your place needs.
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-slate-600">
-            Choose services, confirm your {centralArkansasArea} address, and
-            review a clean invoice before checkout.
+            Pick lawn care, laundry, window washing, or any combination. We will
+            save your quote, confirm the details, and keep the next step clear.
           </p>
         </div>
 

@@ -28,10 +28,25 @@ export const RadarAddressInput = ({
   const [locationError, setLocationError] = useState<string | null>(null);
   const { isEnabled, isLoading, suggestions } =
     useRadarAddressAutocomplete(value);
+  const trimmedValue = value.trim();
+  const fallbackSuggestion: RadarAddressSuggestion | null =
+    trimmedValue.length >= 5
+      ? {
+          id: `entered-${trimmedValue}`,
+          label: trimmedValue,
+          latitude: null,
+          longitude: null,
+          raw: { source: "manual-entry" },
+        }
+      : null;
+  let shownSuggestions = suggestions;
+  if (shownSuggestions.length === 0 && fallbackSuggestion) {
+    shownSuggestions = [fallbackSuggestion];
+  }
 
   const shouldShowSuggestions = useMemo(
-    () => isEnabled && isFocused && suggestions.length > 0,
-    [isEnabled, isFocused, suggestions.length]
+    () => isEnabled && isFocused && shownSuggestions.length > 0,
+    [isEnabled, isFocused, shownSuggestions.length]
   );
 
   const handleUseCurrentLocation = () => {
@@ -109,7 +124,7 @@ export const RadarAddressInput = ({
 
       {shouldShowSuggestions ? (
         <ul className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
-          {suggestions.map((suggestion) => (
+          {shownSuggestions.map((suggestion) => (
             <li key={suggestion.id}>
               <button
                 className="w-full px-3 py-2 text-left text-sm text-slate-700 first:rounded-t-2xl last:rounded-b-2xl hover:bg-slate-50 hover:text-slate-950"
@@ -120,7 +135,9 @@ export const RadarAddressInput = ({
                 onMouseDown={(event) => event.preventDefault()}
                 type="button"
               >
-                {suggestion.label}
+                {suggestions.length > 0
+                  ? suggestion.label
+                  : `Use "${suggestion.label}"`}
               </button>
             </li>
           ))}

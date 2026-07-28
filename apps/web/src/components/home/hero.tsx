@@ -29,9 +29,7 @@ type BookingErrors = Partial<
 
 export default function HeroSection() {
   const navigate = useNavigate({ from: "/" });
-  const [selectedServices, setSelectedServices] = useState<ServiceId[]>([
-    "lawncare",
-  ]);
+  const [selectedServices, setSelectedServices] = useState<ServiceId[]>([]);
   const [address, setAddress] = useState("");
   const [date, setDate] = useState("");
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>(

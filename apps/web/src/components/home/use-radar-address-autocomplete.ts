@@ -38,7 +38,10 @@ export const parseRadarSuggestions = (
     }
 
     const candidate = rawSuggestion as Record<string, unknown>;
-    const label = toStringOrNull(candidate.formattedAddress);
+    const label =
+      toStringOrNull(candidate.formattedAddress) ??
+      toStringOrNull(candidate.label) ??
+      toStringOrNull(candidate.address);
     if (!label) {
       continue;
     }

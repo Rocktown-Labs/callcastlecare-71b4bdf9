@@ -184,9 +184,35 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
-    const { quoteRequest, statusCode } = await upsertPublicQuoteRequest(
-      parsed.data
+    const result = await upsertPublicQuoteRequest(parsed.data).catch(
+      (error: unknown) => {
+        logger.error(
+          {
+            err: error,
+            lastCompletedStep: parsed.data.lastCompletedStep,
+            requestId: c.get("requestId"),
+            status: parsed.data.status,
+            trackingId: parsed.data.trackingId,
+          },
+          "quote_request:persist_failed"
+        );
+
+        return null;
+      }
     );
+
+    if (!result) {
+      return c.json(
+        {
+          quoteRequest: null,
+          saved: false,
+          trackingId: parsed.data.trackingId,
+        },
+        202
+      );
+    }
+
+    const { quoteRequest, statusCode } = result;
 
     logger.info(
       {
@@ -201,6 +227,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
     return c.json(
       {
         quoteRequest: toQuoteRequestResponse(quoteRequest),
+        saved: true,
       },
       statusCode
     );

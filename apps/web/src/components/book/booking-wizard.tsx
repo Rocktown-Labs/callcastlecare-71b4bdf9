@@ -87,7 +87,7 @@ const productsByService = {
     {
       description: "A one-time mow, edge, trim, and cleanup.",
       id: "standard_lawn",
-      name: "Standard Grounds Visit",
+      name: "Groundskeeper",
       priceCents: 7500,
       recurring: false,
     },
@@ -99,18 +99,18 @@ const productsByService = {
       recurring: true,
     },
     {
-      description: "Extra time for tall grass, heavy trimming, and reset work.",
-      id: "tall_grass_reset",
-      name: "Tall Grass Reset",
-      priceCents: 12_000,
+      description: "Commercial mowing, trimming, and grounds cleanup.",
+      id: "commercial_groundskeeper",
+      name: "Commercial Groundskeeper",
+      priceCents: 25_000,
       recurring: false,
     },
   ],
   "window-washing": [
     {
-      description: "Exterior panes washed and finished streak-free.",
+      description: "Exterior glass from $5 per pane with a $100 minimum.",
       id: "exterior_panes",
-      name: "Exterior Pane Shine",
+      name: "Royal Pane Shine",
       priceCents: 10_000,
       recurring: false,
     },
@@ -125,7 +125,7 @@ const productsByService = {
       description:
         "A seasonal reset for glass, screens, and first impressions.",
       id: "bi_annual_glass_care",
-      name: "Bi-Annual Glass Care",
+      name: "Bi-Annual Window Washing",
       priceCents: 15_000,
       recurring: true,
     },
@@ -153,7 +153,10 @@ const paymentOptions = [
   },
 ] as const;
 
-const insideGlassFeePerPaneCents = 500;
+const exteriorWindowRateCents = 500;
+const fullServiceWindowRateCents = 1000;
+const windowJobMinimumCents = 10_000;
+const tallGrassFeeCents = 5000;
 const screenWashFeePerScreenCents = 250;
 const minutesPerHour = 60;
 const serviceWindowHours = 2;
@@ -176,7 +179,9 @@ const basicsSchema = z.object({
 const contactSchema = z.object({
   email: z.string().email("Enter a valid email address."),
   name: z.string().min(2, "Enter your name."),
-  phone: z.string().min(10, "Enter a phone number."),
+  phone: z
+    .string()
+    .regex(/^\D*(?:\d\D*){10,}$/u, "Enter a valid phone number."),
   smsUpdates: z.boolean(),
 });
 
@@ -247,7 +252,7 @@ const emptyDraft = ({
     email: "",
     name: "",
     phone: "",
-    smsUpdates: true,
+    smsUpdates: false,
   },
   date: initialDate,
   paymentOption: "",
@@ -434,20 +439,6 @@ const resolveInitialServices = (
   return [];
 };
 
-const selectedProductTotal = (draft: BookingDraft) => {
-  let total = 0;
-
-  for (const serviceId of draft.services) {
-    const selectedProductId = draft.products[serviceId];
-    const product = productsByService[serviceId].find(
-      ({ id }) => id === selectedProductId
-    );
-    total += product?.priceCents ?? 0;
-  }
-
-  return total;
-};
-
 const parsePositiveCount = (value: string) => {
   const count = Math.trunc(Number(value));
   if (!Number.isFinite(count) || count < 1) {
@@ -457,33 +448,79 @@ const parsePositiveCount = (value: string) => {
   return count;
 };
 
-const getWindowAddOns = (draft: BookingDraft) => {
-  if (!draft.services.includes("window-washing")) {
-    return [];
-  }
-
+const getWindowBasePriceCents = (draft: BookingDraft) => {
   const windowDetails = draft.serviceDetails["window-washing"];
   if (windowDetails.finalizeOnSite) {
-    return [];
+    return windowJobMinimumCents;
   }
 
   const paneCount = parsePositiveCount(windowDetails.windowEstimate);
-  const screenCount = parsePositiveCount(windowDetails.screenCount);
+  if (paneCount === 0) {
+    return windowJobMinimumCents;
+  }
+
+  const rateCents =
+    windowDetails.cleaningScope === "both"
+      ? fullServiceWindowRateCents
+      : exteriorWindowRateCents;
+
+  return Math.max(windowJobMinimumCents, paneCount * rateCents);
+};
+
+const getProductPriceCents = (
+  draft: BookingDraft,
+  serviceId: ServiceId,
+  product: ProductOption
+) => {
+  if (serviceId === "window-washing") {
+    return getWindowBasePriceCents(draft);
+  }
+
+  return product.priceCents;
+};
+
+const selectedProductTotal = (draft: BookingDraft) => {
+  let total = 0;
+
+  for (const serviceId of draft.services) {
+    const selectedProductId = draft.products[serviceId];
+    const product = productsByService[serviceId].find(
+      ({ id }) => id === selectedProductId
+    );
+    total += product ? getProductPriceCents(draft, serviceId, product) : 0;
+  }
+
+  return total;
+};
+
+const getQuoteAddOns = (draft: BookingDraft) => {
   const addOns: {
     description: string;
     name: string;
     priceCents: number;
   }[] = [];
 
-  if (windowDetails.cleaningScope === "both" && paneCount > 0) {
+  if (
+    draft.services.includes("lawncare") &&
+    draft.serviceDetails.lawncare.grassHeight === "tall"
+  ) {
     addOns.push({
-      description: `${paneCount} panes x ${formatCents(
-        insideGlassFeePerPaneCents
-      )}`,
-      name: "Inside glass upgrade",
-      priceCents: paneCount * insideGlassFeePerPaneCents,
+      description: "Extra time for overgrown grass and cleanup.",
+      name: "Tall grass fee",
+      priceCents: tallGrassFeeCents,
     });
   }
+
+  if (!draft.services.includes("window-washing")) {
+    return addOns;
+  }
+
+  const windowDetails = draft.serviceDetails["window-washing"];
+  if (windowDetails.finalizeOnSite) {
+    return addOns;
+  }
+
+  const screenCount = parsePositiveCount(windowDetails.screenCount);
 
   if (windowDetails.washScreens && screenCount > 0) {
     addOns.push({
@@ -565,6 +602,44 @@ const buildInitialDraft = (
   };
 };
 
+const resolveInitialStep = (
+  props: BookingWizardProps,
+  storedDraft: BookingDraft | null
+): WizardStep => {
+  const requestedStep = stepKeyToIndex(props.initialStep);
+  if (requestedStep === 0) {
+    return 0;
+  }
+
+  const initialDraft = buildInitialDraft(props, storedDraft);
+  if (!basicsSchema.safeParse(initialDraft).success) {
+    return 0;
+  }
+
+  if (requestedStep === 1) {
+    return 1;
+  }
+
+  if (!contactSchema.safeParse(initialDraft.contact).success) {
+    return 1;
+  }
+
+  const detailErrors: Record<string, string> = {};
+  addServiceDetailErrors(initialDraft, detailErrors);
+  if (requestedStep > 2 && Object.keys(detailErrors).length > 0) {
+    return 2;
+  }
+
+  const hasSelectedProducts = initialDraft.services.every(
+    (serviceId) => initialDraft.products[serviceId]
+  );
+  if (requestedStep > 3 && !hasSelectedProducts) {
+    return 3;
+  }
+
+  return requestedStep;
+};
+
 const persistQuoteRequest = async ({
   draft,
   lastCompletedStep,
@@ -601,6 +676,18 @@ const getPaymentOptionsForServices = (services: ServiceId[]) =>
   services.length === 1 && services[0] === "laundry"
     ? paymentOptions.filter((option) => option.id === "pay_full")
     : paymentOptions;
+
+const getComboDiscountMultiplier = (subscriptionId: string) => {
+  if (subscriptionId === "crown_estate_trio") {
+    return 0.7;
+  }
+
+  if (subscriptionId && subscriptionId !== "one_time") {
+    return 0.8;
+  }
+
+  return 1;
+};
 
 const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
   const nextErrors: Record<string, string> = {};
@@ -700,23 +787,34 @@ const StepProgress = ({
   activeStep: WizardStep;
   onStepSelect: (step: WizardStep) => void;
 }) => (
-  <div className="mb-6 grid grid-cols-3 gap-2 lg:grid-cols-6">
+  <div className="mb-8 grid grid-cols-3 gap-3 lg:grid-cols-6">
     {wizardSteps.map((label, index) => (
       <button
         className={cn(
-          "rounded-2xl border px-3 py-2 text-left text-xs font-bold transition-colors",
-          activeStep === index
-            ? "border-slate-950 bg-slate-950 text-white"
-            : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
+          "group relative flex flex-col items-center gap-2 rounded-2xl border bg-white p-3 text-center text-xs font-bold transition-colors",
+          index < activeStep &&
+            "border-lime-300 bg-lime-50 text-lime-800 hover:border-lime-400",
+          activeStep === index &&
+            "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200",
+          index > activeStep &&
+            "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 opacity-70"
         )}
+        disabled={index > activeStep}
         key={label}
         onClick={() => onStepSelect(index as WizardStep)}
         type="button"
       >
-        <span className="block text-[10px] uppercase tracking-widest opacity-60">
-          Step {index + 1}
+        <span
+          className={cn(
+            "flex size-8 items-center justify-center rounded-full border text-xs font-black",
+            index < activeStep && "border-lime-400 bg-lime-300 text-slate-950",
+            activeStep === index && "border-white/20 bg-white text-slate-950",
+            index > activeStep && "border-slate-200 bg-white text-slate-400"
+          )}
+        >
+          {index < activeStep ? <Check className="size-4" /> : index + 1}
         </span>
-        {label}
+        <span>{label}</span>
       </button>
     ))}
   </div>
@@ -739,18 +837,33 @@ const StepButton = ({
   </Button>
 );
 
+const RequiredLabel = ({ children }: { children: React.ReactNode }) => (
+  <Label className="text-slate-600">
+    {children}
+    <span aria-hidden="true" className="text-lime-600">
+      *
+    </span>
+  </Label>
+);
+
 const RoundedField = ({
   error,
   icon: Icon,
   label,
+  required,
   ...props
 }: React.ComponentProps<"input"> & {
   error?: string;
   icon?: LucideIcon;
   label: string;
+  required?: boolean;
 }) => (
-  <div className="space-y-2">
-    <Label className="text-slate-600">{label}</Label>
+  <div className="flex flex-col gap-2">
+    {required ? (
+      <RequiredLabel>{label}</RequiredLabel>
+    ) : (
+      <Label className="text-slate-600">{label}</Label>
+    )}
     <div className="relative">
       {Icon ? (
         <Icon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -764,7 +877,7 @@ const RoundedField = ({
         {...props}
       />
     </div>
-    {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+    {error ? <p className="text-sm text-rose-600">{error}</p> : null}
   </div>
 );
 
@@ -794,11 +907,11 @@ const ScheduleDateTimePicker = ({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <div className="relative space-y-2">
-        <Label className="text-slate-600">Date</Label>
+      <div className="relative flex flex-col gap-2">
+        <RequiredLabel>Date</RequiredLabel>
         <Button
           aria-expanded={isCalendarOpen}
-          className="h-11 w-full justify-between rounded-2xl border-slate-200 bg-slate-50 px-3 font-normal text-slate-950 hover:bg-white"
+          className="h-11 w-full justify-between rounded-2xl border border-slate-300 bg-white px-3 font-normal text-slate-950 shadow-sm hover:border-lime-400 hover:bg-white hover:text-slate-950 focus-visible:border-lime-500"
           onClick={() => setIsCalendarOpen((current) => !current)}
           type="button"
           variant="outline"
@@ -890,12 +1003,12 @@ const ScheduleDateTimePicker = ({
           </div>
         ) : null}
         {dateError ? (
-          <p className="text-sm text-rose-300">{dateError}</p>
+          <p className="text-sm text-rose-600">{dateError}</p>
         ) : null}
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-slate-600">Time</Label>
+      <div className="flex flex-col gap-2">
+        <RequiredLabel>Time</RequiredLabel>
         <div className="relative">
           <Clock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <Input
@@ -1098,13 +1211,19 @@ const ProductAccordion = ({
 const BookingWizard = (props: BookingWizardProps) => {
   const navigate = useNavigate({ from: "/book" });
   const storedDraft = parseStoredDraft();
-  const hasStoredDraft = Boolean(storedDraft) && !props.initialResumeDraft;
+  const hasStoredDraft =
+    Boolean(storedDraft) &&
+    !props.initialResumeDraft &&
+    props.initialServices.length === 0 &&
+    !props.initialAddress;
+  const [shouldShowStoredDraft, setShouldShowStoredDraft] =
+    useState(hasStoredDraft);
   const quoteRequestTrackingId = getOrCreateTrackingId();
   const [draft, setDraft] = useState<BookingDraft>(() =>
     buildInitialDraft(props, storedDraft)
   );
   const [activeStep, setActiveStep] = useState<WizardStep>(() =>
-    stepKeyToIndex(props.initialStep)
+    resolveInitialStep(props, storedDraft)
   );
   const [openProductService, setOpenProductService] =
     useState<ServiceId | null>(draft.services[0] ?? null);
@@ -1148,6 +1267,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     setIsAddressValidated(false);
     setOpenDetailService(null);
     setOpenProductService(null);
+    setShouldShowStoredDraft(false);
     setActiveStep(0);
     navigate({
       replace: true,
@@ -1166,6 +1286,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     setOpenDetailService(nextDraft.services[0] ?? null);
     setOpenProductService(nextDraft.services[0] ?? null);
     setErrors({});
+    setShouldShowStoredDraft(false);
     navigate({
       replace: true,
       search: (current) => ({
@@ -1266,12 +1387,23 @@ const BookingWizard = (props: BookingWizardProps) => {
       : selectedCombos.filter(
           (combo) => combo.requiredServices.length === draft.services.length
         );
-  const windowAddOns = getWindowAddOns(draft);
+  const quoteAddOns = getQuoteAddOns(draft);
   let addOnTotalCents = 0;
-  for (const addOn of windowAddOns) {
+  for (const addOn of quoteAddOns) {
     addOnTotalCents += addOn.priceCents;
   }
   const subtotalCents = selectedProductTotal(draft) + addOnTotalCents;
+  const selectedCombo =
+    draft.subscriptionId && draft.subscriptionId !== "one_time"
+      ? comboSubscriptions.find((combo) => combo.id === draft.subscriptionId)
+      : null;
+  const comboMultiplier = getComboDiscountMultiplier(draft.subscriptionId);
+  const planEstimateCents =
+    selectedCombo && comboMultiplier < 1
+      ? Math.round(subtotalCents * comboMultiplier)
+      : null;
+  const planSavingsCents =
+    planEstimateCents === null ? 0 : subtotalCents - planEstimateCents;
   const depositCents = 5000;
   const isLaundryOnly =
     draft.services.length === 1 && draft.services[0] === "laundry";
@@ -1287,17 +1419,14 @@ const BookingWizard = (props: BookingWizardProps) => {
   return (
     <div className="rounded-[2rem] border border-slate-200 bg-white p-4 text-slate-950 shadow-2xl shadow-slate-200/70 sm:p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Request saved on this device
-          </p>
-          {hasStoredDraft ? (
+        <div className="min-h-8">
+          {shouldShowStoredDraft ? (
             <button
-              className="mt-2 text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
+              className="text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
               onClick={resumeStoredDraft}
               type="button"
             >
-              Resume saved quote
+              Continue where you left off
             </button>
           ) : null}
         </div>
@@ -1325,7 +1454,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               return (
                 <button
                   className={cn(
-                    "rounded-2xl border p-3 text-left transition-colors sm:p-4",
+                    "flex min-h-24 flex-col items-center justify-center gap-3 rounded-2xl border p-3 text-center transition-colors sm:p-4",
                     selected
                       ? "border-lime-500 bg-lime-100 text-slate-950"
                       : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white"
@@ -1334,7 +1463,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                   onClick={() => toggleService(service.id)}
                   type="button"
                 >
-                  <Icon className="mb-3 size-5" />
+                  <Icon className="size-5" />
                   <span className="text-xs font-semibold sm:text-sm">
                     {service.shortName}
                   </span>
@@ -1347,8 +1476,8 @@ const BookingWizard = (props: BookingWizardProps) => {
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="space-y-2">
-              <Label className="text-slate-600">Service address</Label>
+            <div className="flex flex-col gap-2">
+              <RequiredLabel>Service address</RequiredLabel>
               <RadarAddressInput
                 className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400 focus-visible:border-lime-500"
                 error={errors.address}
@@ -1365,7 +1494,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                 value={draft.address}
               />
               {errors.address ? (
-                <p className="text-sm text-rose-300">{errors.address}</p>
+                <p className="text-sm text-rose-600">{errors.address}</p>
               ) : null}
             </div>
 
@@ -1400,6 +1529,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               })
             }
             placeholder="Your name"
+            required
             value={draft.contact.name}
           />
           <RoundedField
@@ -1412,7 +1542,9 @@ const BookingWizard = (props: BookingWizardProps) => {
                 phone: event.target.value,
               })
             }
+            inputMode="tel"
             placeholder="(501) 555-0123"
+            required
             value={draft.contact.phone}
           />
           <RoundedField
@@ -1426,6 +1558,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               })
             }
             placeholder="you@example.com"
+            required
             type="email"
             value={draft.contact.email}
           />
@@ -1441,7 +1574,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               }
               type="checkbox"
             />
-            Send me SMS booking and provider updates.
+            Yes, send text updates about this quote and appointment.
           </label>
         </div>
         <StepButton onClick={() => continueFromStep(1)} />
@@ -1462,11 +1595,11 @@ const BookingWizard = (props: BookingWizardProps) => {
               onOpen={() => setOpenDetailService("lawncare")}
               title="How tall is the grass?"
             >
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {grassHeights.map((height, index) => (
                   <button
                     className={cn(
-                      "rounded-2xl border p-4 text-left transition-colors",
+                      "rounded-2xl border p-2 text-left transition-colors sm:p-4",
                       draft.serviceDetails.lawncare.grassHeight === height.id
                         ? "border-lime-500 bg-lime-100 text-slate-950"
                         : "border-slate-200 bg-white text-slate-600"
@@ -1485,8 +1618,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                     type="button"
                   >
                     <GrassSvg level={index + 1} />
-                    <p className="mt-3 font-semibold">{height.name}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                    <p className="mt-2 text-sm font-semibold sm:mt-3 sm:text-base">
+                      {height.name}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
                       {height.description}
                     </p>
                   </button>
@@ -1520,7 +1655,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               onOpen={() => setOpenDetailService("laundry")}
               title="Will this include bedding?"
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 {[
                   ["none", "No bedding", "Clothes, towels, and basics."],
                   [
@@ -1531,7 +1666,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                 ].map(([id, name, description]) => (
                   <button
                     className={cn(
-                      "rounded-2xl border p-4 text-left transition-colors",
+                      "rounded-2xl border p-3 text-left transition-colors sm:p-4",
                       draft.serviceDetails.laundry.bedding === id
                         ? "border-sky-500 bg-sky-50 text-slate-950"
                         : "border-slate-200 bg-white text-slate-600"
@@ -1549,8 +1684,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                     }}
                     type="button"
                   >
-                    <p className="font-semibold">{name}</p>
-                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                    <p className="text-sm font-semibold sm:text-base">{name}</p>
+                    <p className="mt-2 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
                       {description}
                     </p>
                   </button>
@@ -1596,7 +1731,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               <div className="grid gap-4">
                 <div>
                   <Label className="text-slate-600">Glass service</Label>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:gap-3">
                     {[
                       [
                         "exterior",
@@ -1611,7 +1746,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                     ].map(([id, name, description]) => (
                       <button
                         className={cn(
-                          "rounded-2xl border p-4 text-left transition-colors",
+                          "rounded-2xl border p-3 text-left transition-colors sm:p-4",
                           draft.serviceDetails["window-washing"]
                             .cleaningScope === id
                             ? "border-cyan-500 bg-cyan-50 text-slate-950"
@@ -1629,8 +1764,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                         }
                         type="button"
                       >
-                        <p className="font-semibold">{name}</p>
-                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                        <p className="text-sm font-semibold sm:text-base">
+                          {name}
+                        </p>
+                        <p className="mt-2 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">
                           {description}
                         </p>
                       </button>
@@ -1921,17 +2058,18 @@ const BookingWizard = (props: BookingWizardProps) => {
         isComplete={Boolean(draft.paymentOption)}
         isOpen={activeStep === 5}
         number="06"
-        title="Checkout preview"
+        title="Review and reserve"
       >
         <div className="mx-auto max-w-3xl">
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
             <div className="border-b border-slate-100 bg-slate-950 p-5 text-white">
               <div className="flex items-center gap-2">
                 <CreditCard className="size-5 text-lime-300" />
-                <h3 className="font-bold">Invoice preview</h3>
+                <h3 className="font-bold">Your CastleCare estimate</h3>
               </div>
               <p className="mt-2 text-sm text-white/55">
-                Review the service estimate before Stripe checkout.
+                Confirm the services, plan, and payment choice before reserving
+                the appointment.
               </p>
             </div>
             <div className="space-y-3 p-5 text-sm">
@@ -1954,12 +2092,16 @@ const BookingWizard = (props: BookingWizardProps) => {
                       </span>
                     </span>
                     <span className="font-black text-slate-950">
-                      {formatCents(product?.priceCents ?? 0)}
+                      {product
+                        ? formatCents(
+                            getProductPriceCents(draft, serviceId, product)
+                          )
+                        : formatCents(0)}
                     </span>
                   </div>
                 );
               })}
-              {windowAddOns.map((addOn) => (
+              {quoteAddOns.map((addOn) => (
                 <div
                   className="flex justify-between gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3"
                   key={addOn.name}
@@ -1978,6 +2120,28 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
               ))}
               <div className="border-t border-slate-200 pt-3">
+                {selectedCombo && planEstimateCents !== null ? (
+                  <div className="mb-3 rounded-2xl border border-lime-200 bg-lime-50 p-3">
+                    <div className="flex justify-between gap-3">
+                      <span>
+                        <span className="block font-semibold text-slate-950">
+                          {selectedCombo.name}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {selectedCombo.frequency} ·{" "}
+                          {selectedCombo.discountLabel}
+                        </span>
+                      </span>
+                      <span className="font-black text-lime-700">
+                        {formatCents(planEstimateCents)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex justify-between text-xs font-semibold text-lime-700">
+                      <span>Estimated plan savings</span>
+                      <span>-{formatCents(planSavingsCents)}</span>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <span className="text-slate-500">
                     {isLaundryOnly ? "Due today" : "Deposit due today"}
@@ -2045,13 +2209,9 @@ const BookingWizard = (props: BookingWizardProps) => {
                 }}
                 type="button"
               >
-                Continue to Stripe
+                Continue to secure checkout
                 <ArrowRight className="size-4" />
               </Button>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Product sync, deposit collection, and account finalization will
-                wire into this UI after the schema and API are ready.
-              </p>
             </div>
           </div>
         </div>

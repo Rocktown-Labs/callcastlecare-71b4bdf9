@@ -87,7 +87,7 @@ describe("BookingWizard", () => {
     );
     clickFirstContinue();
 
-    expect(await screen.findByText("Checkout preview")).toBeTruthy();
+    expect(await screen.findByText("Review and reserve")).toBeTruthy();
     expect(screen.getByText("Due today")).toBeTruthy();
     expect(screen.getAllByText("$40.00").length).toBeGreaterThan(0);
     expect(

@@ -118,7 +118,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     seoDescription:
       "Book window washing in Central Arkansas with CastleCare. Exterior panes, inside-and-out cleaning, screens, and recurring glass care.",
     shortName: "Window washing",
-    startingPrice: 10,
+    startingPrice: 5,
     subscriptionInfo: "Monthly and bi-annual plans available",
     title: "Window Washing",
   },
