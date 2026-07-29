@@ -63,20 +63,28 @@ const getRadarHeaders = () => ({
   Authorization: env.RADAR_API_KEY ?? "",
 });
 
+const RADAR_API_BASE_URL = "https://api.radar.io";
+const MIN_AUTOCOMPLETE_CHARACTERS = 5;
+
 const radarGet = async (path: string, searchParams: URLSearchParams) => {
   if (!env.RADAR_API_KEY) {
     return null;
   }
 
-  const url = new URL(path, "https://api.radar.com");
+  const url = new URL(path, RADAR_API_BASE_URL);
   for (const [key, value] of searchParams) {
     url.searchParams.set(key, value);
   }
 
-  const response = await fetch(url, {
-    headers: getRadarHeaders(),
-    method: "GET",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: getRadarHeaders(),
+      method: "GET",
+    });
+  } catch {
+    return null;
+  }
 
   if (!response.ok) {
     return null;
@@ -168,14 +176,15 @@ export const autocompleteRadarAddresses = async (
   input: string
 ): Promise<RadarAddressSuggestion[]> => {
   const trimmed = input.trim();
-  if (trimmed.length < 3) {
+  if (trimmed.length < MIN_AUTOCOMPLETE_CHARACTERS) {
     return [];
   }
 
   const payload = await radarGet(
     "/v1/search/autocomplete",
     new URLSearchParams({
-      country: "US",
+      countryCode: "US",
+      layers: "address",
       limit: "8",
       query: trimmed,
     })

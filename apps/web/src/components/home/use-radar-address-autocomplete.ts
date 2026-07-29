@@ -12,6 +12,7 @@ export interface RadarAddressSuggestion {
 }
 
 const DEBOUNCE_MS = 300;
+const MIN_AUTOCOMPLETE_CHARACTERS = 5;
 
 const toStringOrNull = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : null;
@@ -175,7 +176,8 @@ export const useRadarAddressAutocomplete = (query: string) => {
 
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
-    if (trimmed.length < 3) {
+    if (trimmed.length < MIN_AUTOCOMPLETE_CHARACTERS) {
+      requestIdRef.current += 1;
       return;
     }
 
@@ -211,7 +213,11 @@ export const useRadarAddressAutocomplete = (query: string) => {
 
   return {
     isEnabled: true,
-    isLoading: isLoading && debouncedQuery.trim().length >= 3,
-    suggestions: debouncedQuery.trim().length >= 3 ? suggestions : [],
+    isLoading:
+      isLoading && debouncedQuery.trim().length >= MIN_AUTOCOMPLETE_CHARACTERS,
+    suggestions:
+      debouncedQuery.trim().length >= MIN_AUTOCOMPLETE_CHARACTERS
+        ? suggestions
+        : [],
   };
 };

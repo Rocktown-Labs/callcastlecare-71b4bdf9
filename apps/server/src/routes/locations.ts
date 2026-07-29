@@ -15,7 +15,7 @@ import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
 
 const autocompleteQuerySchema = z.object({
-  input: z.string().trim().min(3),
+  input: z.string().trim().min(5),
 });
 
 const validateAddressSchema = z.object({
