@@ -8,6 +8,11 @@ export interface StripePaymentIntent {
   id: string;
 }
 
+export interface CastleCareCheckoutSession {
+  id: string;
+  url: string;
+}
+
 export interface StripeWebhookEvent {
   data: {
     object: Record<string, unknown>;
@@ -22,7 +27,7 @@ const createStripeClient = () => {
   }
 
   return new Stripe(env.STRIPE_SECRET_KEY, {
-    apiVersion: "2026-02-25.clover",
+    apiVersion: "2026-06-24.dahlia" as Stripe.StripeConfig["apiVersion"],
   });
 };
 
@@ -85,6 +90,73 @@ export const createStripePaymentIntent = async (input: {
     );
     throw error;
   }
+};
+
+const randomLetters = (length: number) => {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return [...bytes].map((byte) => alphabet[byte % alphabet.length]).join("");
+};
+
+export const createStripeCheckoutSession = async (input: {
+  amountDueCents: number;
+  cancelUrl: string;
+  checkoutSessionId: number;
+  currency?: string;
+  customerEmail: string;
+  metadata: Record<string, string>;
+  successUrl: string;
+}): Promise<CastleCareCheckoutSession> => {
+  if (shouldUseMockMode()) {
+    const random = Math.random().toString(36).slice(2);
+    return {
+      id: `cs_mock_${input.checkoutSessionId}_${random}`,
+      url: `${input.successUrl.replace("{CHECKOUT_SESSION_ID}", `cs_mock_${random}`)}`,
+    };
+  }
+
+  const stripeClient = createStripeClient();
+  if (!stripeClient) {
+    throw new Error("Stripe client is unavailable.");
+  }
+
+  const checkoutParams = {
+    cancel_url: input.cancelUrl,
+    customer_email: input.customerEmail,
+    integration_identifier: `castlecare_hosted_${randomLetters(8)}`,
+    line_items: [
+      {
+        price_data: {
+          currency: input.currency ?? "usd",
+          product_data: {
+            description: "Secure payment for your CastleCare booking.",
+            name: "CastleCare reservation",
+          },
+          unit_amount: input.amountDueCents,
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: input.metadata,
+    mode: "payment",
+    payment_intent_data: {
+      metadata: input.metadata,
+    },
+    success_url: input.successUrl,
+  } satisfies Stripe.Checkout.SessionCreateParams & {
+    integration_identifier: string;
+  };
+
+  const session = await stripeClient.checkout.sessions.create(checkoutParams);
+
+  if (!session.url) {
+    throw new Error("Stripe did not return a Checkout URL.");
+  }
+
+  return {
+    id: session.id,
+    url: session.url,
+  };
 };
 
 export const parseStripeWebhookEvent = (input: {

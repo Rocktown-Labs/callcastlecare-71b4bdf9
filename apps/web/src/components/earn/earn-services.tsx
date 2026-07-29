@@ -102,7 +102,7 @@ export default function EarnServices() {
                     </ul>
                   </div>
 
-                  <Link className="mt-6" to="/login">
+                  <Link className="mt-6" to="/sign-in">
                     <Button className="h-11 w-full rounded-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/10">
                       Apply now
                       <ArrowRight className="ml-2 size-4" />

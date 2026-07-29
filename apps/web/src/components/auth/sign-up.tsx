@@ -196,13 +196,13 @@ export function SignUp({
   return (
     <Card className={cn("w-full max-w-sm", className)}>
       <AuthPrompts view="signUp" />
-      <CardHeader>
-        <CardTitle className="text-xl font-semibold">
+      <CardHeader className="px-5 pt-5 sm:px-6">
+        <CardTitle className="text-xl font-semibold text-white">
           {localization.auth.signUp}
         </CardTitle>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="px-5 pb-5 sm:px-6">
         <div className="flex flex-col gap-6">
           {socialPosition === "top" && (
             <>
@@ -211,7 +211,7 @@ export function SignUp({
               )}
 
               {showSeparator && (
-                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card text-xs flex items-center">
+                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-transparent text-xs flex items-center text-white/40">
                   {localization.auth.or}
                 </FieldSeparator>
               )}
@@ -228,6 +228,7 @@ export function SignUp({
                     </FieldLabel>
 
                     <Input
+                      className="h-11 rounded-full border-white/10 bg-white/[0.04] px-4 text-sm text-white placeholder:text-white/36"
                       id="name"
                       name="name"
                       type="text"
@@ -262,6 +263,7 @@ export function SignUp({
                   </FieldLabel>
 
                   <Input
+                    className="h-11 rounded-full border-white/10 bg-white/[0.04] px-4 text-sm text-white placeholder:text-white/36"
                     id="email"
                     name="email"
                     type="email"
@@ -311,8 +313,9 @@ export function SignUp({
                     {localization.auth.password}
                   </FieldLabel>
 
-                  <InputGroup>
+                  <InputGroup className="h-11 rounded-full border-white/10 bg-white/[0.04]">
                     <InputGroupInput
+                      className="px-4 text-sm text-white placeholder:text-white/36"
                       id="password"
                       name="password"
                       type={isPasswordVisible ? "text" : "password"}
@@ -357,6 +360,7 @@ export function SignUp({
 
                     <InputGroupAddon align="inline-end">
                       <InputGroupButton
+                        className="rounded-full text-white/55 hover:bg-white/10 hover:text-white"
                         size="icon-xs"
                         aria-label={
                           isPasswordVisible
@@ -386,8 +390,9 @@ export function SignUp({
                       {localization.auth.confirmPassword}
                     </FieldLabel>
 
-                    <InputGroup>
+                    <InputGroup className="h-11 rounded-full border-white/10 bg-white/[0.04]">
                       <InputGroupInput
+                        className="px-4 text-sm text-white placeholder:text-white/36"
                         id="confirmPassword"
                         name="confirmPassword"
                         type={isConfirmPasswordVisible ? "text" : "password"}
@@ -435,6 +440,7 @@ export function SignUp({
 
                       <InputGroupAddon align="inline-end">
                         <InputGroupButton
+                          className="rounded-full text-white/55 hover:bg-white/10 hover:text-white"
                           size="icon-xs"
                           aria-label={
                             isConfirmPasswordVisible
@@ -478,7 +484,11 @@ export function SignUp({
                 )}
 
                 <div className="flex flex-col gap-3">
-                  <Button type="submit" disabled={isPending}>
+                  <Button
+                    className="h-11 rounded-full bg-lime-300 font-semibold text-slate-950 hover:bg-lime-200"
+                    type="submit"
+                    disabled={isPending}
+                  >
                     {signUpEmailPending && <Spinner />}
 
                     {localization.auth.signUp}
@@ -500,7 +510,7 @@ export function SignUp({
           {socialPosition === "bottom" && (
             <>
               {showSeparator && (
-                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card text-xs flex items-center">
+                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-transparent text-xs flex items-center text-white/40">
                   {localization.auth.or}
                 </FieldSeparator>
               )}
@@ -518,7 +528,7 @@ export function SignUp({
               {localization.auth.alreadyHaveAnAccount}{" "}
               <Link
                 href={`${basePaths.auth}/${viewPaths.auth.signIn}`}
-                className="underline underline-offset-4"
+                className="font-medium text-lime-200 underline underline-offset-4 hover:text-lime-100"
               >
                 {localization.auth.signIn}
               </Link>

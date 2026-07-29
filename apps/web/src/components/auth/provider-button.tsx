@@ -54,7 +54,10 @@ export function ProviderButton({
       variant={variant}
       disabled={isPending}
       onClick={() => signInSocial({ callbackURL, provider })}
-      className={cn("relative overflow-visible", className)}
+      className={cn(
+        "relative h-11 overflow-visible rounded-full border-white/10 bg-white/[0.04] text-white hover:bg-white/10",
+        className
+      )}
       {...props}
     >
       {signInSocialPending ? (

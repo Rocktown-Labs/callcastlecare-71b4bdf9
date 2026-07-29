@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import EarnCtaSection from "@/components/home/earn-cta";
 import HeroSection from "@/components/home/hero";
 import MarketingLayout from "@/components/home/marketing-layout";
 import ServicesSection from "@/components/home/services";
@@ -8,12 +9,13 @@ const siteUrl = "https://callcastlecare.com";
 const homeTitle = "CastleCare | Fast & Affordable Home Services, On Demand";
 const homeDescription =
   "Book fast, affordable lawn care, laundry pickup, and window washing with CastleCare across Arkansas.";
-const homeImage = `${siteUrl}/callcastlecare/media/hero-workers-bg.jpg`;
+const homeImage = `${siteUrl}/callcastlecare/media/home-og.png`;
 
 const HomeComponent = () => (
   <MarketingLayout>
     <HeroSection />
     <ServicesSection />
+    <EarnCtaSection />
   </MarketingLayout>
 );
 

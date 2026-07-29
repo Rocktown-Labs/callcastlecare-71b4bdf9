@@ -39,7 +39,7 @@ export default function EarnCoverage() {
             care, laundry pickup, or window washing in your area, you can start
             the onboarding path now.
           </p>
-          <Link className="mt-7 inline-flex" to="/login">
+          <Link className="mt-7 inline-flex" to="/sign-in">
             <Button className="h-12 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200">
               Start onboarding
               <ArrowRight className="size-4" />

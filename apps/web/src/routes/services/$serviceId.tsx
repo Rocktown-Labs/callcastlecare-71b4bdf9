@@ -13,13 +13,10 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   Handshake,
-  LocateFixed,
-  MapPin,
   MessagesSquare,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { useState } from "react";
 
 import MarketingLayout from "@/components/home/marketing-layout";
 import {
@@ -33,51 +30,6 @@ const siteUrl = "https://callcastlecare.com";
 
 const getAbsoluteUrl = (path: string) =>
   path.startsWith("http") ? path : `${siteUrl}${path}`;
-
-const ServiceAreaStatus = () => {
-  const [areaLabel, setAreaLabel] = useState(centralArkansasArea);
-  const [status, setStatus] = useState("Launch coverage shown");
-
-  const detectLocation = () => {
-    if (!navigator.geolocation) {
-      setStatus("Location is unavailable in this browser");
-      return;
-    }
-
-    setStatus("Checking your location...");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setAreaLabel(`Near ${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
-        setStatus("Exact coverage is verified during booking");
-      },
-      () => setStatus("Arkansas coverage shown by default"),
-      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 }
-    );
-  };
-
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-lime-300/10 text-lime-300">
-          <MapPin className="size-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white">{areaLabel}</p>
-          <p className="mt-1 text-xs leading-5 text-white/55">{status}</p>
-          <button
-            className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs font-semibold text-white/75 transition-colors hover:border-lime-300/40 hover:text-lime-200"
-            onClick={detectLocation}
-            type="button"
-          >
-            <LocateFixed className="size-3.5" />
-            Use my location
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const ServiceDetailPage = () => {
   const { serviceId } = useParams({ from: "/services/$serviceId" });
@@ -183,8 +135,7 @@ const ServiceDetailPage = () => {
               </div>
             </div>
 
-            <aside className="space-y-4" aria-label="Service quote summary">
-              <ServiceAreaStatus />
+            <aside aria-label="Service quote summary">
               <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-2xl backdrop-blur">
                 <p className="text-sm font-semibold uppercase tracking-widest text-white/45">
                   Starting at

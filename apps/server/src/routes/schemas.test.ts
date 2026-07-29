@@ -4,6 +4,7 @@ import {
   checkoutPreviewItemSchema,
   checkoutPreviewRequestSchema,
   publicQuoteRequestSchema,
+  supportRequestSchema,
 } from "./schemas";
 
 const scheduledStartAt = "2026-07-28T14:00:00.000Z";
@@ -89,6 +90,37 @@ describe("public quote request schema", () => {
     if (!result.success) {
       expect(result.error.issues[0]?.path).toEqual(["contact", "email"]);
       expect(result.error.issues[0]?.message).toBe("Invalid email address");
+    }
+  });
+
+  it("rejects public booking phone values with letters", () => {
+    const result = publicQuoteRequestSchema.safeParse({
+      contact: {
+        phone: "501-CALL-CARE",
+      },
+      payload: {},
+      trackingId: "quote-request-123",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(["contact", "phone"]);
+    }
+  });
+});
+
+describe("support request schema", () => {
+  it("rejects invalid phone values", () => {
+    const result = supportRequestSchema.safeParse({
+      email: "customer@example.com",
+      message: "Please help me with a recent request.",
+      name: "Taylor Customer",
+      phone: "501-CALL-CARE",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(["phone"]);
     }
   });
 });
