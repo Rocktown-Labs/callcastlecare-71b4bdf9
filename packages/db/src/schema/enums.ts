@@ -84,6 +84,8 @@ export const legStatusEnum = pgEnum("leg_status", [
 ]);
 
 export const mediaTypeEnum = pgEnum("media_type", [
+  "service_before",
+  "service_after",
   "lawncare_before",
   "lawncare_after",
   "laundry_pickup",

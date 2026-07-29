@@ -2,12 +2,20 @@ import { Button } from "@callcastlecare/ui/components/button";
 import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { cn } from "@callcastlecare/ui/lib/utils";
-import { createFileRoute, useRouteContext } from "@tanstack/react-router";
-import { Inbox, RefreshCw, Save, ShieldCheck, Sparkles } from "lucide-react";
+import { Link, createFileRoute, useRouteContext } from "@tanstack/react-router";
+import {
+  CalendarDays,
+  Inbox,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { apiClient } from "@/lib/api-client";
+import { getServerUrl } from "@/lib/server-url";
 
 interface CatalogItem {
   active: boolean;
@@ -52,6 +60,26 @@ interface SupportRequest {
   zip?: string | null;
 }
 
+interface AdminOrderSummary {
+  address: {
+    formattedAddress?: string | null;
+  } | null;
+  customer: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+  order: {
+    createdAt: string;
+    id: number;
+    scheduledStartAt?: string | null;
+    serviceLabel: string;
+    status: string;
+    statusLabel: string;
+    totalPriceCents: number;
+  };
+}
+
 const formatCents = (cents: number) =>
   new Intl.NumberFormat("en-US", {
     currency: "USD",
@@ -66,9 +94,18 @@ const normalizeInterval = (value: string): CatalogItem["interval"] => {
   return "one_time";
 };
 
+const formatDateTime = (value?: string | null) =>
+  value
+    ? new Intl.DateTimeFormat("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(value))
+    : "Not scheduled";
+
 export const AdminDashboard = ({ userEmail }: { userEmail: string }) => {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [orders, setOrders] = useState<AdminOrderSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -80,10 +117,14 @@ export const AdminDashboard = ({ userEmail }: { userEmail: string }) => {
 
     const loadCatalog = async () => {
       setIsLoading(true);
-      const [catalogResponse, supportResponse] = await Promise.all([
-        apiClient.admin.stripe.catalog.$get(),
-        apiClient.admin.support.$get(),
-      ]);
+      const [catalogResponse, supportResponse, ordersResponse] =
+        await Promise.all([
+          apiClient.admin.stripe.catalog.$get(),
+          apiClient.admin.support.$get(),
+          fetch(new URL("/api/v1/admin/orders", getServerUrl()), {
+            credentials: "include",
+          }),
+        ]);
 
       if (!catalogResponse.ok) {
         setIsLoading(false);
@@ -98,6 +139,13 @@ export const AdminDashboard = ({ userEmail }: { userEmail: string }) => {
       if (supportResponse.ok) {
         const supportPayload = await supportResponse.json();
         setSupportRequests(supportPayload.requests as SupportRequest[]);
+      }
+
+      if (ordersResponse.ok) {
+        const ordersPayload = (await ordersResponse.json()) as {
+          orders?: AdminOrderSummary[];
+        };
+        setOrders(ordersPayload.orders ?? []);
       }
 
       setItems(payload.items as CatalogItem[]);
@@ -221,6 +269,68 @@ export const AdminDashboard = ({ userEmail }: { userEmail: string }) => {
               />
               {isSyncing ? "Syncing..." : "Sync to Stripe"}
             </Button>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="size-5 text-lime-500" />
+                <h2 className="text-2xl font-black">Operations queue</h2>
+              </div>
+              <p className="mt-2 text-sm text-slate-600">
+                Confirm jobs, manage field status, add private notes, and upload
+                before or after photos from mobile.
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
+              {orders.length} latest
+            </div>
+          </div>
+          <div className="grid gap-3">
+            {orders.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                No orders yet.
+              </div>
+            ) : (
+              orders.map(({ address, customer, order }) => (
+                <Link
+                  className="grid gap-3 rounded-3xl border border-slate-200 bg-white p-5 text-slate-950 shadow-sm transition-colors hover:border-lime-300 sm:grid-cols-[1fr_auto]"
+                  key={order.id}
+                  params={{ orderId: String(order.id) }}
+                  to="/admin/orders/$orderId"
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
+                        {order.serviceLabel}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                        {order.statusLabel}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 text-lg font-black">
+                      Order #{order.id}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {customer
+                        ? `${customer.firstName} ${customer.lastName} · ${customer.email}`
+                        : "Customer"}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {address?.formattedAddress ?? "No address"}
+                    </p>
+                  </div>
+                  <div className="text-sm font-semibold text-slate-600 sm:text-right">
+                    <p>{formatDateTime(order.scheduledStartAt)}</p>
+                    <p className="mt-2 text-lg font-black text-lime-700">
+                      {formatCents(order.totalPriceCents)}
+                    </p>
+                  </div>
+                </Link>
+              ))
+            )}
           </div>
         </section>
 
