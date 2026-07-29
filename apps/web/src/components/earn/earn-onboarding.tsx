@@ -27,11 +27,31 @@ import {
   User,
 } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 const storageKey = "callcastlecare.provider-application.v1";
 const maxVehicleYear = new Date().getFullYear() + 1;
+const minVehicleSearchLength = 5;
+const nhtsaVehicleResponseSchema = z.object({
+  Results: z.array(
+    z.object({
+      Make_Name: z.string(),
+      Model_ID: z.number().optional(),
+      Model_Name: z.string(),
+    })
+  ),
+});
+
+interface VehicleOption {
+  id: string;
+  label: string;
+  make: string;
+  model: string;
+  year: string;
+}
+
+type VehicleSearchStatus = "idle" | "loading" | "ready" | "error";
 
 const providerServices = [
   {
@@ -155,7 +175,7 @@ const servicesSchema = z.object({
 const vehicleSchema = z
   .object({
     hasVehicle: z.boolean(),
-    licensePlate: z.string().trim(),
+    licensePlate: z.string().trim().max(12, "Use 12 characters or fewer."),
     serviceRadiusMiles: z
       .string()
       .trim()
@@ -166,22 +186,15 @@ const vehicleSchema = z
     vehicleColor: z.string().trim(),
     vehicleMake: z.string().trim(),
     vehicleModel: z.string().trim(),
-    vehicleYear: z
-      .string()
-      .trim()
-      .regex(/^\d{4}$/u, "Enter a 4-digit year.")
-      .refine(
-        (value) => {
-          const year = Number(value);
-          return year >= 1980 && year <= maxVehicleYear;
-        },
-        { message: `Use a year from 1980 to ${maxVehicleYear}.` }
-      ),
+    vehicleYear: z.string().trim(),
     vin: z
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^[A-HJ-NPR-Z0-9]{17}$/u, "Enter a valid 17-character VIN."),
+      .refine(
+        (value) => value === "" || /^[A-Z0-9]{17}$/u.test(value),
+        "VIN can be added later. If entered now, use 17 characters."
+      ),
     weeklyAvailability: z
       .string()
       .trim()
@@ -194,10 +207,10 @@ const vehicleSchema = z
     }
 
     const requiredVehicleFields = [
-      ["vehicleMake", "Enter the vehicle make."],
-      ["vehicleModel", "Enter the vehicle model."],
+      ["vehicleMake", "Choose the vehicle from the lookup."],
+      ["vehicleModel", "Choose the vehicle from the lookup."],
+      ["vehicleYear", "Choose the vehicle from the lookup."],
       ["vehicleColor", "Enter the vehicle color."],
-      ["licensePlate", "Enter the license plate."],
     ] as const;
 
     for (const [field, message] of requiredVehicleFields) {
@@ -206,6 +219,22 @@ const vehicleSchema = z
           code: "custom",
           message,
           path: [field],
+        });
+      }
+    }
+
+    if (value.vehicleYear) {
+      const year = Number(value.vehicleYear);
+      const hasValidYear =
+        /^\d{4}$/u.test(value.vehicleYear) &&
+        year >= 1980 &&
+        year <= maxVehicleYear;
+
+      if (!hasValidYear) {
+        context.addIssue({
+          code: "custom",
+          message: `Use a year from 1980 to ${maxVehicleYear}.`,
+          path: ["vehicleYear"],
         });
       }
     }
@@ -280,8 +309,9 @@ const WizardInput = ({
       />
       <Input
         {...props}
+        aria-invalid={error ? true : undefined}
         className={cn(
-          "h-11 border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/30",
+          "h-11 rounded-2xl border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/30",
           error && "border-red-300/60"
         )}
       />
@@ -289,6 +319,218 @@ const WizardInput = ({
     <FieldError>{error}</FieldError>
   </div>
 );
+
+const getVehicleQueryParts = (query: string) => {
+  const normalized = query.trim().replaceAll(/\s+/gu, " ");
+  const yearMatch = normalized.match(/\b(?<year>19[8-9]\d|20\d{2})\b/u);
+  const { year } = yearMatch?.groups ?? {};
+
+  if (!year) {
+    return null;
+  }
+
+  const words = normalized.replace(year, "").trim().split(" ").filter(Boolean);
+
+  const [make, ...modelParts] = words;
+  if (!make) {
+    return null;
+  }
+
+  return {
+    make,
+    modelQuery: modelParts.join(" ").toLowerCase(),
+    year,
+  };
+};
+
+const getNhtsaVehicleOptions = async (
+  query: string,
+  signal: AbortSignal
+): Promise<VehicleOption[]> => {
+  const parts = getVehicleQueryParts(query);
+  if (!parts || Number(parts.year) < 1996) {
+    return [];
+  }
+
+  const url = new URL(
+    `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(
+      parts.make
+    )}/modelyear/${parts.year}`
+  );
+  url.searchParams.set("format", "json");
+
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    throw new Error("Vehicle lookup failed");
+  }
+
+  const payload = nhtsaVehicleResponseSchema.parse(await response.json());
+  const seen = new Set<string>();
+
+  return payload.Results.flatMap((item) => {
+    const make = item.Make_Name.trim();
+    const model = item.Model_Name.trim();
+    const haystack = `${make} ${model}`.toLowerCase();
+
+    if (parts.modelQuery && !haystack.includes(parts.modelQuery)) {
+      return [];
+    }
+
+    const id = `${parts.year}-${make}-${model}`.toLowerCase();
+    if (seen.has(id)) {
+      return [];
+    }
+    seen.add(id);
+
+    return [
+      {
+        id,
+        label: `${parts.year} ${make} ${model}`,
+        make,
+        model,
+        year: parts.year,
+      },
+    ];
+  }).slice(0, 8);
+};
+
+const VehicleLookup = ({
+  error,
+  onClear,
+  onSelect,
+  selectedLabel,
+}: {
+  error?: string;
+  onClear: () => void;
+  onSelect: (option: VehicleOption) => void;
+  selectedLabel?: string;
+}) => {
+  const [query, setQuery] = useState("");
+  const [options, setOptions] = useState<VehicleOption[]>([]);
+  const [status, setStatus] = useState<VehicleSearchStatus>("idle");
+
+  useEffect(() => {
+    if (query.trim().length < minVehicleSearchLength) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadVehicleOptions = async () => {
+      setStatus("loading");
+      try {
+        const nextOptions = await getNhtsaVehicleOptions(
+          query,
+          controller.signal
+        );
+        setOptions(nextOptions);
+        setStatus("ready");
+      } catch (error_: unknown) {
+        if (error_ instanceof DOMException && error_.name === "AbortError") {
+          return;
+        }
+        setOptions([]);
+        setStatus("error");
+      }
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      void loadVehicleOptions();
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [query]);
+
+  const updateQuery = (event: ChangeEvent<HTMLInputElement>) => {
+    const { value } = event.target;
+    setQuery(value);
+    onClear();
+
+    if (value.trim().length < minVehicleSearchLength) {
+      setOptions([]);
+      setStatus("idle");
+    }
+  };
+
+  const selectOption = (option: VehicleOption) => {
+    setQuery(option.label);
+    setOptions([]);
+    setStatus("idle");
+    onSelect(option);
+  };
+
+  return (
+    <div className="sm:col-span-2">
+      <Label className="text-white/72" htmlFor="vehicle-search">
+        Vehicle
+      </Label>
+      <div className="relative mt-2">
+        <Car
+          aria-hidden="true"
+          className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35"
+        />
+        <Input
+          aria-autocomplete="list"
+          aria-controls="vehicle-options"
+          aria-expanded={options.length > 0}
+          aria-invalid={error ? true : undefined}
+          autoComplete="off"
+          className={cn(
+            "h-11 rounded-2xl border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/30",
+            error && "border-red-300/60"
+          )}
+          id="vehicle-search"
+          onChange={updateQuery}
+          placeholder="Type year, make, and model"
+          value={query}
+        />
+      </div>
+      {status === "loading" ? (
+        <p className="mt-2 text-xs text-white/45">
+          Checking vehicle matches...
+        </p>
+      ) : null}
+      {status === "ready" && options.length > 0 ? (
+        <div
+          className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-xl"
+          id="vehicle-options"
+        >
+          {options.map((option) => (
+            <button
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm text-white transition-colors hover:bg-lime-300/10"
+              key={option.id}
+              onClick={() => selectOption(option)}
+              type="button"
+            >
+              <span>{option.label}</span>
+              <Check aria-hidden="true" className="size-4 text-lime-300" />
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {status === "ready" &&
+      query.trim().length >= minVehicleSearchLength &&
+      options.length === 0 ? (
+        <p className="mt-2 text-xs text-white/45">
+          No matching vehicle found yet. Try the year and make first, then pick
+          the closest model.
+        </p>
+      ) : null}
+      {status === "error" ? (
+        <p className="mt-2 text-xs font-medium text-red-200">
+          Vehicle lookup is unavailable. Try again in a moment.
+        </p>
+      ) : null}
+      {selectedLabel ? (
+        <p className="mt-2 text-xs text-lime-100">Selected: {selectedLabel}</p>
+      ) : null}
+      <FieldError>{error}</FieldError>
+    </div>
+  );
+};
 
 export default function EarnOnboarding() {
   const navigate = useNavigate({ from: "/earn" });
@@ -323,6 +565,42 @@ export default function EarnOnboarding() {
 
   const updatePhone = (event: ChangeEvent<HTMLInputElement>) => {
     updateDraft("phone", formatUsPhoneInput(event.target.value));
+  };
+
+  const clearVehicleSelection = () => {
+    setDraft((current) => ({
+      ...current,
+      vehicleMake: "",
+      vehicleModel: "",
+      vehicleYear: "",
+    }));
+    setErrors((current) => {
+      const {
+        vehicleMake: _vehicleMake,
+        vehicleModel: _vehicleModel,
+        vehicleYear: _vehicleYear,
+        ...next
+      } = current;
+      return next;
+    });
+  };
+
+  const selectVehicle = (option: VehicleOption) => {
+    setDraft((current) => ({
+      ...current,
+      vehicleMake: option.make,
+      vehicleModel: option.model,
+      vehicleYear: option.year,
+    }));
+    setErrors((current) => {
+      const {
+        vehicleMake: _vehicleMake,
+        vehicleModel: _vehicleModel,
+        vehicleYear: _vehicleYear,
+        ...next
+      } = current;
+      return next;
+    });
   };
 
   const toggleService = (serviceId: ProviderServiceId) => {
@@ -414,6 +692,13 @@ export default function EarnOnboarding() {
       to: "/sign-up",
     });
   };
+
+  const hasVehicleLookupError =
+    errors.vehicleMake ?? errors.vehicleModel ?? errors.vehicleYear;
+  const selectedVehicleLabel =
+    draft.vehicleYear && draft.vehicleMake && draft.vehicleModel
+      ? `${draft.vehicleYear} ${draft.vehicleMake} ${draft.vehicleModel}`
+      : undefined;
 
   return (
     <section className="border-t border-white/5 bg-[#080c16] py-20" id="apply">
@@ -591,7 +876,7 @@ export default function EarnOnboarding() {
                       I can do all active services
                     </span>
                     <span className="mt-1 block text-sm text-white/55">
-                      Lawn Care, laundry, and Window Washing.
+                      Lawn Care, Laundry, and Window Washing.
                     </span>
                   </span>
                   <span
@@ -651,7 +936,8 @@ export default function EarnOnboarding() {
                     Notes, tools, or experience
                   </Label>
                   <Textarea
-                    className="mt-2 min-h-28 border-white/10 bg-white/[0.06] text-white placeholder:text-white/30"
+                    aria-invalid={errors.serviceNotes ? true : undefined}
+                    className="mt-2 min-h-28 rounded-2xl border-white/10 bg-white/[0.06] text-white placeholder:text-white/30"
                     id="provider-service-notes"
                     onChange={updateTextField("serviceNotes")}
                     placeholder="Tell us what you have, what you prefer, and anything we should know before dispatch."
@@ -685,31 +971,11 @@ export default function EarnOnboarding() {
                 </button>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <WizardInput
-                    error={errors.vehicleMake}
-                    icon={Car}
-                    id="vehicle-make"
-                    label="Make"
-                    onChange={updateTextField("vehicleMake")}
-                    value={draft.vehicleMake}
-                  />
-                  <WizardInput
-                    error={errors.vehicleModel}
-                    icon={Car}
-                    id="vehicle-model"
-                    label="Model"
-                    onChange={updateTextField("vehicleModel")}
-                    value={draft.vehicleModel}
-                  />
-                  <WizardInput
-                    error={errors.vehicleYear}
-                    icon={Car}
-                    id="vehicle-year"
-                    inputMode="numeric"
-                    label="Year"
-                    maxLength={4}
-                    onChange={updateTextField("vehicleYear")}
-                    value={draft.vehicleYear}
+                  <VehicleLookup
+                    error={hasVehicleLookupError}
+                    onClear={clearVehicleSelection}
+                    onSelect={selectVehicle}
+                    selectedLabel={selectedVehicleLabel}
                   />
                   <WizardInput
                     error={errors.vehicleColor}
@@ -723,19 +989,22 @@ export default function EarnOnboarding() {
                     error={errors.licensePlate}
                     icon={Car}
                     id="vehicle-plate"
-                    label="License plate"
+                    label="License plate (optional)"
                     onChange={updateTextField("licensePlate")}
+                    placeholder="Can be added later"
                     value={draft.licensePlate}
                   />
                   <WizardInput
                     error={errors.vin}
                     icon={ShieldCheck}
                     id="vehicle-vin"
-                    label="VIN"
+                    label="VIN (optional)"
                     maxLength={17}
+                    minLength={17}
                     onChange={(event) =>
                       updateDraft("vin", event.target.value.toUpperCase())
                     }
+                    placeholder="Can be added later"
                     value={draft.vin}
                   />
                   <WizardInput
@@ -757,7 +1026,8 @@ export default function EarnOnboarding() {
                     Weekly availability
                   </Label>
                   <Textarea
-                    className="mt-2 min-h-28 border-white/10 bg-white/[0.06] text-white placeholder:text-white/30"
+                    aria-invalid={errors.weeklyAvailability ? true : undefined}
+                    className="mt-2 min-h-28 rounded-2xl border-white/10 bg-white/[0.06] text-white placeholder:text-white/30"
                     id="provider-availability"
                     onChange={updateTextField("weeklyAvailability")}
                     placeholder="Example: weekdays after 4pm, Saturday mornings, or 20 hours per week."
