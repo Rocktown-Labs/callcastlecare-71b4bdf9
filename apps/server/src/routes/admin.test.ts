@@ -67,7 +67,7 @@ describe("admin order field actions", () => {
     });
     mocks.updateWhere.mockResolvedValue([]);
     mocks.insertValues.mockResolvedValue([]);
-    mocks.setOrderStatus.mockResolvedValue();
+    mocks.setOrderStatus.mockImplementation(async () => {});
   });
 
   it("requires a before photo before starting service", async () => {

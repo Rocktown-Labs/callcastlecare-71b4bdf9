@@ -381,8 +381,8 @@ export const adminRoutes = new Hono<AppEnv>()
 
     const rows = await db
       .select({
-        address,
-        customer,
+        address: addresses,
+        customer: customers,
         order: orders,
       })
       .from(orders)
@@ -487,7 +487,9 @@ export const adminRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order not found" }, 404);
     }
 
-    const allowedStatuses = allowedAdminActionStatuses[parsed.data.action];
+    const allowedStatuses = allowedAdminActionStatuses[
+      parsed.data.action
+    ] as readonly OrderStatus[];
     if (!allowedStatuses.includes(order.status as OrderStatus)) {
       return c.json(
         {
