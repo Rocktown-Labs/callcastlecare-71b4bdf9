@@ -6,9 +6,28 @@ const phoneInputStripPattern = /[^\d\s()+.-]/gu;
 const nonDigitPattern = /\D/gu;
 const minimumPhoneDigits = 10;
 const maximumPhoneDigits = 15;
+const usPhoneDigitCount = 10;
 
 export const normalizePhoneInput = (value: string) =>
   value.replace(phoneInputStripPattern, "");
+
+export const formatUsPhoneInput = (value: string) => {
+  const digits = value.replace(nonDigitPattern, "").slice(0, usPhoneDigitCount);
+
+  if (digits.length <= 3) {
+    if (digits.length === 3) {
+      return `(${digits})`;
+    }
+
+    return digits ? `(${digits}` : "";
+  }
+
+  if (digits.length <= 6) {
+    return `(${digits.slice(0, 3)})-${digits.slice(3)}`;
+  }
+
+  return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
 
 export const getPhoneDigitCount = (value: string) =>
   value.match(phoneDigitPattern)?.length ?? 0;

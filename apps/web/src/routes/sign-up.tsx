@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { z } from "zod";
 
 import { AuthPage } from "@/components/auth/auth-page";
 
@@ -9,14 +10,37 @@ const signUpDescription =
   "Create a CastleCare account to keep Arkansas home service booking details, service status, deposits, and checkout preferences together.";
 const signUpImage = `${siteUrl}/callcastlecare/media/technician-van-night.png`;
 
-const RouteComponent = () => (
-  <AuthPage
-    description="Keep booking details, service status, deposits, and checkout preferences in one place after you start a quote."
-    eyebrow="Customer account"
-    title="Create your CastleCare account"
-    view="signUp"
-  />
-);
+const signUpSearchSchema = z.object({
+  intent: z.enum(["booking", "earn"]).optional(),
+  plan: z.enum(["free", "pro"]).optional(),
+  role: z.enum(["customer", "staff"]).optional(),
+});
+
+const RouteComponent = () => {
+  const search = useSearch({ from: "/sign-up" });
+  const isProviderSignup = search.role === "staff" || search.intent === "earn";
+  const providerDescription =
+    search.plan === "pro"
+      ? "Create your provider account to keep the CastleCare Pro setup moving, then continue into application status and next steps."
+      : "Create your provider account to save your application, view manual review status, and continue setup from the dashboard.";
+
+  return (
+    <AuthPage
+      description={
+        isProviderSignup
+          ? providerDescription
+          : "Keep booking details, service status, deposits, and checkout preferences in one place after you start a quote."
+      }
+      eyebrow={isProviderSignup ? "Provider account" : "Customer account"}
+      title={
+        isProviderSignup
+          ? "Create your CastleCare provider account"
+          : "Create your CastleCare account"
+      }
+      view="signUp"
+    />
+  );
+};
 
 export const Route = createFileRoute("/sign-up")({
   component: RouteComponent,
@@ -36,4 +60,5 @@ export const Route = createFileRoute("/sign-up")({
       { content: signUpImage, name: "twitter:image" },
     ],
   }),
+  validateSearch: (search) => signUpSearchSchema.parse(search),
 });

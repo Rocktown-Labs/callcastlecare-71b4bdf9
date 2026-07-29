@@ -1,5 +1,4 @@
 import { Button } from "@callcastlecare/ui/components/button";
-import { Link } from "@tanstack/react-router";
 import { ArrowRight, Briefcase, Car, Wrench } from "lucide-react";
 
 const serviceHighlights = [
@@ -32,7 +31,7 @@ export default function EarnHero() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link to="/sign-in">
+            <a href="#apply">
               <Button
                 className="h-12 rounded-full bg-lime-300 px-6 text-sm font-semibold text-slate-950 hover:bg-lime-200"
                 size="lg"
@@ -40,7 +39,7 @@ export default function EarnHero() {
                 Start earning today
                 <ArrowRight className="ml-2 size-4" />
               </Button>
-            </Link>
+            </a>
             <a href="#requirements">
               <Button
                 className="h-12 rounded-full border-white/20 bg-transparent px-6 text-sm text-white hover:bg-white/10"

@@ -76,7 +76,7 @@ export const Route = createFileRoute("/earn")({
               "@id": `${earnUrl}#application`,
               "@type": "ApplyAction",
               name: "Apply to earn with CastleCare",
-              target: `${siteUrl}/sign-in`,
+              target: `${earnUrl}#apply`,
             },
           ],
         }),

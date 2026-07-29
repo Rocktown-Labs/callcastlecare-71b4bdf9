@@ -67,7 +67,7 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-07-28"
+        initialDate="2026-08-04"
         initialServices={["laundry"]}
       />
     );
@@ -128,13 +128,13 @@ describe("BookingWizard", () => {
     });
   });
 
-  it("sanitizes phone input and blocks incomplete contact numbers", async () => {
+  it("formats phone input and blocks incomplete contact numbers", async () => {
     mockFetch();
 
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-07-28"
+        initialDate="2026-08-04"
         initialServices={["laundry"]}
       />
     );
@@ -155,12 +155,36 @@ describe("BookingWizard", () => {
 
     expect(
       (screen.getByPlaceholderText("(501) 555-0123") as HTMLInputElement).value
-    ).toBe("501--");
+    ).toBe("(501)");
 
     clickFirstContinue();
 
     expect(await screen.findByText("Enter a valid phone number.")).toBeTruthy();
     expect(screen.queryByText("Service details")).toBeNull();
+  });
+
+  it("formats complete phone numbers while typing", async () => {
+    mockFetch();
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-08-04"
+        initialServices={["laundry"]}
+      />
+    );
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "5018271551" },
+    });
+
+    expect(
+      (screen.getByPlaceholderText("(501) 555-0123") as HTMLInputElement).value
+    ).toBe("(501)-827-1551");
   });
 
   it("keeps combo savings in sync with the selected one-time products", async () => {
@@ -169,7 +193,7 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-07-28"
+        initialDate="2026-08-04"
         initialServices={["lawncare", "laundry", "window-washing"]}
       />
     );

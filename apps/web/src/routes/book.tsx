@@ -7,6 +7,13 @@ import { bookingTimeSlots } from "@/lib/scheduling";
 import { serviceIdSchema } from "@/lib/service-catalog";
 import type { ServiceId } from "@/lib/service-catalog";
 
+const siteUrl = "https://callcastlecare.com";
+const bookUrl = `${siteUrl}/book`;
+const bookTitle = "Book Home Services | CastleCare";
+const bookDescription =
+  "Reserve lawn care, laundry, and window washing in Arkansas with CastleCare.";
+const bookImage = `${siteUrl}/callcastlecare/media/booking-og.png`;
+
 const bookingSearchSchema = z.object({
   address: z.string().optional(),
   checkout: z.enum(["cancelled", "success"]).optional(),
@@ -90,14 +97,23 @@ const BookPage = () => {
 export const Route = createFileRoute("/book")({
   component: BookPage,
   head: () => ({
+    links: [{ href: bookUrl, rel: "canonical" }],
     meta: [
-      { title: "Book Home Services | CastleCare" },
+      { title: bookTitle },
       {
-        content:
-          "Book lawn care, laundry, and window washing in Arkansas with CastleCare.",
+        content: bookDescription,
         name: "description",
       },
       { content: "noindex,follow", name: "robots" },
+      { content: bookTitle, property: "og:title" },
+      { content: bookDescription, property: "og:description" },
+      { content: bookImage, property: "og:image" },
+      { content: bookUrl, property: "og:url" },
+      { content: "website", property: "og:type" },
+      { content: "summary_large_image", name: "twitter:card" },
+      { content: bookTitle, name: "twitter:title" },
+      { content: bookDescription, name: "twitter:description" },
+      { content: bookImage, name: "twitter:image" },
     ],
   }),
   validateSearch: (search) => bookingSearchSchema.parse(search),

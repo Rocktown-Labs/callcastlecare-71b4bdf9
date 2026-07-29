@@ -1,5 +1,4 @@
 import { Button } from "@callcastlecare/ui/components/button";
-import { Link } from "@tanstack/react-router";
 import { CheckCircle2, ShieldCheck, Zap } from "lucide-react";
 
 const standardFeatures = [
@@ -66,14 +65,14 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Link className="mt-8" to="/sign-in">
+            <a className="mt-8" href="#apply">
               <Button
                 className="h-12 w-full rounded-full border-white/15 bg-transparent text-white hover:bg-white/10"
                 variant="outline"
               >
                 Join for free
               </Button>
-            </Link>
+            </a>
           </article>
 
           <article className="relative flex flex-col overflow-hidden rounded-3xl border border-lime-300/50 bg-lime-300/10 p-6 lg:p-8">
@@ -119,11 +118,11 @@ export default function EarnTiers() {
               ))}
             </ul>
 
-            <Link className="mt-8" to="/sign-in">
+            <a className="mt-8" href="#apply">
               <Button className="h-12 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200">
                 Apply as Pro
               </Button>
-            </Link>
+            </a>
           </article>
         </div>
       </div>

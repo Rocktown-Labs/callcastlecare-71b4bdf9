@@ -8,8 +8,8 @@ import {
 } from "@callcastlecare/api";
 import type { CheckoutPreviewItemInput } from "@callcastlecare/api";
 import {
+  formatUsPhoneInput,
   normalizeIntegerInput,
-  normalizePhoneInput,
   phoneSchema,
   positiveWholeNumberStringSchema,
 } from "@callcastlecare/api/validation";
@@ -2057,7 +2057,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               onChange={(event) =>
                 setDraftValue("contact", {
                   ...draft.contact,
-                  phone: normalizePhoneInput(event.target.value),
+                  phone: formatUsPhoneInput(event.target.value),
                 })
               }
               inputMode="tel"
