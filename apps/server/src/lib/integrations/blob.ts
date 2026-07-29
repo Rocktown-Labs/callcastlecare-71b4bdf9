@@ -1,4 +1,5 @@
 import { env } from "@callcastlecare/env/server";
+import { get } from "@vercel/blob";
 import { handleUpload } from "@vercel/blob/client";
 import type { HandleUploadBody } from "@vercel/blob/client";
 
@@ -11,6 +12,7 @@ const ALLOWED_CONTENT_TYPES = [
   "image/webp",
   "image/heic",
 ];
+const privateBlobAccess = "private";
 
 export const getMediaUploadUrl = (baseOrigin: string) =>
   `${baseOrigin}/api/v1/media/client-upload`;
@@ -68,5 +70,19 @@ export const handleBlobClientUpload = (request: Request, body: unknown) => {
     },
     request,
     token: env.VERCEL_BLOB_READ_WRITE_TOKEN,
+  });
+};
+
+export const getPrivateBlob = async (pathname: string) => {
+  if (!env.VERCEL_BLOB_READ_WRITE_TOKEN) {
+    throw new Error(
+      "VERCEL_BLOB_READ_WRITE_TOKEN is required for blob downloads"
+    );
+  }
+
+  return await get(pathname, {
+    access: privateBlobAccess,
+    token: env.VERCEL_BLOB_READ_WRITE_TOKEN,
+    useCache: false,
   });
 };

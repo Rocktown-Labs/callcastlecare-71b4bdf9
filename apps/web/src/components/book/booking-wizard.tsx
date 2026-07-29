@@ -31,12 +31,14 @@ import {
   Clock,
   CreditCard,
   Crown,
+  FileImage,
   Mail,
   PackageCheck,
   Phone,
   Sparkles,
   Upload,
   User,
+  X,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -613,6 +615,12 @@ const getManualLotSizeAcres = (draft: BookingDraft) => {
 
 const needsManualLotSize = (draft: BookingDraft) =>
   draft.services.includes("lawncare") && !getLotSizeAcres(draft.property);
+
+const needsPropertyLookup = (draft: BookingDraft) =>
+  draft.services.includes("lawncare");
+
+const shouldFetchPropertyForDraft = (draft: BookingDraft) =>
+  needsPropertyLookup(draft) && !getLotSizeAcres(draft.property);
 
 const getDraftLotSizeAcres = (draft: BookingDraft) =>
   getLotSizeAcres(draft.property) ?? getManualLotSizeAcres(draft);
@@ -1803,30 +1811,96 @@ const GrassSvg = ({ level }: { level: number }) => {
   );
 };
 
+const getFileExtension = (fileName: string) => {
+  const extension = fileName.split(".").at(-1);
+  return extension && extension !== fileName ? extension.toUpperCase() : "FILE";
+};
+
+const AttachmentCard = ({
+  fileName,
+  onRemove,
+}: {
+  fileName: string;
+  onRemove: () => void;
+}) => (
+  <div className="relative flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+      <FileImage className="size-4" />
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-sm font-semibold text-slate-950">
+        {fileName}
+      </span>
+      <span className="mt-0.5 block text-xs font-semibold text-slate-400">
+        {getFileExtension(fileName)}
+      </span>
+    </span>
+    <button
+      aria-label={`Remove ${fileName}`}
+      className="flex size-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+      onClick={onRemove}
+      type="button"
+    >
+      <X className="size-3.5" />
+    </button>
+  </div>
+);
+
 const ServicePhotoUpload = ({
-  count,
+  fileNames,
   onFiles,
 }: {
-  count: number;
+  fileNames: string[];
   onFiles: (fileNames: string[]) => void;
-}) => (
-  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
-    <span className="flex items-center gap-3">
-      <Upload className="size-4" />
-      Add photos for faster quote review
-    </span>
-    <span className="text-xs text-slate-400">{count} files</span>
-    <input
-      className="sr-only"
-      multiple
-      onChange={(event: ChangeEvent<HTMLInputElement>) => {
-        const files = [...(event.target.files ?? [])];
-        onFiles(files.map(({ name }) => name));
-      }}
-      type="file"
-    />
-  </label>
-);
+}) => {
+  const appendFiles = (files: File[]) => {
+    const nextFileNames = [...fileNames];
+    for (const file of files) {
+      if (!nextFileNames.includes(file.name)) {
+        nextFileNames.push(file.name);
+      }
+    }
+    onFiles(nextFileNames);
+  };
+
+  return (
+    <div className="grid gap-3">
+      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 transition-colors hover:border-cyan-500">
+        <span className="flex items-center gap-3">
+          <Upload className="size-4" />
+          Add photos for faster quote review
+        </span>
+        <span className="text-xs text-slate-400">{fileNames.length} files</span>
+        <input
+          accept="image/*"
+          className="sr-only"
+          multiple
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            appendFiles([...(event.target.files ?? [])]);
+            event.target.value = "";
+          }}
+          type="file"
+        />
+      </label>
+      {fileNames.length > 0 ? (
+        <fieldset
+          aria-label="Attached files"
+          className="grid gap-2 sm:grid-cols-2"
+        >
+          {fileNames.map((fileName) => (
+            <AttachmentCard
+              fileName={fileName}
+              key={fileName}
+              onRemove={() =>
+                onFiles(fileNames.filter((current) => current !== fileName))
+              }
+            />
+          ))}
+        </fieldset>
+      ) : null}
+    </div>
+  );
+};
 
 const ProductAccordion = ({
   draft,
@@ -2146,15 +2220,38 @@ const BookingWizard = (props: BookingWizardProps) => {
     return Object.keys(nextErrors).length === 0;
   };
 
+  const enrichDraftPropertyIfNeeded = async () => {
+    if (!shouldFetchPropertyForDraft(draft)) {
+      return draft;
+    }
+
+    const validated = await validateAddress(draft.address, {
+      includeProperty: true,
+    });
+    if (!validated?.property) {
+      return draft;
+    }
+
+    const nextDraft = pruneInvalidProductSelections({
+      ...draft,
+      address: validated.label,
+      property: validated.property,
+    });
+    setDraft(nextDraft);
+    setIsAddressValidated(true);
+    return nextDraft;
+  };
+
   const continueFromStep = async (step: WizardStep) => {
     if (!validateStep(step)) {
       return;
     }
 
+    const nextDraft = step === 0 ? await enrichDraftPropertyIfNeeded() : draft;
     let shouldUseQuoteRoute = hasServerQuoteRoute;
     if (step >= 1) {
       shouldUseQuoteRoute = await persistQuoteRequest({
-        draft,
+        draft: nextDraft,
         lastCompletedStep: step + 1,
         status: step >= 4 ? "checkout_started" : "contact_captured",
         trackingId: quoteRequestTrackingId,
@@ -2203,7 +2300,9 @@ const BookingWizard = (props: BookingWizardProps) => {
   const validateSelectedAddress = async (
     suggestion: RadarAddressSuggestion
   ) => {
-    const validated = await validateAddress(suggestion.label);
+    const validated = await validateAddress(suggestion.label, {
+      includeProperty: needsPropertyLookup(draft),
+    });
     if (!validated) {
       return;
     }
@@ -2599,7 +2698,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                 ) : null}
                 <div className="mt-4">
                   <ServicePhotoUpload
-                    count={draft.serviceDetails.lawncare.photoNames.length}
+                    fileNames={draft.serviceDetails.lawncare.photoNames}
                     onFiles={(photoNames) =>
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
@@ -2665,7 +2764,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                 ) : null}
                 <div className="mt-4">
                   <ServicePhotoUpload
-                    count={draft.serviceDetails.laundry.photoNames.length}
+                    fileNames={draft.serviceDetails.laundry.photoNames}
                     onFiles={(photoNames) =>
                       setDraftValue("serviceDetails", {
                         ...draft.serviceDetails,
@@ -2905,8 +3004,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                   </div>
 
                   <ServicePhotoUpload
-                    count={
-                      draft.serviceDetails["window-washing"].photoNames.length
+                    fileNames={
+                      draft.serviceDetails["window-washing"].photoNames
                     }
                     onFiles={(photoNames) =>
                       setDraftValue("serviceDetails", {

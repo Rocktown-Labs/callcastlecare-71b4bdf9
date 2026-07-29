@@ -13,6 +13,7 @@ import { requireUser, requireWorkerForUser } from "../lib/auth";
 import {
   createMediaStoragePath,
   getMediaUploadUrl,
+  getPrivateBlob,
   handleBlobClientUpload,
 } from "../lib/integrations/blob";
 import type { AppEnv } from "../types";
@@ -34,7 +35,52 @@ const extensionFromContentType = (contentType: string) => {
   return "jpg";
 };
 
+const orderTransitionMediaStatuses = [
+  "arrived",
+  "in_progress",
+  "completed",
+] as const;
+
+const legTransitionMediaStatuses = [
+  "arrived",
+  "started",
+  "stopped",
+  "completed",
+] as const;
+
+const toOrderRequiredTransition = (value?: string) =>
+  orderTransitionMediaStatuses.find((status) => status === value) ?? null;
+
+const toLegRequiredTransition = (value?: string) =>
+  legTransitionMediaStatuses.find((status) => status === value) ?? null;
+
 export const mediaRoutes = new Hono<AppEnv>()
+  .get("/private", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
+    const pathname = c.req.query("pathname");
+    if (!pathname) {
+      return c.json({ error: "Missing pathname" }, 400);
+    }
+
+    const result = await getPrivateBlob(pathname);
+    if (!result) {
+      return c.text("Not found", 404);
+    }
+
+    if (result.statusCode === 304) {
+      return c.body(null, 304);
+    }
+
+    return c.body(result.stream, 200, {
+      "Cache-Control": "private, no-cache",
+      "Content-Type": result.blob.contentType,
+      "X-Content-Type-Options": "nosniff",
+    });
+  })
   .post("/upload-url", async (c) => {
     const userResult = requireUser(c);
     if (userResult.error) {
@@ -64,6 +110,7 @@ export const mediaRoutes = new Hono<AppEnv>()
 
     return c.json(
       {
+        access: "private",
         storagePath,
         uploadUrl: getMediaUploadUrl(origin),
       },
@@ -122,7 +169,7 @@ export const mediaRoutes = new Hono<AppEnv>()
       })
       .returning();
 
-    const asset = insertedAssets[0];
+    const [asset] = insertedAssets;
     if (!asset) {
       return c.json({ error: "Failed to register uploaded media" }, 500);
     }
@@ -131,15 +178,9 @@ export const mediaRoutes = new Hono<AppEnv>()
       await db.insert(orderMediaLinks).values({
         mediaAssetId: asset.id,
         orderId: parsed.data.orderId,
-        requiredForTransition:
-          parsed.data.requiredForTransition === "arrived" ||
-          parsed.data.requiredForTransition === "in_progress" ||
-          parsed.data.requiredForTransition === "completed"
-            ? (parsed.data.requiredForTransition as
-                | "arrived"
-                | "in_progress"
-                | "completed")
-            : null,
+        requiredForTransition: toOrderRequiredTransition(
+          parsed.data.requiredForTransition
+        ),
       });
     }
 
@@ -147,17 +188,9 @@ export const mediaRoutes = new Hono<AppEnv>()
       await db.insert(legMediaLinks).values({
         legId: parsed.data.legId,
         mediaAssetId: asset.id,
-        requiredForTransition:
-          parsed.data.requiredForTransition === "arrived" ||
-          parsed.data.requiredForTransition === "started" ||
-          parsed.data.requiredForTransition === "stopped" ||
-          parsed.data.requiredForTransition === "completed"
-            ? (parsed.data.requiredForTransition as
-                | "arrived"
-                | "started"
-                | "stopped"
-                | "completed")
-            : null,
+        requiredForTransition: toLegRequiredTransition(
+          parsed.data.requiredForTransition
+        ),
       });
     }
 

@@ -26,6 +26,7 @@ const autocompleteQuerySchema = z.object({
 
 const validateAddressSchema = z.object({
   address: z.string().trim().min(5),
+  includeProperty: z.boolean().optional().default(false),
 });
 
 const reverseGeocodeSchema = z.object({
@@ -96,7 +97,9 @@ export const locationRoutes = new Hono<AppEnv>()
 
     const [address, property] = await Promise.all([
       validateRadarAddress(parsed.data.address),
-      lookupPropertyWithRentCast(parsed.data.address),
+      parsed.data.includeProperty
+        ? lookupPropertyWithRentCast(parsed.data.address)
+        : Promise.resolve(null),
     ]);
 
     return c.json({ address, property }, 200);

@@ -106,10 +106,16 @@ const fetchJson = async (url: URL, init?: RequestInit) => {
   return response.json() as Promise<unknown>;
 };
 
-export const validateAddress = async (address: string) => {
+export const validateAddress = async (
+  address: string,
+  options: { includeProperty?: boolean } = {}
+) => {
   const url = new URL("/api/v1/locations/addresses/validate", getServerUrl());
   const payload = await fetchJson(url, {
-    body: JSON.stringify({ address }),
+    body: JSON.stringify({
+      address,
+      includeProperty: options.includeProperty === true,
+    }),
     headers: {
       "Content-Type": "application/json",
     },

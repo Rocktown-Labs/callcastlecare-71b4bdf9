@@ -84,7 +84,43 @@ describe("location routes", () => {
     expect(autocompleteRadarAddresses).toHaveBeenCalledWith("123 Main");
   });
 
-  it("validates an address and returns property enrichment", async () => {
+  it("validates an address without property enrichment by default", async () => {
+    validateRadarAddress.mockResolvedValue({
+      city: "Little Rock",
+      country: "US",
+      formattedAddress: "123 Main St, Little Rock, AR 72201, USA",
+      latitude: 34.7465,
+      longitude: -92.2896,
+      placeId: "place-123",
+      raw: {},
+      state: "AR",
+      street: "123 Main St",
+      verdict: {
+        hasUnconfirmedComponents: false,
+        isComplete: true,
+      },
+      zip: "72201",
+    });
+
+    const response = await app.request("/locations/addresses/validate", {
+      body: JSON.stringify({ address: "123 Main St, Little Rock, AR" }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      address: {
+        formattedAddress: "123 Main St, Little Rock, AR 72201, USA",
+      },
+      property: null,
+    });
+    expect(lookupPropertyWithRentCast).not.toHaveBeenCalled();
+  });
+
+  it("validates an address and returns requested property enrichment", async () => {
     validateRadarAddress.mockResolvedValue({
       city: "Little Rock",
       country: "US",
@@ -109,7 +145,10 @@ describe("location routes", () => {
     });
 
     const response = await app.request("/locations/addresses/validate", {
-      body: JSON.stringify({ address: "123 Main St, Little Rock, AR" }),
+      body: JSON.stringify({
+        address: "123 Main St, Little Rock, AR",
+        includeProperty: true,
+      }),
       headers: {
         "Content-Type": "application/json",
       },
