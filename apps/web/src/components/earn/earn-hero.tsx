@@ -3,8 +3,8 @@ import { ArrowRight, Briefcase, Car, Wrench } from "lucide-react";
 
 const serviceHighlights = [
   { icon: Car, label: "Laundry delivery" },
-  { icon: Wrench, label: "Lawn care pros" },
-  { icon: Briefcase, label: "Window washing" },
+  { icon: Wrench, label: "Lawn Care pros" },
+  { icon: Briefcase, label: "Window Washing" },
 ] as const;
 
 export default function EarnHero() {

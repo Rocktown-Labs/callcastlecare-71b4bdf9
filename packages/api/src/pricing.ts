@@ -58,21 +58,21 @@ export const LAUNDRY_PLAN_LABELS = {
 } as const satisfies Record<LaundryPlanId, string>;
 
 export const WINDOW_WASHING_SUBSCRIPTION_PRICES = {
-  "royal-pane-bi-annual": 18_000,
-  "royal-pane-monthly": 10_000,
+  "royal-pane-bi-annual": 36_000,
+  "royal-pane-monthly": 12_500,
 } as const;
 
 export const COMBO_SUBSCRIPTION_PRICES = {
-  "bi-weekly-royal-duo-large": 56_000,
-  "bi-weekly-royal-duo-medium": 36_000,
-  "bi-weekly-royal-duo-small": 26_000,
-  "crown-estate-trio-large": 65_000,
-  "crown-estate-trio-medium": 40_000,
+  "bi-weekly-royal-duo-large": 62_500,
+  "bi-weekly-royal-duo-medium": 37_500,
+  "bi-weekly-royal-duo-small": 25_000,
+  "crown-estate-trio-large": 77_500,
+  "crown-estate-trio-medium": 52_500,
   "crown-estate-trio-small": 30_000,
-  "monthly-castle-care-large": 48_000,
-  "monthly-castle-care-medium": 28_000,
-  "monthly-castle-care-small": 18_000,
-  "royal-linen-panes-duo": 24_000,
+  "monthly-castle-care-large": 50_000,
+  "monthly-castle-care-medium": 30_000,
+  "monthly-castle-care-small": 20_000,
+  "royal-linen-panes-duo": 28_000,
 } as const;
 
 export const LAWNCARE_SERVICE_HOURS = {

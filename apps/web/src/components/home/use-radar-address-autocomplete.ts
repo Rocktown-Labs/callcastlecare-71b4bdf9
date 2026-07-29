@@ -8,17 +8,26 @@ export interface RadarAddressSuggestion {
   label: string;
   latitude: number | null;
   longitude: number | null;
+  property?: PropertyEstimate;
   raw: Record<string, unknown>;
 }
 
 const DEBOUNCE_MS = 300;
 const MIN_AUTOCOMPLETE_CHARACTERS = 5;
 
+export interface PropertyEstimate {
+  fallbackUsed: boolean;
+  homeSqft: number | null;
+  lotSizeSqft: number | null;
+}
+
 const toStringOrNull = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : null;
 
 const toNumberOrNull = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const toBoolean = (value: unknown) => value === true;
 
 const getRawSuggestions = (payload: unknown) => {
   if (Array.isArray(payload)) {
@@ -111,6 +120,7 @@ export const validateAddress = async (address: string) => {
 
   const response = payload as Record<string, unknown>;
   const rawAddress = response.address;
+  const rawProperty = response.property;
   if (!rawAddress || typeof rawAddress !== "object") {
     return null;
   }
@@ -126,6 +136,20 @@ export const validateAddress = async (address: string) => {
     label,
     latitude: toNumberOrNull(candidate.latitude),
     longitude: toNumberOrNull(candidate.longitude),
+    property:
+      rawProperty && typeof rawProperty === "object"
+        ? {
+            fallbackUsed: toBoolean(
+              (rawProperty as Record<string, unknown>).fallbackUsed
+            ),
+            homeSqft: toNumberOrNull(
+              (rawProperty as Record<string, unknown>).homeSqft
+            ),
+            lotSizeSqft: toNumberOrNull(
+              (rawProperty as Record<string, unknown>).lotSizeSqft
+            ),
+          }
+        : undefined,
     raw: candidate,
   };
 };

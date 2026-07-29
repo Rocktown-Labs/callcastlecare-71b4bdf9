@@ -15,9 +15,9 @@ const footerLinks = {
     { href: "/cookies", label: "Cookies" },
   ],
   services: [
-    { href: "/services/lawncare", label: "Lawn care" },
+    { href: "/services/lawncare", label: "Lawn Care" },
     { href: "/services/laundry", label: "Laundry" },
-    { href: "/services/window-washing", label: "Window washing" },
+    { href: "/services/window-washing", label: "Window Washing" },
     { href: "/earn", label: "Drive for us" },
   ],
   support: [
@@ -66,8 +66,8 @@ export default function Footer() {
               />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/45">
-              Premium home services on demand. Lawn care, laundry, and window
-              washing for busy Arkansas households.
+              Premium home services on demand. Lawn Care, laundry, and Window
+              Washing for busy Arkansas households.
             </p>
             <div className="mt-6 flex gap-2">
               {socialLinks.map(({ icon: Icon, label }) => (

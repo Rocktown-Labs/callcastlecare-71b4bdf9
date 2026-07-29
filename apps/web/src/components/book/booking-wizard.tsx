@@ -1,6 +1,8 @@
 import {
   CheckoutItemKind,
   COMBO_SUBSCRIPTION_PRICES,
+  calculateWindowWashingQuote,
+  getLawncarePlanId,
   getScheduledWindowForSlot,
   LAUNDRY_PLAN_PRICES,
   LAWNCARE_PLAN_PRICES,
@@ -53,7 +55,10 @@ import type { ServiceId } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "../home/radar-address-input";
 import { validateAddress } from "../home/use-radar-address-autocomplete";
-import type { RadarAddressSuggestion } from "../home/use-radar-address-autocomplete";
+import type {
+  PropertyEstimate,
+  RadarAddressSuggestion,
+} from "../home/use-radar-address-autocomplete";
 
 const storageKey = "callcastlecare.booking-draft.v1";
 const trackingKey = "callcastlecare.quote-request-id.v1";
@@ -133,10 +138,38 @@ const productsByService = {
       recurring: true,
     },
     {
+      description: "Bi-weekly care for medium lots.",
+      id: "groundskeeper-bi-weekly-medium",
+      name: "Groundskeeper Bi-Weekly Medium",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-bi-weekly-medium"],
+      recurring: true,
+    },
+    {
+      description: "Bi-weekly care for large lots.",
+      id: "groundskeeper-bi-weekly-large",
+      name: "Groundskeeper Bi-Weekly Large",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-bi-weekly-large"],
+      recurring: true,
+    },
+    {
       description: "Monthly mowing and cleanup for small lots.",
       id: "groundskeeper-monthly",
       name: "Groundskeeper Monthly Small",
       priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-monthly"],
+      recurring: true,
+    },
+    {
+      description: "Monthly mowing and cleanup for medium lots.",
+      id: "groundskeeper-monthly-medium",
+      name: "Groundskeeper Monthly Medium",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-monthly-medium"],
+      recurring: true,
+    },
+    {
+      description: "Monthly mowing and cleanup for large lots.",
+      id: "groundskeeper-monthly-large",
+      name: "Groundskeeper Monthly Large",
+      priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-monthly-large"],
       recurring: true,
     },
     {
@@ -171,9 +204,9 @@ const productsByService = {
       recurring: true,
     },
     {
-      description: "Two exterior window washing visits per year.",
+      description: "Two inside-and-out window washing visits per year.",
       id: "royal-pane-bi-annual",
-      name: "Royal Pane Bi-Annual",
+      name: "Royal Pane Bi-Annual Detail",
       priceCents: WINDOW_WASHING_SUBSCRIPTION_PRICES["royal-pane-bi-annual"],
       recurring: true,
     },
@@ -203,14 +236,11 @@ const paymentOptions = [
 
 const subscriptionPaymentOption = {
   description:
-    "Start the recurring plan now. Your first plan charge is due today.",
+    "Start the recurring plan now. Your first monthly plan charge is due today.",
   id: "pay_full",
   name: "Start subscription today",
 } as const satisfies (typeof paymentOptions)[number];
 
-const exteriorWindowRateCents = 500;
-const fullServiceWindowRateCents = 1000;
-const windowJobMinimumCents = 10_000;
 const tallGrassFeeCents = 5000;
 const screenWashFeePerScreenCents = 250;
 const stepKeys = [
@@ -319,6 +349,7 @@ interface BookingDraft {
   date: string;
   paymentOption: PaymentOptionId | "";
   products: Partial<Record<ServiceId, string>>;
+  property: PropertyEstimate | null;
   serviceDetails: {
     laundry: {
       bedding: "none" | "with-bedding" | "";
@@ -368,6 +399,7 @@ const emptyDraft = ({
   date: initialDate,
   paymentOption: "",
   products: {},
+  property: null,
   serviceDetails: {
     laundry: { bedding: "", photoNames: [] },
     lawncare: { grassHeight: "", photoNames: [] },
@@ -521,23 +553,122 @@ const parsePositiveCount = (value: string) => {
   return count;
 };
 
-const getWindowBasePriceCents = (draft: BookingDraft) => {
+const SQFT_PER_ACRE = 43_560;
+
+const getLotSizeAcres = (property: PropertyEstimate | null) => {
+  if (
+    !property ||
+    property.fallbackUsed ||
+    !property.lotSizeSqft ||
+    property.lotSizeSqft <= 0
+  ) {
+    return null;
+  }
+
+  return property.lotSizeSqft / SQFT_PER_ACRE;
+};
+
+const getLawncareFitPlanIds = (draft: BookingDraft) => {
+  const lotSizeAcres = getLotSizeAcres(draft.property);
+  if (!lotSizeAcres) {
+    return new Set(["groundskeeper-custom-quote-deposit"]);
+  }
+
+  const oneTimePlanId = getLawncarePlanId({
+    frequency: "one_time",
+    lotSizeAcres,
+  });
+  if (oneTimePlanId === "groundskeeper-custom-quote-deposit") {
+    return new Set([oneTimePlanId]);
+  }
+
+  return new Set([
+    oneTimePlanId,
+    getLawncarePlanId({ frequency: "monthly", lotSizeAcres }),
+    getLawncarePlanId({ frequency: "bi_weekly", lotSizeAcres }),
+  ]);
+};
+
+const getEligibleProductsForDraft = (
+  draft: BookingDraft,
+  serviceId: ServiceId
+) => {
+  const products = productsByService[serviceId];
+
+  if (serviceId === "lawncare") {
+    const eligiblePlanIds = getLawncareFitPlanIds(draft);
+    return products.filter((product) => eligiblePlanIds.has(product.id));
+  }
+
+  if (serviceId === "laundry") {
+    const {
+      laundry: { bedding },
+    } = draft.serviceDetails;
+    if (bedding === "with-bedding") {
+      return products.filter((product) =>
+        ["royal-wash-bedding", "royal-wash-supreme"].includes(product.id)
+      );
+    }
+
+    if (bedding === "none") {
+      return products.filter((product) => product.id === "royal-wash-basic");
+    }
+  }
+
+  if (serviceId === "window-washing") {
+    const scope = draft.serviceDetails["window-washing"].cleaningScope;
+    if (scope === "both") {
+      return products.filter((product) =>
+        ["royal-pane-detail", "royal-pane-bi-annual"].includes(product.id)
+      );
+    }
+
+    if (scope === "exterior") {
+      return products.filter((product) =>
+        ["royal-pane-exterior", "royal-pane-monthly"].includes(product.id)
+      );
+    }
+  }
+
+  return products;
+};
+
+const pruneInvalidProductSelections = (draft: BookingDraft): BookingDraft => {
+  const products = Object.fromEntries(
+    Object.entries(draft.products).filter(([serviceId, selectedProductId]) => {
+      const normalizedServiceId = serviceId as ServiceId;
+      return (
+        draft.services.includes(normalizedServiceId) &&
+        getEligibleProductsForDraft(draft, normalizedServiceId).some(
+          (product) => product.id === selectedProductId
+        )
+      );
+    })
+  ) as BookingDraft["products"];
+
+  return {
+    ...draft,
+    products,
+  };
+};
+
+const getWindowBasePriceCents = (
+  draft: BookingDraft,
+  product: ProductOption
+) => {
   const windowDetails = draft.serviceDetails["window-washing"];
-  if (windowDetails.finalizeOnSite) {
-    return windowJobMinimumCents;
-  }
-
   const paneCount = parsePositiveCount(windowDetails.windowEstimate);
-  if (paneCount === 0) {
-    return windowJobMinimumCents;
-  }
+  const packageType =
+    product.id === "royal-pane-detail" ? "FULL_SERVICE" : "EXTERIOR_ONLY";
+  const quote = calculateWindowWashingQuote({
+    cleanScreens: false,
+    packageType,
+    paneCount: windowDetails.finalizeOnSite ? undefined : paneCount,
+    propertyType: "residential",
+    stories: Number(windowDetails.stories) || 1,
+  });
 
-  const rateCents =
-    windowDetails.cleaningScope === "both"
-      ? fullServiceWindowRateCents
-      : exteriorWindowRateCents;
-
-  return Math.max(windowJobMinimumCents, paneCount * rateCents);
+  return quote.cents.finalPriceCents;
 };
 
 const getProductPriceCents = (
@@ -546,7 +677,7 @@ const getProductPriceCents = (
   product: ProductOption
 ) => {
   if (serviceId === "window-washing" && !product.recurring) {
-    return getWindowBasePriceCents(draft);
+    return getWindowBasePriceCents(draft, product);
   }
 
   return product.priceCents;
@@ -568,20 +699,6 @@ const selectedProductTotal = (draft: BookingDraft) => {
   let total = 0;
 
   for (const serviceId of draft.services) {
-    const product = getSelectedProduct(draft, serviceId);
-    total += product ? getProductPriceCents(draft, serviceId, product) : 0;
-  }
-
-  return total;
-};
-
-const selectedProductTotalForServices = (
-  draft: BookingDraft,
-  serviceIds: readonly ServiceId[]
-) => {
-  let total = 0;
-
-  for (const serviceId of serviceIds) {
     const product = getSelectedProduct(draft, serviceId);
     total += product ? getProductPriceCents(draft, serviceId, product) : 0;
   }
@@ -629,25 +746,6 @@ const getQuoteAddOns = (draft: BookingDraft) => {
   }
 
   return addOns;
-};
-
-const getQuoteAddOnTotalForServices = (
-  draft: BookingDraft,
-  serviceIds: readonly ServiceId[]
-) => {
-  let total = 0;
-  const scopedDraft = {
-    ...draft,
-    services: serviceIds.filter((serviceId) =>
-      draft.services.includes(serviceId)
-    ),
-  };
-
-  for (const addOn of getQuoteAddOns(scopedDraft)) {
-    total += addOn.priceCents;
-  }
-
-  return total;
 };
 
 const getServiceLabel = (serviceId: ServiceId) =>
@@ -787,11 +885,91 @@ const hasSubscriptionCheckout = (draft: BookingDraft) =>
   Boolean(draft.subscriptionId && draft.subscriptionId !== "one_time") ||
   hasSelectedRecurringProduct(draft);
 
+const getLawnSubscriptionTier = (draft: BookingDraft) => {
+  const selectedLawnProduct = draft.products.lawncare ?? "";
+
+  if (selectedLawnProduct.includes("large")) {
+    return "large";
+  }
+
+  if (selectedLawnProduct.includes("medium")) {
+    return "medium";
+  }
+
+  return "small";
+};
+
+const getSubscriptionPriceCents = (draft: BookingDraft) => {
+  const tier = getLawnSubscriptionTier(draft);
+
+  if (draft.subscriptionId === "bi_weekly_royal_duo") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `bi-weekly-royal-duo-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
+  if (draft.subscriptionId === "monthly_castle_care") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `monthly-castle-care-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
+  if (draft.subscriptionId === "crown_estate_trio") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `crown-estate-trio-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
+  if (draft.subscriptionId === "royal_linen_panes_duo") {
+    return COMBO_SUBSCRIPTION_PRICES["royal-linen-panes-duo"];
+  }
+
+  return null;
+};
+
+const getComboPriceCents = (draft: BookingDraft, comboId: string) =>
+  getSubscriptionPriceCents({ ...draft, subscriptionId: comboId });
+
+const getComboPlanId = (draft: BookingDraft) => {
+  const tier = getLawnSubscriptionTier(draft);
+
+  if (draft.subscriptionId === "bi_weekly_royal_duo") {
+    return `bi-weekly-royal-duo-${tier}`;
+  }
+
+  if (draft.subscriptionId === "monthly_castle_care") {
+    return `monthly-castle-care-${tier}`;
+  }
+
+  if (draft.subscriptionId === "crown_estate_trio") {
+    return `crown-estate-trio-${tier}`;
+  }
+
+  if (draft.subscriptionId === "royal_linen_panes_duo") {
+    return "royal-linen-panes-duo";
+  }
+
+  return null;
+};
+
 const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
   const scheduledWindow = getScheduledWindowForSlot(
     draft.date,
     draft.timeSlot as (typeof bookingTimeSlots)[number]
   );
+  const comboPlanId = getComboPlanId(draft);
+  if (comboPlanId) {
+    return [
+      {
+        ...scheduledWindow,
+        frequency: "monthly",
+        isSubscription: true,
+        itemKind: CheckoutItemKind.Lawncare,
+        planId: comboPlanId,
+        timingType: "scheduled" as const,
+      },
+    ];
+  }
 
   return draft.services.flatMap((serviceId) => {
     const selectedProductId = draft.products[serviceId];
@@ -846,63 +1024,28 @@ const getPaymentOptionsForDraft = (draft: BookingDraft) => {
   return getPaymentOptionsForServices(draft.services);
 };
 
-const getLawnSubscriptionTier = (draft: BookingDraft) => {
-  const selectedLawnProduct = draft.products.lawncare ?? "";
+const isCustomLawncareDraft = (draft: BookingDraft) =>
+  draft.services.includes("lawncare") &&
+  getLawncareFitPlanIds(draft).has("groundskeeper-custom-quote-deposit");
 
-  if (selectedLawnProduct.includes("large")) {
-    return "large";
-  }
-
-  if (selectedLawnProduct.includes("medium")) {
-    return "medium";
-  }
-
-  return "small";
-};
-
-const getSubscriptionPriceCents = (draft: BookingDraft) => {
-  const tier = getLawnSubscriptionTier(draft);
-
-  if (draft.subscriptionId === "bi_weekly_royal_duo") {
-    return COMBO_SUBSCRIPTION_PRICES[
-      `bi-weekly-royal-duo-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
-    ];
-  }
-
-  if (draft.subscriptionId === "monthly_castle_care") {
-    return COMBO_SUBSCRIPTION_PRICES[
-      `monthly-castle-care-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
-    ];
-  }
-
-  if (draft.subscriptionId === "crown_estate_trio") {
-    return COMBO_SUBSCRIPTION_PRICES[
-      `crown-estate-trio-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
-    ];
-  }
-
-  if (draft.subscriptionId === "royal_linen_panes_duo") {
-    return COMBO_SUBSCRIPTION_PRICES["royal-linen-panes-duo"];
-  }
-
-  return null;
-};
-
-const getComboPriceCents = (draft: BookingDraft, comboId: string) =>
-  getSubscriptionPriceCents({ ...draft, subscriptionId: comboId });
-
-const getEligibleCombos = (serviceIds: readonly ServiceId[]) => {
-  const selectedServiceIds = new Set(serviceIds);
+const getEligibleCombos = (draft: BookingDraft) => {
+  const selectedServiceIds = new Set(draft.services);
   const selectedCombos = comboSubscriptions.filter((combo) =>
     combo.requiredServices.every((serviceId) =>
       selectedServiceIds.has(serviceId)
     )
   );
 
-  return serviceIds.length === 3
-    ? selectedCombos.filter((combo) => combo.requiredServices.length === 3)
-    : selectedCombos.filter(
-        (combo) => combo.requiredServices.length === serviceIds.length
+  const pricedCombos = isCustomLawncareDraft(draft)
+    ? selectedCombos.filter(
+        (combo) => !combo.requiredServices.includes("lawncare")
+      )
+    : selectedCombos;
+
+  return draft.services.length === 3
+    ? pricedCombos.filter((combo) => combo.requiredServices.length === 3)
+    : pricedCombos.filter(
+        (combo) => combo.requiredServices.length === draft.services.length
       );
 };
 
@@ -911,7 +1054,7 @@ const isSubscriptionValidForDraft = (draft: BookingDraft) => {
     return true;
   }
 
-  return getEligibleCombos(draft.services).some(
+  return getEligibleCombos(draft).some(
     (combo) => combo.id === draft.subscriptionId
   );
 };
@@ -924,10 +1067,10 @@ const pruneProductsForServices = (draft: BookingDraft) =>
   ) as BookingDraft["products"];
 
 const sanitizeDraftForCurrentCart = (draft: BookingDraft): BookingDraft => {
-  const nextDraft = {
+  const nextDraft = pruneInvalidProductSelections({
     ...draft,
     products: pruneProductsForServices(draft),
-  };
+  });
 
   if (isSubscriptionValidForDraft(nextDraft)) {
     return nextDraft;
@@ -941,14 +1084,25 @@ const sanitizeDraftForCurrentCart = (draft: BookingDraft): BookingDraft => {
 };
 
 const getLawnTierLabel = (draft: BookingDraft) => {
-  const tier = getLawnSubscriptionTier(draft);
+  const lotSizeAcres = getLotSizeAcres(draft.property);
+  const selectedProductTier = getLawnSubscriptionTier(draft);
+  const tier = lotSizeAcres
+    ? getLawncarePlanId({
+        frequency: "one_time",
+        lotSizeAcres,
+      })
+    : selectedProductTier;
 
-  if (tier === "large") {
+  if (tier.includes("large")) {
     return "large lot";
   }
 
-  if (tier === "medium") {
+  if (tier.includes("medium")) {
     return "medium lot";
+  }
+
+  if (tier.includes("custom")) {
+    return "custom quote";
   }
 
   return "small lot";
@@ -957,29 +1111,63 @@ const getLawnTierLabel = (draft: BookingDraft) => {
 const getComboIncludedItems = (
   combo: (typeof comboSubscriptions)[number],
   draft: BookingDraft
-) =>
-  combo.requiredServices.map((serviceId) => {
-    if (serviceId === "lawncare") {
-      const cadence =
-        combo.id === "monthly_castle_care" ? "Monthly" : "Bi-weekly";
-      return {
-        description: `${getLawnTierLabel(draft)} Groundskeeper service`,
-        name: `${cadence} lawn care`,
-      };
-    }
+) => {
+  const lawnTierLabel = getLawnTierLabel(draft);
 
-    if (serviceId === "laundry") {
-      return {
-        description: "Weekly pickup and delivery with bedding included",
-        name: "Royal Wash Supreme",
-      };
-    }
+  if (combo.id === "bi_weekly_royal_duo") {
+    return [
+      {
+        description: `${lawnTierLabel} Groundskeeper service`,
+        name: "2 Lawn Care visits",
+      },
+      {
+        description: "Wash and fold pickup twice per month",
+        name: "2 laundry pickups",
+      },
+    ];
+  }
 
-    return {
-      description: "Monthly exterior glass care using the standard estimate",
-      name: "Royal Pane Monthly",
-    };
-  });
+  if (combo.id === "monthly_castle_care") {
+    return [
+      {
+        description: `${lawnTierLabel} Groundskeeper service`,
+        name: "1 Lawn Care visit",
+      },
+      {
+        description: "Exterior glass care using the standard estimate",
+        name: "1 Window Washing visit",
+      },
+    ];
+  }
+
+  if (combo.id === "royal_linen_panes_duo") {
+    return [
+      {
+        description: "Weekly wash and fold pickup with bedding included",
+        name: "4 laundry pickups",
+      },
+      {
+        description: "Exterior glass care using the standard estimate",
+        name: "1 Window Washing visit",
+      },
+    ];
+  }
+
+  return [
+    {
+      description: `${lawnTierLabel} Groundskeeper service`,
+      name: "2 Lawn Care visits",
+    },
+    {
+      description: "Weekly wash and fold pickup with bedding included",
+      name: "4 laundry pickups",
+    },
+    {
+      description: "Exterior glass care using the standard estimate",
+      name: "1 Window Washing visit",
+    },
+  ];
+};
 
 const formatServiceList = (serviceIds: readonly ServiceId[]) =>
   new Intl.ListFormat("en-US", {
@@ -1555,6 +1743,7 @@ const ServicePhotoUpload = ({
 );
 
 const ProductAccordion = ({
+  draft,
   isOpen,
   onOpen,
   onSelect,
@@ -1562,6 +1751,7 @@ const ProductAccordion = ({
   selectedProductId,
   serviceId,
 }: {
+  draft: BookingDraft;
   isOpen: boolean;
   onOpen: () => void;
   onSelect: (productId: string) => void;
@@ -1595,7 +1785,7 @@ const ProductAccordion = ({
             </p>
           </div>
           <span className="shrink-0 font-black text-lime-700">
-            {formatCents(product.priceCents)}
+            {formatCents(getProductPriceCents(draft, serviceId, product))}
           </span>
         </div>
         {product.recurring ? (
@@ -1694,7 +1884,9 @@ const BookingWizard = (props: BookingWizardProps) => {
     key: Key,
     value: BookingDraft[Key]
   ) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+    setDraft((current) =>
+      pruneInvalidProductSelections({ ...current, [key]: value })
+    );
     setErrors({});
   };
 
@@ -1753,7 +1945,7 @@ const BookingWizard = (props: BookingWizardProps) => {
         ? current.services.filter((id) => id !== serviceId)
         : [...current.services, serviceId];
       const nextServices = services;
-      const nextDraft = {
+      const nextDraft = pruneInvalidProductSelections({
         ...current,
         paymentOption: "",
         products: pruneProductsForServices({
@@ -1762,7 +1954,7 @@ const BookingWizard = (props: BookingWizardProps) => {
         }),
         services: nextServices,
         subscriptionId: "",
-      };
+      });
 
       if (!openDetailService || !nextServices.includes(openDetailService)) {
         setOpenDetailService(nextServices[0] ?? null);
@@ -1799,9 +1991,13 @@ const BookingWizard = (props: BookingWizardProps) => {
   };
 
   const selectProduct = (serviceId: ServiceId, productId: string) => {
-    const selectedProduct = productsByService[serviceId].find(
+    const selectedProduct = getEligibleProductsForDraft(draft, serviceId).find(
       ({ id }) => id === productId
     );
+    if (!selectedProduct) {
+      return;
+    }
+
     setDraft((current) => ({
       ...current,
       paymentOption: selectedProduct?.recurring ? "pay_full" : "",
@@ -1834,7 +2030,14 @@ const BookingWizard = (props: BookingWizardProps) => {
     if (!validated) {
       return;
     }
-    setDraftValue("address", validated.label);
+    setDraft((current) =>
+      pruneInvalidProductSelections({
+        ...current,
+        address: validated.label,
+        property: validated.property ?? null,
+      })
+    );
+    setErrors({});
     setIsAddressValidated(true);
   };
 
@@ -1894,7 +2097,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     }
   };
 
-  const shownCombos = getEligibleCombos(draft.services);
+  const shownCombos = getEligibleCombos(draft);
   const quoteAddOns = getQuoteAddOns(draft);
   let addOnTotalCents = 0;
   for (const addOn of quoteAddOns) {
@@ -1905,20 +2108,11 @@ const BookingWizard = (props: BookingWizardProps) => {
     draft.subscriptionId && draft.subscriptionId !== "one_time"
       ? comboSubscriptions.find((combo) => combo.id === draft.subscriptionId)
       : null;
-  const selectedComboServiceIds = selectedCombo?.requiredServices ?? [];
-  const selectedComboOneTimeCents = selectedCombo
-    ? selectedProductTotalForServices(draft, selectedComboServiceIds) +
-      getQuoteAddOnTotalForServices(draft, selectedComboServiceIds)
-    : 0;
   const hasRecurringProductSelected = hasSelectedRecurringProduct(draft);
   const hasSubscriptionSelected = hasSubscriptionCheckout(draft);
   const planEstimateCents = selectedCombo
     ? getSubscriptionPriceCents(draft)
     : null;
-  const planSavingsCents =
-    planEstimateCents === null
-      ? 0
-      : selectedComboOneTimeCents - planEstimateCents;
   const estimatedTotalCents = planEstimateCents ?? subtotalCents;
   const depositCents = 5000;
   const isLaundryOnly =
@@ -2002,10 +2196,24 @@ const BookingWizard = (props: BookingWizardProps) => {
                   isValidated={isAddressValidated}
                   onChange={(address) => {
                     setIsAddressValidated(false);
-                    setDraftValue("address", address);
+                    setDraft((current) =>
+                      pruneInvalidProductSelections({
+                        ...current,
+                        address,
+                        property: null,
+                      })
+                    );
+                    setErrors({});
                   }}
                   onSelectSuggestion={(suggestion: RadarAddressSuggestion) => {
-                    setDraftValue("address", suggestion.label);
+                    setDraft((current) =>
+                      pruneInvalidProductSelections({
+                        ...current,
+                        address: suggestion.label,
+                        property: suggestion.property ?? null,
+                      })
+                    );
+                    setErrors({});
                     setIsAddressValidated(true);
                     void validateSelectedAddress(suggestion);
                   }}
@@ -2494,11 +2702,12 @@ const BookingWizard = (props: BookingWizardProps) => {
           <div className="space-y-3">
             {draft.services.map((serviceId) => (
               <ProductAccordion
+                draft={draft}
                 isOpen={openProductService === serviceId}
                 key={serviceId}
                 onOpen={() => setOpenProductService(serviceId)}
                 onSelect={(productId) => selectProduct(serviceId, productId)}
-                products={productsByService[serviceId]}
+                products={getEligibleProductsForDraft(draft, serviceId)}
                 selectedProductId={draft.products[serviceId]}
                 serviceId={serviceId}
               />
@@ -2626,7 +2835,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
                   <span>{combo.frequency}</span>
-                  <span>{combo.discountLabel}</span>
+                  <span>
+                    {formatCents(getComboPriceCents(draft, combo.id) ?? 0)}
+                    /month
+                  </span>
                 </div>
               </button>
             ))}
@@ -2663,7 +2875,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                           {selectedCombo.name}
                         </span>
                         <span className="text-xs text-slate-500">
-                          {selectedCombo.frequency} · recurring package
+                          {selectedCombo.frequency} · monthly service package
                         </span>
                       </span>
                       <span className="font-black text-lime-700">
@@ -2688,8 +2900,11 @@ const BookingWizard = (props: BookingWizardProps) => {
                       )}
                     </div>
                     <div className="mt-3 flex justify-between text-xs font-semibold text-lime-700">
-                      <span>One-time service estimate</span>
-                      <span>{formatCents(selectedComboOneTimeCents)}</span>
+                      <span>Included each month</span>
+                      <span>
+                        {getComboIncludedItems(selectedCombo, draft).length}{" "}
+                        service groups
+                      </span>
                     </div>
                   </div>
                 ) : (
@@ -2745,17 +2960,6 @@ const BookingWizard = (props: BookingWizardProps) => {
                   </>
                 )}
                 <div className="border-t border-slate-200 pt-3">
-                  {selectedCombo && planEstimateCents !== null ? (
-                    <div className="mb-3 rounded-2xl border border-lime-200 bg-lime-50 p-3">
-                      <div className="mt-2 flex justify-between text-xs font-semibold text-lime-700">
-                        <span>Estimated plan savings</span>
-                        <span>
-                          {planSavingsCents >= 0 ? "-" : "+"}
-                          {formatCents(Math.abs(planSavingsCents))}
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
                   {hasSubscriptionSelected ? null : (
                     <div className="flex justify-between">
                       <span className="text-slate-500">
@@ -2777,7 +2981,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                   <div className="mt-2 flex justify-between text-base">
                     <span className="font-semibold text-slate-950">
                       {hasSubscriptionSelected
-                        ? "Estimated plan"
+                        ? "Monthly plan"
                         : "Estimated total"}
                     </span>
                     <span className="font-black text-slate-950">

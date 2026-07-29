@@ -223,7 +223,7 @@ const ServiceDetailPage = () => {
                 <p className="mt-3 text-sm leading-6 text-slate-600">
                   {service.id === "laundry"
                     ? "Laundry-only orders collect full payment up front."
-                    : "Lawn care and window washing reserve the appointment with a $50 deposit."}
+                    : "Lawn Care and Window Washing reserve the appointment with a $50 deposit."}
                 </p>
               </div>
               <div className="rounded-3xl border border-slate-200 bg-white p-6">

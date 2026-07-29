@@ -37,7 +37,7 @@ const providerServices = [
   {
     description: "Mowing, edging, trimming, and cleanup.",
     id: "lawncare",
-    label: "Lawn care",
+    label: "Lawn Care",
   },
   {
     description: "Pickup, delivery, wash and fold, and bedding support.",
@@ -47,7 +47,7 @@ const providerServices = [
   {
     description: "Exterior and interior glass service.",
     id: "window-washing",
-    label: "Window washing",
+    label: "Window Washing",
   },
 ] as const;
 
@@ -591,7 +591,7 @@ export default function EarnOnboarding() {
                       I can do all active services
                     </span>
                     <span className="mt-1 block text-sm text-white/55">
-                      Lawn care, laundry, and window washing.
+                      Lawn Care, laundry, and Window Washing.
                     </span>
                   </span>
                   <span

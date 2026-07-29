@@ -41,6 +41,45 @@ const clickLastText = (text: string) => {
   fireEvent.click(element);
 };
 
+const seedBookingProperty = (lotSizeSqft: number) => {
+  window.localStorage.setItem(
+    "callcastlecare.booking-draft.v1",
+    JSON.stringify({
+      address: "123 Main St, Little Rock, AR",
+      contact: {
+        email: "",
+        name: "",
+        phone: "",
+        smsUpdates: false,
+      },
+      date: "2026-08-04",
+      paymentOption: "",
+      products: {},
+      property: {
+        fallbackUsed: false,
+        homeSqft: 2000,
+        lotSizeSqft,
+      },
+      serviceDetails: {
+        laundry: { bedding: "", photoNames: [] },
+        lawncare: { grassHeight: "", photoNames: [] },
+        "window-washing": {
+          cleaningScope: "",
+          finalizeOnSite: false,
+          photoNames: [],
+          screenCount: "",
+          stories: "",
+          washScreens: false,
+          windowEstimate: "",
+        },
+      },
+      services: ["lawncare", "laundry", "window-washing"],
+      subscriptionId: "",
+      timeSlot: "10:00 AM - 12:00 PM",
+    })
+  );
+};
+
 describe("BookingWizard", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -187,13 +226,15 @@ describe("BookingWizard", () => {
     ).toBe("(501)-827-1551");
   });
 
-  it("keeps combo savings in sync with the selected one-time products", async () => {
+  it("filters product choices and explains monthly trio service units", async () => {
     mockFetch();
+    seedBookingProperty(25_000);
 
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
         initialDate="2026-08-04"
+        initialResumeDraft
         initialServices={["lawncare", "laundry", "window-washing"]}
       />
     );
@@ -224,14 +265,23 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
     fireEvent.click(
-      screen.getByRole("button", { name: /groundskeeper small lot/iu })
+      screen.getByRole("button", { name: /groundskeeper medium lot/iu })
     );
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper small lot/iu })
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: /royal wash \+ bedding/iu })
     );
+    expect(
+      screen.queryByText("Wash and fold pickup for standard weekly laundry.")
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: /royal pane detail/iu })
     );
+    expect(
+      screen.queryByRole("button", { name: /royal pane shine/iu })
+    ).toBeNull();
 
     expect(await screen.findByText("Subscription options")).toBeTruthy();
     fireEvent.click(
@@ -240,8 +290,9 @@ describe("BookingWizard", () => {
     clickFirstContinue();
 
     expect(await screen.findByText("Review and reserve")).toBeTruthy();
-    expect(screen.getByText("One-time service estimate")).toBeTruthy();
-    expect(screen.getAllByText("$335.00").length).toBeGreaterThan(0);
-    expect(screen.getByText("-$35.00")).toBeTruthy();
+    expect(screen.getAllByText("$525.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("4 laundry pickups")).toBeTruthy();
+    expect(screen.getByText("1 Window Washing visit")).toBeTruthy();
+    expect(screen.queryByText("Estimated plan savings")).toBeNull();
   });
 });

@@ -31,9 +31,9 @@ interface SupportFormProps {
 
 const serviceOptions = [
   { label: "General question", value: "unknown" },
-  { label: "Lawn care", value: "lawncare" },
+  { label: "Lawn Care", value: "lawncare" },
   { label: "Laundry", value: "laundry" },
-  { label: "Window washing", value: "window_washing" },
+  { label: "Window Washing", value: "window_washing" },
   { label: "Multiple services", value: "combo" },
 ] as const;
 

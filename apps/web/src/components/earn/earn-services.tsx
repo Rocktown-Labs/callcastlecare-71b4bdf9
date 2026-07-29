@@ -21,7 +21,7 @@ const services = [
     id: "lawncare",
     image: "/callcastlecare/media/lawn-care-rider-night.png",
     requirements: ["Vehicle", "Push or ride-on mower", "Edger or trimmer"],
-    title: "Lawn care professional",
+    title: "Lawn Care professional",
   },
   {
     color: "text-cyan-300",
@@ -31,7 +31,7 @@ const services = [
     id: "window-washing",
     image: "/callcastlecare/media/premium-home-services-poster.png",
     requirements: ["Reliable vehicle", "Window tools", "Ladder safety"],
-    title: "Window washing professional",
+    title: "Window Washing professional",
   },
 ] as const;
 

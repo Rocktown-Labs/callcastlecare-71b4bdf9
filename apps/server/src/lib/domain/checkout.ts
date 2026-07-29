@@ -6,11 +6,13 @@ import type {
   TimingType,
 } from "@callcastlecare/api";
 import {
+  COMBO_SUBSCRIPTION_PRICES,
   HOME_PREORDER_DEPOSIT_CENTS,
   LAUNDRY_PLAN_LABELS,
   LAUNDRY_PLAN_PRICES,
   LAWNCARE_PLAN_LABELS,
   LAWNCARE_PLAN_PRICES,
+  WINDOW_WASHING_SUBSCRIPTION_PRICES,
   calculateWindowWashingQuote,
   getLawncarePricingTier,
 } from "@callcastlecare/api";
@@ -23,10 +25,46 @@ const parsePlanPrice = (
   basePriceCents: number;
   label: string;
   pricingTier?: PricingTier;
-  serviceType?: "lawncare" | "laundry" | "window_washing";
+  serviceType?: "combo" | "lawncare" | "laundry" | "window_washing";
   windowWashingQuote?: ReturnType<typeof calculateWindowWashingQuote>;
 } => {
+  if (item.planId && item.planId in COMBO_SUBSCRIPTION_PRICES) {
+    const planId = item.planId as keyof typeof COMBO_SUBSCRIPTION_PRICES;
+    const comboLabels = {
+      "bi-weekly-royal-duo-large": "Bi-Weekly Royal Duo Large",
+      "bi-weekly-royal-duo-medium": "Bi-Weekly Royal Duo Medium",
+      "bi-weekly-royal-duo-small": "Bi-Weekly Royal Duo Small",
+      "crown-estate-trio-large": "Crown Estate Trio Large",
+      "crown-estate-trio-medium": "Crown Estate Trio Medium",
+      "crown-estate-trio-small": "Crown Estate Trio Small",
+      "monthly-castle-care-large": "Monthly CastleCare Large",
+      "monthly-castle-care-medium": "Monthly CastleCare Medium",
+      "monthly-castle-care-small": "Monthly CastleCare Small",
+      "royal-linen-panes-duo": "Royal Linen & Panes Duo",
+    } as const satisfies Record<keyof typeof COMBO_SUBSCRIPTION_PRICES, string>;
+
+    return {
+      basePriceCents: COMBO_SUBSCRIPTION_PRICES[planId],
+      label: comboLabels[planId],
+      serviceType: "combo",
+    };
+  }
+
   if (item.itemKind === "window_washing") {
+    if (
+      item.planId === "royal-pane-monthly" ||
+      item.planId === "royal-pane-bi-annual"
+    ) {
+      return {
+        basePriceCents: WINDOW_WASHING_SUBSCRIPTION_PRICES[item.planId],
+        label:
+          item.planId === "royal-pane-bi-annual"
+            ? "Royal Pane Bi-Annual Detail"
+            : "Royal Pane Monthly",
+        serviceType: "window_washing",
+      };
+    }
+
     const quote = calculateWindowWashingQuote({
       cleanScreens: item.cleanScreens ?? false,
       livingArea: item.livingArea ?? 1400,
