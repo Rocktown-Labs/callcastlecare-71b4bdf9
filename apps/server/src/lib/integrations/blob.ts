@@ -39,7 +39,9 @@ export const handleBlobClientUpload = (request: Request, body: unknown) => {
 
   return handleUpload({
     body: uploadBody,
-    onBeforeGenerateToken: (pathname) => {
+    // Vercel Blob requires promise-returning callbacks for this client upload API.
+    // eslint-disable-next-line require-await
+    onBeforeGenerateToken: async (pathname) => {
       if (!pathname.startsWith("callcastlecare-media/")) {
         throw new Error("Invalid upload pathname");
       }
@@ -53,7 +55,8 @@ export const handleBlobClientUpload = (request: Request, body: unknown) => {
         validUntil: Date.now() + 30 * 60 * 1000,
       };
     },
-    onUploadCompleted: ({ blob, tokenPayload }) => {
+    // eslint-disable-next-line require-await
+    onUploadCompleted: async ({ blob, tokenPayload }) => {
       logger.info(
         {
           pathname: blob.pathname,
