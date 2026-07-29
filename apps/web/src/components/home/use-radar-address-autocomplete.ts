@@ -19,6 +19,8 @@ export interface PropertyEstimate {
   fallbackUsed: boolean;
   homeSqft: number | null;
   lotSizeSqft: number | null;
+  source?: "fallback" | "rentcast";
+  stories?: number | null;
 }
 
 const toStringOrNull = (value: unknown) =>
@@ -105,7 +107,7 @@ const fetchJson = async (url: URL, init?: RequestInit) => {
 };
 
 export const validateAddress = async (address: string) => {
-  const url = new URL("/api/locations/addresses/validate", getServerUrl());
+  const url = new URL("/api/v1/locations/addresses/validate", getServerUrl());
   const payload = await fetchJson(url, {
     body: JSON.stringify({ address }),
     headers: {
@@ -148,6 +150,13 @@ export const validateAddress = async (address: string) => {
             lotSizeSqft: toNumberOrNull(
               (rawProperty as Record<string, unknown>).lotSizeSqft
             ),
+            source:
+              (rawProperty as Record<string, unknown>).source === "rentcast"
+                ? "rentcast"
+                : "fallback",
+            stories: toNumberOrNull(
+              (rawProperty as Record<string, unknown>).stories
+            ),
           }
         : undefined,
     raw: candidate,
@@ -159,7 +168,7 @@ export const reverseGeocodeAddress = async (
   longitude: number
 ) => {
   const url = new URL(
-    "/api/locations/addresses/reverse-geocode",
+    "/api/v1/locations/addresses/reverse-geocode",
     getServerUrl()
   );
   url.searchParams.set("latitude", String(latitude));
@@ -208,7 +217,7 @@ export const useRadarAddressAutocomplete = (query: string) => {
     const currentRequestId = requestIdRef.current + 1;
     requestIdRef.current = currentRequestId;
     const url = new URL(
-      "/api/locations/addresses/autocomplete",
+      "/api/v1/locations/addresses/autocomplete",
       getServerUrl()
     );
     url.searchParams.set("input", trimmed);

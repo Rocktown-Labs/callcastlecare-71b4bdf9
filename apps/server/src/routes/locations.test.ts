@@ -1,3 +1,4 @@
+import { getScheduledWindowForSlot } from "@callcastlecare/api";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +7,7 @@ import { locationRoutes } from "./locations";
 
 const autocompleteRadarAddresses = vi.hoisted(() => vi.fn());
 const findManyOrders = vi.hoisted(() => vi.fn());
-const lookupPropertyWithZillow = vi.hoisted(() => vi.fn());
+const lookupPropertyWithRentCast = vi.hoisted(() => vi.fn());
 const reverseGeocodeWithRadar = vi.hoisted(() => vi.fn());
 const validateRadarAddress = vi.hoisted(() => vi.fn());
 
@@ -37,8 +38,8 @@ vi.mock("../lib/integrations/radar", () => ({
   validateRadarAddress,
 }));
 
-vi.mock("../lib/integrations/zillow", () => ({
-  lookupPropertyWithZillow,
+vi.mock("../lib/integrations/rentcast", () => ({
+  lookupPropertyWithRentCast,
 }));
 
 const app = new Hono<AppEnv>().route("/locations", locationRoutes);
@@ -100,7 +101,7 @@ describe("location routes", () => {
       },
       zip: "72201",
     });
-    lookupPropertyWithZillow.mockResolvedValue({
+    lookupPropertyWithRentCast.mockResolvedValue({
       fallbackUsed: false,
       homeSqft: 2200,
       lotSizeSqft: 11_000,
@@ -138,7 +139,7 @@ describe("location routes", () => {
 
     expect(response.status).toBe(400);
     expect(validateRadarAddress).not.toHaveBeenCalled();
-    expect(lookupPropertyWithZillow).not.toHaveBeenCalled();
+    expect(lookupPropertyWithRentCast).not.toHaveBeenCalled();
   });
 
   it("reverse geocodes a current location coordinate pair", async () => {
@@ -173,9 +174,13 @@ describe("location routes", () => {
   });
 
   it("removes booked launch slots from availability", async () => {
+    const scheduledWindow = getScheduledWindowForSlot(
+      "2026-07-28",
+      "10:00 AM - 12:00 PM"
+    );
     findManyOrders.mockResolvedValue([
       {
-        scheduledStartAt: new Date("2026-07-28T10:00:00.000Z"),
+        scheduledStartAt: new Date(scheduledWindow.scheduledStartAt),
       },
     ]);
 

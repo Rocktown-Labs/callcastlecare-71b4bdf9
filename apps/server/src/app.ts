@@ -11,6 +11,7 @@ import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
 import { locationRoutes } from "./routes/locations";
 import { meRoutes } from "./routes/me";
+import { mediaRoutes } from "./routes/media";
 import { notificationRoutes } from "./routes/notifications";
 import { orderRoutes } from "./routes/orders";
 import { supportRoutes } from "./routes/support";
@@ -135,6 +136,7 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/me", meRoutes)
   .route("/addresses", addressesRoutes)
   .route("/locations", locationRoutes)
+  .route("/media", mediaRoutes)
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)
   .route("/support", supportRoutes)
@@ -142,6 +144,8 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/admin", adminRoutes);
 
 const routes = app
+  .route("/api/v1", apiRoutes)
+  .route("/v1", apiRoutes)
   .route("/api", apiRoutes)
   .route("/", apiRoutes)
   .get("/", (c) => c.text("OK"));

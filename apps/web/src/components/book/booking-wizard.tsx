@@ -39,7 +39,7 @@ import {
   User,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { bookingTimeSlots, fetchBookingAvailability } from "@/lib/scheduling";
@@ -81,6 +81,35 @@ const grassHeights = [
     name: "Tall",
   },
 ] as const;
+
+const manualLotSizeOptions = [
+  {
+    description: "Under 0.55 acres.",
+    id: "small",
+    lotSizeAcres: 0.35,
+    name: "Small lot",
+  },
+  {
+    description: "0.55 to 1 acre.",
+    id: "medium",
+    lotSizeAcres: 0.75,
+    name: "Medium lot",
+  },
+  {
+    description: "1 to 2 acres.",
+    id: "large",
+    lotSizeAcres: 1.5,
+    name: "Large lot",
+  },
+  {
+    description: "Over 2 acres or unusual access.",
+    id: "custom",
+    lotSizeAcres: null,
+    name: "Custom quote",
+  },
+] as const;
+
+type ManualLotSizeId = (typeof manualLotSizeOptions)[number]["id"];
 
 const productsByService = {
   laundry: [
@@ -277,6 +306,10 @@ const lawncareDetailsSchema = z.object({
   grassHeight: z.enum(["low", "medium", "tall"], {
     message: "Choose a grass height.",
   }),
+  lotSizeTier: z
+    .enum(["small", "medium", "large", "custom"])
+    .optional()
+    .or(z.literal("")),
 });
 
 const laundryDetailsSchema = z.object({
@@ -357,6 +390,7 @@ interface BookingDraft {
     };
     lawncare: {
       grassHeight: "low" | "medium" | "tall" | "";
+      lotSizeTier: ManualLotSizeId | "";
       photoNames: string[];
     };
     "window-washing": {
@@ -377,6 +411,7 @@ interface BookingDraft {
 interface BookingWizardProps {
   initialAddress?: string;
   initialDate?: string;
+  initialQuoteRequestId?: string;
   initialResumeDraft?: boolean;
   initialServices: ServiceId[];
   initialStep?: WizardStepKey;
@@ -402,7 +437,7 @@ const emptyDraft = ({
   property: null,
   serviceDetails: {
     laundry: { bedding: "", photoNames: [] },
-    lawncare: { grassHeight: "", photoNames: [] },
+    lawncare: { grassHeight: "", lotSizeTier: "", photoNames: [] },
     "window-washing": {
       cleaningScope: "",
       finalizeOnSite: false,
@@ -568,8 +603,26 @@ const getLotSizeAcres = (property: PropertyEstimate | null) => {
   return property.lotSizeSqft / SQFT_PER_ACRE;
 };
 
+const getManualLotSizeAcres = (draft: BookingDraft) => {
+  const selected = manualLotSizeOptions.find(
+    (option) => option.id === draft.serviceDetails.lawncare.lotSizeTier
+  );
+
+  return selected?.lotSizeAcres ?? null;
+};
+
+const needsManualLotSize = (draft: BookingDraft) =>
+  draft.services.includes("lawncare") && !getLotSizeAcres(draft.property);
+
+const getDraftLotSizeAcres = (draft: BookingDraft) =>
+  getLotSizeAcres(draft.property) ?? getManualLotSizeAcres(draft);
+
 const getLawncareFitPlanIds = (draft: BookingDraft) => {
-  const lotSizeAcres = getLotSizeAcres(draft.property);
+  if (draft.serviceDetails.lawncare.lotSizeTier === "custom") {
+    return new Set(["groundskeeper-custom-quote-deposit"]);
+  }
+
+  const lotSizeAcres = getDraftLotSizeAcres(draft);
   if (!lotSizeAcres) {
     return new Set(["groundskeeper-custom-quote-deposit"]);
   }
@@ -764,6 +817,9 @@ const addServiceDetailErrors = (
   ) {
     nextErrors.grassHeight = "Choose a grass height.";
   }
+  if (needsManualLotSize(draft) && !draft.serviceDetails.lawncare.lotSizeTier) {
+    nextErrors.lotSizeTier = "Choose the closest lot size.";
+  }
   if (
     draft.services.includes("laundry") &&
     !laundryDetailsSchema.safeParse(draft.serviceDetails.laundry).success
@@ -856,11 +912,11 @@ const persistQuoteRequest = async ({
   trackingId: string;
 }) => {
   if (!trackingId) {
-    return;
+    return false;
   }
 
-  const url = new URL("/api/checkout/quote-request", getServerUrl());
-  await fetch(url, {
+  const url = new URL("/api/v1/checkout/quote-request", getServerUrl());
+  const response = await fetch(url, {
     body: JSON.stringify({
       address: draft.address,
       contact: draft.contact,
@@ -874,6 +930,36 @@ const persistQuoteRequest = async ({
     },
     method: "PUT",
   });
+
+  if (!response.ok) {
+    return false;
+  }
+
+  const payload = (await response.json().catch(() => null)) as {
+    saved?: boolean;
+  } | null;
+
+  return payload?.saved !== false;
+};
+
+const fetchQuoteRequestDraft = async (trackingId: string) => {
+  const url = new URL(
+    `/api/v1/checkout/quote-request/${encodeURIComponent(trackingId)}`,
+    getServerUrl()
+  );
+  const response = await fetch(url);
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as {
+    quoteRequest?: {
+      lastCompletedStep?: number;
+      payload?: Record<string, unknown>;
+    };
+  };
+
+  return payload.quoteRequest ?? null;
 };
 
 const getPaymentOptionsForServices = (services: ServiceId[]) =>
@@ -1084,7 +1170,7 @@ const sanitizeDraftForCurrentCart = (draft: BookingDraft): BookingDraft => {
 };
 
 const getLawnTierLabel = (draft: BookingDraft) => {
-  const lotSizeAcres = getLotSizeAcres(draft.property);
+  const lotSizeAcres = getDraftLotSizeAcres(draft);
   const selectedProductTier = getLawnSubscriptionTier(draft);
   const tier = lotSizeAcres
     ? getLawncarePlanId({
@@ -1848,7 +1934,7 @@ const ProductAccordion = ({
 
 // eslint-disable-next-line complexity
 const BookingWizard = (props: BookingWizardProps) => {
-  const navigate = useNavigate({ from: "/book" });
+  const navigate = useNavigate();
   const storedDraft = parseStoredDraft();
   const hasStoredDraft =
     Boolean(storedDraft) &&
@@ -1857,7 +1943,16 @@ const BookingWizard = (props: BookingWizardProps) => {
     !props.initialAddress;
   const [shouldShowStoredDraft, setShouldShowStoredDraft] =
     useState(hasStoredDraft);
-  const quoteRequestTrackingId = getOrCreateTrackingId();
+  const quoteRequestTrackingId = useMemo(() => {
+    if (props.initialQuoteRequestId) {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(trackingKey, props.initialQuoteRequestId);
+      }
+      return props.initialQuoteRequestId;
+    }
+
+    return getOrCreateTrackingId();
+  }, [props.initialQuoteRequestId]);
   const [draft, setDraft] = useState<BookingDraft>(() =>
     sanitizeDraftForCurrentCart(buildInitialDraft(props, storedDraft))
   );
@@ -1872,11 +1967,75 @@ const BookingWizard = (props: BookingWizardProps) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isAddressValidated, setIsAddressValidated] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [hasServerQuoteRoute, setHasServerQuoteRoute] = useState(
+    Boolean(props.initialQuoteRequestId)
+  );
+  const [isQuoteRequestLoading, setIsQuoteRequestLoading] = useState(
+    Boolean(props.initialQuoteRequestId)
+  );
   const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
   }, [draft]);
+
+  useEffect(() => {
+    if (!props.initialQuoteRequestId) {
+      return;
+    }
+
+    let isActive = true;
+
+    const loadQuoteRequest = async () => {
+      setIsQuoteRequestLoading(true);
+      const quoteRequest = await fetchQuoteRequestDraft(
+        props.initialQuoteRequestId ?? ""
+      );
+
+      if (!isActive) {
+        return;
+      }
+
+      if (quoteRequest?.payload) {
+        const quoteDraft = quoteRequest.payload as unknown as BookingDraft;
+        const nextDraft = sanitizeDraftForCurrentCart(
+          buildInitialDraft(
+            {
+              initialAddress: props.initialAddress,
+              initialDate: props.initialDate,
+              initialQuoteRequestId: props.initialQuoteRequestId,
+              initialResumeDraft: true,
+              initialServices: props.initialServices,
+              initialStep: props.initialStep,
+              initialTimeSlot: props.initialTimeSlot,
+            },
+            quoteDraft
+          )
+        );
+        setDraft(nextDraft);
+        setOpenDetailService(nextDraft.services[0] ?? null);
+        setOpenProductService(nextDraft.services[0] ?? null);
+        setActiveStep(
+          Math.min(quoteRequest.lastCompletedStep ?? 0, 5) as WizardStep
+        );
+      }
+
+      setIsQuoteRequestLoading(false);
+    };
+
+    void loadQuoteRequest();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    props.initialAddress,
+    props.initialDate,
+    props.initialQuoteRequestId,
+    props.initialServices,
+    props.initialStep,
+    props.initialTimeSlot,
+  ]);
 
   const paymentOptionsForDraft = getPaymentOptionsForDraft(draft);
 
@@ -1890,14 +2049,28 @@ const BookingWizard = (props: BookingWizardProps) => {
     setErrors({});
   };
 
-  const goToStep = (step: WizardStep) => {
+  const goToStep = (
+    step: WizardStep,
+    preferQuoteRoute = hasServerQuoteRoute
+  ) => {
     setActiveStep(step);
+    if (preferQuoteRoute && quoteRequestTrackingId) {
+      navigate({
+        params: { trackingId: quoteRequestTrackingId },
+        replace: true,
+        search: { step: stepKeys[step] },
+        to: "/book/q/$trackingId",
+      });
+      return;
+    }
+
     navigate({
       replace: true,
       search: (current) => ({
         ...current,
         step: stepKeys[step],
       }),
+      to: "/book",
     });
   };
 
@@ -1973,21 +2146,25 @@ const BookingWizard = (props: BookingWizardProps) => {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const continueFromStep = (step: WizardStep) => {
+  const continueFromStep = async (step: WizardStep) => {
     if (!validateStep(step)) {
       return;
     }
 
+    let shouldUseQuoteRoute = hasServerQuoteRoute;
     if (step >= 1) {
-      void persistQuoteRequest({
+      shouldUseQuoteRoute = await persistQuoteRequest({
         draft,
         lastCompletedStep: step + 1,
         status: step >= 4 ? "checkout_started" : "contact_captured",
         trackingId: quoteRequestTrackingId,
       });
+      if (shouldUseQuoteRoute) {
+        setHasServerQuoteRoute(true);
+      }
     }
 
-    goToStep(Math.min(step + 1, 5) as WizardStep);
+    goToStep(Math.min(step + 1, 5) as WizardStep, shouldUseQuoteRoute);
   };
 
   const selectProduct = (serviceId: ServiceId, productId: string) => {
@@ -2058,7 +2235,7 @@ const BookingWizard = (props: BookingWizardProps) => {
       });
 
       const response = await fetch(
-        new URL("/api/checkout/confirm", getServerUrl()),
+        new URL("/api/v1/checkout/confirm", getServerUrl()),
         {
           body: JSON.stringify({
             address: draft.address,
@@ -2117,7 +2294,10 @@ const BookingWizard = (props: BookingWizardProps) => {
   const depositCents = 5000;
   const isLaundryOnly =
     draft.services.length === 1 && draft.services[0] === "laundry";
-  const shouldChargeFullAmountToday = isLaundryOnly || hasSubscriptionSelected;
+  const shouldChargeFullAmountToday =
+    draft.paymentOption === "pay_full" ||
+    isLaundryOnly ||
+    hasSubscriptionSelected;
   const dueTodayCents = shouldChargeFullAmountToday
     ? estimatedTotalCents
     : Math.min(depositCents, estimatedTotalCents);
@@ -2126,6 +2306,19 @@ const BookingWizard = (props: BookingWizardProps) => {
       (product) => product.id === draft.products[serviceId] && product.recurring
     )
   );
+
+  if (isQuoteRequestLoading) {
+    return (
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center text-slate-950 shadow-2xl shadow-slate-200/70">
+        <p className="text-sm font-black uppercase tracking-widest text-lime-700">
+          Loading quote
+        </p>
+        <p className="mt-3 text-base font-semibold text-slate-600">
+          Pulling your saved CastleCare booking details.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-4">
@@ -2233,7 +2426,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               />
             </div>
 
-            <StepButton onClick={() => continueFromStep(0)} />
+            <StepButton onClick={() => void continueFromStep(0)} />
           </div>
         </StepPanel>
 
@@ -2306,7 +2499,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             </label>
           </div>
           <StepActions onBack={() => goToStep(0)}>
-            <StepButton onClick={() => continueFromStep(1)} />
+            <StepButton onClick={() => void continueFromStep(1)} />
           </StepActions>
         </StepPanel>
 
@@ -2343,7 +2536,9 @@ const BookingWizard = (props: BookingWizardProps) => {
                             grassHeight: height.id,
                           },
                         });
-                        completeServiceDetails("lawncare");
+                        if (!needsManualLotSize(draft)) {
+                          completeServiceDetails("lawncare");
+                        }
                       }}
                       type="button"
                     >
@@ -2359,6 +2554,48 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
                 {errors.grassHeight ? (
                   <p className="text-sm text-rose-300">{errors.grassHeight}</p>
+                ) : null}
+                {needsManualLotSize(draft) ? (
+                  <div className="mt-4">
+                    <Label className="text-slate-600">Lot size</Label>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                      {manualLotSizeOptions.map((lotSize) => (
+                        <button
+                          className={cn(
+                            "rounded-2xl border p-3 text-left transition-colors",
+                            draft.serviceDetails.lawncare.lotSizeTier ===
+                              lotSize.id
+                              ? "border-lime-500 bg-lime-100 text-slate-950"
+                              : "border-slate-200 bg-white text-slate-600"
+                          )}
+                          key={lotSize.id}
+                          onClick={() => {
+                            setDraftValue("serviceDetails", {
+                              ...draft.serviceDetails,
+                              lawncare: {
+                                ...draft.serviceDetails.lawncare,
+                                lotSizeTier: lotSize.id,
+                              },
+                            });
+                            completeServiceDetails("lawncare");
+                          }}
+                          type="button"
+                        >
+                          <p className="text-sm font-semibold">
+                            {lotSize.name}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {lotSize.description}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                    {errors.lotSizeTier ? (
+                      <p className="mt-2 text-sm text-rose-300">
+                        {errors.lotSizeTier}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 <div className="mt-4">
                   <ServicePhotoUpload
@@ -2686,7 +2923,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             ) : null}
 
             <StepActions onBack={() => goToStep(1)}>
-              <StepButton onClick={() => continueFromStep(2)} />
+              <StepButton onClick={() => void continueFromStep(2)} />
             </StepActions>
           </div>
         </StepPanel>
@@ -2719,7 +2956,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             </p>
           ))}
           <StepActions onBack={() => goToStep(2)}>
-            <StepButton onClick={() => continueFromStep(3)} />
+            <StepButton onClick={() => void continueFromStep(3)} />
           </StepActions>
         </StepPanel>
 
@@ -2844,7 +3081,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             ))}
           </div>
           <StepActions onBack={() => goToStep(3)}>
-            <StepButton onClick={() => continueFromStep(4)} />
+            <StepButton onClick={() => void continueFromStep(4)} />
           </StepActions>
         </StepPanel>
 
@@ -3039,7 +3276,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                 >
                   {isCheckoutSubmitting
                     ? "Starting secure checkout..."
-                    : "Continue to secure checkout"}
+                    : `Pay ${formatCents(dueTodayCents)} today`}
                   <ArrowRight className="size-4" />
                 </Button>
               </div>

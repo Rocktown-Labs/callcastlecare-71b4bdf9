@@ -1,4 +1,10 @@
-import { bookingTimeSlots, getSlotStartHour } from "@callcastlecare/api";
+import {
+  bookingTimeSlots,
+  getAvailableBookingTimeSlots,
+  getBookingDateRange,
+  getBookingZoneHour,
+  getSlotStartHour,
+} from "@callcastlecare/api";
 import type { BookingTimeSlot } from "@callcastlecare/api";
 import { and, db, gte, inArray, lt } from "@callcastlecare/db";
 import { orders } from "@callcastlecare/db/schema/index";
@@ -10,7 +16,7 @@ import {
   reverseGeocodeWithRadar,
   validateRadarAddress,
 } from "../lib/integrations/radar";
-import { lookupPropertyWithZillow } from "../lib/integrations/zillow";
+import { lookupPropertyWithRentCast } from "../lib/integrations/rentcast";
 import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
 
@@ -41,16 +47,8 @@ const activeOrderStatuses = [
   "in_progress",
 ] as const;
 
-const getDateRange = (date: string) => {
-  const startsAt = new Date(`${date}T00:00:00.000Z`);
-  const endsAt = new Date(startsAt);
-  endsAt.setUTCDate(endsAt.getUTCDate() + 1);
-
-  return { endsAt, startsAt };
-};
-
 const getBookedSlots = async (date: string) => {
-  const { endsAt, startsAt } = getDateRange(date);
+  const { endsAt, startsAt } = getBookingDateRange(date);
   const bookedOrders = await db.query.orders.findMany({
     columns: {
       scheduledStartAt: true,
@@ -64,7 +62,11 @@ const getBookedSlots = async (date: string) => {
 
   const bookedStartHours = new Set(
     bookedOrders
-      .map((order) => order.scheduledStartAt?.getUTCHours())
+      .map((order) =>
+        order.scheduledStartAt
+          ? getBookingZoneHour(order.scheduledStartAt)
+          : null
+      )
       .filter((hour): hour is number => typeof hour === "number")
   );
 
@@ -94,7 +96,7 @@ export const locationRoutes = new Hono<AppEnv>()
 
     const [address, property] = await Promise.all([
       validateRadarAddress(parsed.data.address),
-      lookupPropertyWithZillow(parsed.data.address),
+      lookupPropertyWithRentCast(parsed.data.address),
     ]);
 
     return c.json({ address, property }, 200);
@@ -137,9 +139,10 @@ export const locationRoutes = new Hono<AppEnv>()
 
       return [];
     });
-    const availableSlots = bookingTimeSlots.filter(
-      (slot) => !bookedSlots.includes(slot)
-    );
+    const availableSlots = getAvailableBookingTimeSlots({
+      bookedSlots,
+      date: parsed.data.date,
+    });
     return c.json(
       {
         availableSlots,

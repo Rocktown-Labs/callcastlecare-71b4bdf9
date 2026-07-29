@@ -40,7 +40,7 @@ export const fetchBookingAvailability = async (
     return getDefaultBookingAvailability();
   }
 
-  const url = new URL("/api/locations/availability", getServerUrl());
+  const url = new URL("/api/v1/locations/availability", getServerUrl());
   url.searchParams.set("date", date);
 
   const response = await fetch(url);

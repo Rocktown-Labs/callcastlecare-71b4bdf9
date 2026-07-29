@@ -158,7 +158,7 @@ describe("BookingWizard", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          pathname: "/api/checkout/quote-request",
+          pathname: "/api/v1/checkout/quote-request",
         }),
         expect.objectContaining({
           method: "PUT",

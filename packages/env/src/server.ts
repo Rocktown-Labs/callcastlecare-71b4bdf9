@@ -42,6 +42,7 @@ export const env = createEnv({
     RADAR_API_KEY: z.string().min(1).optional(),
     RAPIDAPI_KEY: z.string().min(1).optional(),
     RAPIDAPI_ZILLOW_HOST: z.string().min(1).optional(),
+    RENTCAST_API_KEY: z.string().min(1).optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
     STRIPE_PRICE_BASIC_MONTHLY: z.string().min(1).optional(),
     STRIPE_SECRET_KEY: z.string().min(1).optional(),

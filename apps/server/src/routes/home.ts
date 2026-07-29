@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { getOrCreateCustomerForUser, requireUser } from "../lib/auth";
 import { computeHomeQuotePricing } from "../lib/domain/home-quote";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
-import { lookupPropertyWithZillow } from "../lib/integrations/zillow";
+import { lookupPropertyWithRentCast } from "../lib/integrations/rentcast";
 import { createAddressRecord } from "../lib/orders";
 import { publishOutboxEvent } from "../lib/outbox";
 import type { AppEnv } from "../types";
@@ -39,28 +39,28 @@ export const homeRoutes = new Hono<AppEnv>().post("/quotes", async (c) => {
     zip: verifiedAddress.zip,
   });
 
-  const zillowData = await lookupPropertyWithZillow(parsed.data.address);
+  const propertyData = await lookupPropertyWithRentCast(parsed.data.address);
   const pricing = computeHomeQuotePricing(
-    zillowData.homeSqft,
-    zillowData.lotSizeSqft,
-    zillowData.fallbackUsed
+    propertyData.homeSqft,
+    propertyData.lotSizeSqft,
+    propertyData.fallbackUsed
   );
 
   await db
     .insert(properties)
     .values({
       addressId: address.id,
-      homeSqft: zillowData.homeSqft,
-      lotSizeSqft: zillowData.lotSizeSqft,
-      source: "zillow",
-      zillowDataJson: zillowData.raw,
+      homeSqft: propertyData.homeSqft,
+      lotSizeSqft: propertyData.lotSizeSqft,
+      source: propertyData.source,
+      zillowDataJson: propertyData.raw,
     })
     .onConflictDoUpdate({
       set: {
-        homeSqft: zillowData.homeSqft,
-        lotSizeSqft: zillowData.lotSizeSqft,
+        homeSqft: propertyData.homeSqft,
+        lotSizeSqft: propertyData.lotSizeSqft,
         updatedAt: new Date(),
-        zillowDataJson: zillowData.raw,
+        zillowDataJson: propertyData.raw,
       },
       target: properties.addressId,
     });
@@ -72,9 +72,9 @@ export const homeRoutes = new Hono<AppEnv>().post("/quotes", async (c) => {
       confidenceScore: pricing.confidenceScore,
       customerId: customer.id,
       expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-      fallbackUsed: zillowData.fallbackUsed,
-      homeSqft: zillowData.homeSqft,
-      lotSizeSqft: zillowData.lotSizeSqft,
+      fallbackUsed: propertyData.fallbackUsed,
+      homeSqft: propertyData.homeSqft,
+      lotSizeSqft: propertyData.lotSizeSqft,
       pricingTier: pricing.pricingTier,
       quotePayloadJson: {
         price: pricing.totalPriceCents,
@@ -83,11 +83,11 @@ export const homeRoutes = new Hono<AppEnv>().post("/quotes", async (c) => {
       radarPayloadJson: verifiedAddress.raw,
       status: "ready",
       totalPriceCents: pricing.totalPriceCents,
-      zillowPayloadJson: zillowData.raw,
+      zillowPayloadJson: propertyData.raw,
     })
     .returning();
 
-  const quote = insertedQuotes[0];
+  const [quote] = insertedQuotes;
   if (!quote) {
     return c.json({ error: "Failed to create home quote" }, 500);
   }
@@ -103,10 +103,10 @@ export const homeRoutes = new Hono<AppEnv>().post("/quotes", async (c) => {
   return c.json(
     {
       confidenceScore: pricing.confidenceScore,
-      fallbackUsed: zillowData.fallbackUsed,
+      fallbackUsed: propertyData.fallbackUsed,
       homeQuoteId: quote.id,
-      homeSqft: zillowData.homeSqft,
-      lotSizeSqft: zillowData.lotSizeSqft,
+      homeSqft: propertyData.homeSqft,
+      lotSizeSqft: propertyData.lotSizeSqft,
       pricingTier: pricing.pricingTier,
       totalPriceCents: pricing.totalPriceCents,
     },

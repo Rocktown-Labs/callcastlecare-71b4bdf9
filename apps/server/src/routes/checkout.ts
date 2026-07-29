@@ -329,6 +329,46 @@ export const checkoutRoutes = new Hono<AppEnv>()
       200
     );
   })
+  .get("/quote-request/:trackingId", async (c) => {
+    const trackingId = c.req.param("trackingId");
+    const parsed =
+      publicQuoteRequestSchema.shape.trackingId.safeParse(trackingId);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid quote request id" }, 400);
+    }
+
+    const quoteRequest = await db.query.quoteRequests
+      .findFirst({
+        where: eq(quoteRequests.trackingId, parsed.data),
+      })
+      .catch((error: unknown) => {
+        logger.error(
+          {
+            err: error,
+            requestId: c.get("requestId"),
+            trackingId: parsed.data,
+          },
+          "quote_request:lookup_failed"
+        );
+
+        return null;
+      });
+
+    if (!quoteRequest) {
+      return c.json({ error: "Quote request not found" }, 404);
+    }
+
+    return c.json(
+      {
+        quoteRequest: {
+          ...toQuoteRequestResponse(quoteRequest),
+          lastCompletedStep: quoteRequest.lastCompletedStep,
+          payload: quoteRequest.payloadJson as Record<string, unknown>,
+        },
+      },
+      200
+    );
+  })
   .put("/quote-request", async (c) => {
     const body = await c.req.json();
     const parsed = publicQuoteRequestSchema.safeParse(body);
