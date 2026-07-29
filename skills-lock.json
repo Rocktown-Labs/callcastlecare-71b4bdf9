@@ -127,10 +127,10 @@
       "computedHash": "b737c3b9b9387bbeefd4fb5a003c1debaf273563f170665f6b9341c6818d121b"
     },
     "email-best-practices": {
-      "source": "resend/email-best-practices",
+      "source": "resend/resend-skills",
       "sourceType": "github",
-      "skillPath": "SKILL.md",
-      "computedHash": "b236488b93e04b475def12bedbf8b1cfce348b88acf67d03341724032c87af8d"
+      "skillPath": "skills/email-best-practices/SKILL.md",
+      "computedHash": "c7218333381fa335b8a912bd55b3bb58b5b567a174f9e1d8b41940ff82f1a6b6"
     },
     "emails": {
       "source": "coreyhaines31/marketingskills",
@@ -288,11 +288,29 @@
       "skillPath": "skills/public-relations/SKILL.md",
       "computedHash": "1b13653b478b49049e4df4981ea032de63833387c4f914eadaeb070f6ecbdc5c"
     },
+    "react-email": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-email/SKILL.md",
+      "computedHash": "ff40e3355c318e5ef203eb1118cab574454ce65dae01bb268b05a2e244b8041b"
+    },
     "referrals": {
       "source": "coreyhaines31/marketingskills",
       "sourceType": "github",
       "skillPath": "skills/referrals/SKILL.md",
       "computedHash": "1b9228f8c74abd2ad43f72baf34e7de1727dc56fba8ed8a54588bec181c39c97"
+    },
+    "resend": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/resend/SKILL.md",
+      "computedHash": "8935525a4d7fa21298616b7c6150148a7df3afcfffd7ea9dca6fdac155fe0ece"
+    },
+    "resend-cli": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/resend-cli/SKILL.md",
+      "computedHash": "846e3ea34ed68947e1a50011907decdd9693bfc3471e97113cefa032e099f9c2"
     },
     "review-logging-patterns": {
       "source": "evlog.dev",

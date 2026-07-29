@@ -215,10 +215,11 @@ const planSchema = z.object({
   plan: z.enum(["free", "pro"]),
 });
 
-const fullApplicationSchema = contactSchema
-  .merge(servicesSchema)
-  .merge(vehicleSchema)
-  .merge(planSchema);
+const fullApplicationSchema = vehicleSchema.safeExtend({
+  ...contactSchema.shape,
+  ...planSchema.shape,
+  ...servicesSchema.shape,
+});
 
 type FieldErrors = Partial<Record<keyof ProviderApplicationDraft, string>>;
 
