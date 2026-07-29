@@ -44,6 +44,31 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         href: appCss,
         rel: "stylesheet",
       },
+      {
+        href: "/favicon.ico",
+        rel: "icon",
+        sizes: "32x32",
+      },
+      {
+        href: "/favicon.svg",
+        rel: "icon",
+        type: "image/svg+xml",
+      },
+      {
+        href: "/favicon-96x96.png",
+        rel: "icon",
+        sizes: "96x96",
+        type: "image/png",
+      },
+      {
+        href: "/apple-touch-icon.png",
+        rel: "apple-touch-icon",
+        sizes: "180x180",
+      },
+      {
+        href: "/site.webmanifest",
+        rel: "manifest",
+      },
     ],
     meta: [
       {
@@ -52,6 +77,14 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       {
         content: "width=device-width, initial-scale=1",
         name: "viewport",
+      },
+      {
+        content: "#050a30",
+        name: "theme-color",
+      },
+      {
+        content: "CastleCare",
+        name: "apple-mobile-web-app-title",
       },
       {
         title: "CastleCare",
