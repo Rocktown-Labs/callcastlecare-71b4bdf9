@@ -59,8 +59,10 @@ export default function Footer() {
             <Link aria-label="CallCastleCare home" to="/">
               <img
                 alt="CallCastleCare"
-                className="h-16 w-auto"
-                src="/callcastlecare/brand/logo-square-200.png"
+                className="h-14 w-auto"
+                height={100}
+                src="/callcastlecare/brand/castlecare-250-100-trans.png"
+                width={250}
               />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/45">

@@ -31,16 +31,7 @@ export const AuthPage = ({
         src="/callcastlecare/media/technician-van-night.png"
       />
       <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/55 to-black/20" />
-      <div className="relative flex min-h-svh flex-col justify-between p-10 text-white">
-        <Link className="flex items-center gap-3 font-semibold" to="/">
-          <img
-            alt=""
-            className="size-11 rounded-2xl"
-            src="/callcastlecare/brand/logo-square-192.png"
-          />
-          CastleCare
-        </Link>
-
+      <div className="relative flex min-h-svh flex-col justify-end gap-12 p-10 text-white">
         <div className="max-w-xl">
           <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-sm text-white/85 shadow-2xl shadow-black/20 backdrop-blur">
             <Sparkles aria-hidden="true" className="size-4" />
@@ -78,18 +69,7 @@ export const AuthPage = ({
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#070b13]/75 via-[#070b13]/95 to-[#070b13]" />
       </div>
-      <nav className="flex items-center justify-between">
-        <Link
-          className="relative z-10 flex items-center gap-3 font-semibold text-white"
-          to="/"
-        >
-          <img
-            alt=""
-            className="size-10 rounded-2xl"
-            src="/callcastlecare/brand/logo-square-192.png"
-          />
-          CastleCare
-        </Link>
+      <nav className="flex items-center justify-end">
         <Link
           className="relative z-10 rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           to="/book"
