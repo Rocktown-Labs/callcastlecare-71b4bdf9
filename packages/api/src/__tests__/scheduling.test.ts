@@ -15,13 +15,22 @@ describe("booking scheduling", () => {
     });
   });
 
-  it("hides past and too-soon slots for today's CastleCare service date", () => {
+  it("hides past slots for today's CastleCare service date", () => {
     const slots = getAvailableBookingTimeSlots({
       date: "2026-07-29",
       now: new Date("2026-07-29T17:00:00.000Z"),
     });
 
     expect(slots).toEqual(["2:00 PM - 4:00 PM", "4:00 PM - 6:00 PM"]);
+  });
+
+  it("keeps the final same-day slot open before its CastleCare start time", () => {
+    const slots = getAvailableBookingTimeSlots({
+      date: "2026-07-29",
+      now: new Date("2026-07-29T20:54:00.000Z"),
+    });
+
+    expect(slots).toEqual(["4:00 PM - 6:00 PM"]);
   });
 
   it("keeps all unbooked slots available on future dates", () => {

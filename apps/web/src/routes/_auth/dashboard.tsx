@@ -66,8 +66,7 @@ const normalizeInterval = (value: string): CatalogItem["interval"] => {
   return "one_time";
 };
 
-const RouteComponent = () => {
-  const { session } = useRouteContext({ from: "/_auth/dashboard" });
+export const AdminDashboard = ({ userEmail }: { userEmail: string }) => {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,8 +74,6 @@ const RouteComponent = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncLabel, setLastSyncLabel] = useState<string | null>(null);
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
-
-  const userEmail = session.data?.user.email ?? "";
 
   useEffect(() => {
     let active = true;
@@ -466,6 +463,11 @@ const RouteComponent = () => {
       </div>
     </main>
   );
+};
+
+const RouteComponent = () => {
+  const { session } = useRouteContext({ from: "/_auth/dashboard" });
+  return <AdminDashboard userEmail={session.data?.user.email ?? ""} />;
 };
 
 export const Route = createFileRoute("/_auth/dashboard")({

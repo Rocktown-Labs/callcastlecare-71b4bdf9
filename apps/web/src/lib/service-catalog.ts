@@ -159,6 +159,11 @@ export const serviceOptions = serviceCatalog.map(({ icon, id, shortName }) => ({
   name: shortName,
 }));
 
+const serviceOrder = serviceCatalog.map(({ id }) => id);
+
+export const sortServiceIds = (serviceIds: readonly ServiceId[]) =>
+  serviceOrder.filter((serviceId) => serviceIds.includes(serviceId));
+
 export const servicePageContent: Record<ServiceId, ServicePageContent> = {
   laundry: {
     aiAnswer:

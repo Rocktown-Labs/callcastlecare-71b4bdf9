@@ -1,6 +1,6 @@
 export const bookingWindowHours = 2;
 export const bookingTimeZone = "America/Chicago";
-export const sameDayBookingBufferMinutes = 60;
+export const sameDayBookingBufferMinutes = 0;
 
 export const bookingTimeSlots = [
   "6:00 AM - 8:00 AM",

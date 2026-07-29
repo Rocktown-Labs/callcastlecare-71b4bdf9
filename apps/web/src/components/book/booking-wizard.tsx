@@ -52,6 +52,7 @@ import {
   serviceCatalog,
   serviceIdSchema,
   serviceQuestionIcons,
+  sortServiceIds,
 } from "@/lib/service-catalog";
 import type { ServiceId } from "@/lib/service-catalog";
 
@@ -450,7 +451,7 @@ const emptyDraft = ({
       windowEstimate: "",
     },
   },
-  services: initialServices,
+  services: sortServiceIds(initialServices),
   subscriptionId: "",
   timeSlot: initialTimeSlot,
 });
@@ -571,11 +572,11 @@ const resolveInitialServices = (
   storedDraft: BookingDraft | null
 ) => {
   if (props.initialServices.length > 0) {
-    return props.initialServices;
+    return sortServiceIds(props.initialServices);
   }
 
   if (props.initialResumeDraft) {
-    return storedDraft?.services ?? [];
+    return sortServiceIds(storedDraft?.services ?? []);
   }
 
   return [];
@@ -862,7 +863,7 @@ const buildInitialDraft = (
     address: props.initialAddress || activeStoredDraft?.address || "",
     date: props.initialDate || activeStoredDraft?.date || "",
     serviceDetails: normalizeServiceDetails(initialDraft, activeStoredDraft),
-    services: resolveInitialServices(props, activeStoredDraft),
+    services: sortServiceIds(resolveInitialServices(props, activeStoredDraft)),
     timeSlot:
       props.initialTimeSlot ||
       activeStoredDraft?.timeSlot ||
@@ -2191,7 +2192,7 @@ const BookingWizard = (props: BookingWizardProps) => {
       const services = exists
         ? current.services.filter((id) => id !== serviceId)
         : [...current.services, serviceId];
-      const nextServices = services;
+      const nextServices = sortServiceIds(services);
       const nextDraft = pruneInvalidProductSelections({
         ...current,
         paymentOption: "",
@@ -3076,8 +3077,8 @@ const BookingWizard = (props: BookingWizardProps) => {
                   You picked {formatServiceList(draft.services)}.
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Upgrade these services into one recurring CastleCare plan and
-                  save on the monthly care package.
+                  Bundle these services into recurring CastleCare coverage with
+                  the monthly cadence shown below.
                 </p>
               </div>
             ) : null}
@@ -3120,64 +3121,71 @@ const BookingWizard = (props: BookingWizardProps) => {
               </div>
             ) : null}
 
-            {shownCombos.map((combo) => (
-              <button
-                className={cn(
-                  "rounded-2xl border p-4 text-left transition-colors",
-                  draft.subscriptionId === combo.id
-                    ? "border-lime-500 bg-lime-100"
-                    : "border-slate-200 bg-slate-50 hover:bg-white"
-                )}
-                key={combo.id}
-                onClick={() => {
-                  setDraft((current) => ({
-                    ...current,
-                    paymentOption: "pay_full",
-                    subscriptionId: combo.id,
-                  }));
-                  setErrors({});
-                }}
-                type="button"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Crown className="size-4 text-lime-700" />
-                    <p className="font-semibold text-slate-950">{combo.name}</p>
-                    <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
-                      Recommended
+            {shownCombos.map((combo) => {
+              const comboPriceCents = getComboPriceCents(draft, combo.id) ?? 0;
+              const comboBadge =
+                comboPriceCents <= subtotalCents
+                  ? "Best value"
+                  : "Monthly plan";
+
+              return (
+                <button
+                  className={cn(
+                    "rounded-2xl border p-4 text-left transition-colors",
+                    draft.subscriptionId === combo.id
+                      ? "border-lime-500 bg-lime-100"
+                      : "border-slate-200 bg-slate-50 hover:bg-white"
+                  )}
+                  key={combo.id}
+                  onClick={() => {
+                    setDraft((current) => ({
+                      ...current,
+                      paymentOption: "pay_full",
+                      subscriptionId: combo.id,
+                    }));
+                    setErrors({});
+                  }}
+                  type="button"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Crown className="size-4 text-lime-700" />
+                      <p className="font-semibold text-slate-950">
+                        {combo.name}
+                      </p>
+                      <span className="rounded-full bg-lime-300 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
+                        {comboBadge}
+                      </span>
+                    </div>
+                    <span className="font-black text-lime-700">
+                      {formatCents(comboPriceCents)}
                     </span>
                   </div>
-                  <span className="font-black text-lime-700">
-                    {formatCents(getComboPriceCents(draft, combo.id) ?? 0)}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {combo.description}
-                </p>
-                <div className="mt-3 grid gap-2 md:grid-cols-3">
-                  {getComboIncludedItems(combo, draft).map((item) => (
-                    <span
-                      className="rounded-2xl border border-white/70 bg-white/80 p-3"
-                      key={item.name}
-                    >
-                      <span className="block text-xs font-bold text-slate-950">
-                        {item.name}
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {combo.description}
+                  </p>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    {getComboIncludedItems(combo, draft).map((item) => (
+                      <span
+                        className="rounded-2xl border border-white/70 bg-white/80 p-3"
+                        key={item.name}
+                      >
+                        <span className="block text-xs font-bold text-slate-950">
+                          {item.name}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">
+                          {item.description}
+                        </span>
                       </span>
-                      <span className="mt-1 block text-xs leading-5 text-slate-500">
-                        {item.description}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                  <span>{combo.frequency}</span>
-                  <span>
-                    {formatCents(getComboPriceCents(draft, combo.id) ?? 0)}
-                    /month
-                  </span>
-                </div>
-              </button>
-            ))}
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                    <span>{combo.frequency}</span>
+                    <span>{formatCents(comboPriceCents)}/month</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <StepActions onBack={() => goToStep(3)}>
             <StepButton onClick={() => void continueFromStep(4)} />

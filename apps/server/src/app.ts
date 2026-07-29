@@ -130,7 +130,11 @@ export const apiRoutes = new Hono<AppEnv>()
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    return c.json({ session, user }, 200);
+    const isAdmin =
+      user.role === "admin" ||
+      user.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
+
+    return c.json({ isAdmin, session, user }, 200);
   })
   .route("/checkout", checkoutRoutes)
   .route("/me", meRoutes)
