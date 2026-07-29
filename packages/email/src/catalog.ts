@@ -3,6 +3,7 @@ export type CastleCareEmailKey =
   | "appointment-reminder"
   | "booking-received"
   | "email-verification"
+  | "email-otp"
   | "password-reset"
   | "payment-receipt"
   | "service-status-update";
@@ -69,6 +70,15 @@ export const emailCatalog = [
     subject: "Verify your CastleCare email",
     transactional: true,
     trigger: "Better Auth verification event",
+  },
+  {
+    audience: "customer",
+    key: "email-otp",
+    purpose:
+      "Send one-time codes for passwordless sign-in, email verification, and password reset.",
+    subject: "Your CastleCare code",
+    transactional: true,
+    trigger: "Better Auth email OTP event",
   },
   {
     audience: "customer",

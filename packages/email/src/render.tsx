@@ -4,6 +4,8 @@ import type { ReactElement } from "react";
 
 import { ActionEmail } from "./templates/action-email";
 import type { ActionEmailProps } from "./templates/action-email";
+import { OtpEmail } from "./templates/otp-email";
+import type { OtpEmailProps } from "./templates/otp-email";
 import { ServiceStatusUpdateEmail } from "./templates/service-status-update";
 import type { ServiceStatusUpdateEmailProps } from "./templates/service-status-update";
 
@@ -25,6 +27,9 @@ export const renderEmail = async (
 
 export const renderActionEmail = (props: ActionEmailProps) =>
   renderEmail(<ActionEmail {...props} />);
+
+export const renderOtpEmail = (props: OtpEmailProps) =>
+  renderEmail(<OtpEmail {...props} />);
 
 export const renderServiceStatusUpdateEmail = (
   props: ServiceStatusUpdateEmailProps

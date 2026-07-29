@@ -6,9 +6,16 @@ import { env } from "@callcastlecare/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins/admin";
+import { emailOTP } from "better-auth/plugins/email-otp";
 import StripeSdk from "stripe";
 
-import { sendAuthEmail } from "./email";
+import { sendAuthEmail, sendAuthOtpEmail } from "./email";
+
+type AuthOtpType =
+  | "change-email"
+  | "email-verification"
+  | "forget-password"
+  | "sign-in";
 
 const createStripePlugin = () => {
   if (!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET)) {
@@ -49,6 +56,33 @@ const createStripePlugin = () => {
         }
       : {}),
   });
+};
+
+const getOtpEmailContent = (type: AuthOtpType) => {
+  if (type === "sign-in") {
+    return {
+      body: "Use this one-time code to sign in to your CastleCare account.",
+      preview: "Your CastleCare sign-in code.",
+      subject: "Your CastleCare sign-in code",
+      title: "Sign in to CastleCare",
+    };
+  }
+
+  if (type === "email-verification") {
+    return {
+      body: "Use this one-time code to verify your CastleCare email address.",
+      preview: "Your CastleCare verification code.",
+      subject: "Verify your CastleCare email",
+      title: "Verify your email",
+    };
+  }
+
+  return {
+    body: "Use this one-time code to reset your CastleCare password.",
+    preview: "Your CastleCare password reset code.",
+    subject: "Reset your CastleCare password",
+    title: "Reset your password",
+  };
 };
 
 export const createAuth = () => {
@@ -106,6 +140,19 @@ export const createAuth = () => {
       admin({
         adminRoles: ["admin"],
         defaultRole: "user",
+      }),
+      emailOTP({
+        allowedAttempts: 5,
+        expiresIn: 600,
+        sendVerificationOTP: async ({ email, otp, type }) => {
+          await Promise.resolve();
+          const content = getOtpEmailContent(type);
+          void sendAuthOtpEmail({
+            ...content,
+            otp,
+            to: email,
+          });
+        },
       }),
       ...(stripePlugin ? [stripePlugin] : []),
     ],
