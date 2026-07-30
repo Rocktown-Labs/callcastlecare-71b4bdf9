@@ -59,6 +59,34 @@ describe("Radar integration", () => {
     ]);
   });
 
+  it("formats full address with city, state, and zip when addressLabel is provided", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json(
+        {
+          addresses: [
+            {
+              addressLabel: "123 Main St",
+              city: "Little Rock",
+              latitude: 34.7465,
+              longitude: -92.2896,
+              placeId: "place-123",
+              postalCode: "72201",
+              stateCode: "AR",
+            },
+          ],
+        },
+        { status: 200 }
+      )
+    );
+
+    const { autocompleteRadarAddresses } = await import("./radar");
+    const suggestions = await autocompleteRadarAddresses("123 Main St");
+
+    expect(suggestions[0]?.formattedAddress).toBe(
+      "123 Main St, Little Rock, AR 72201"
+    );
+  });
+
   it("returns no autocomplete suggestions when Radar is unreachable", async () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
 

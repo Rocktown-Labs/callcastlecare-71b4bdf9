@@ -54,11 +54,41 @@ const getRawSuggestions = (payload: unknown) => {
   return [];
 };
 
-const getSuggestionLabel = (candidate: Record<string, unknown>) =>
-  toStringOrNull(candidate.formattedAddress) ??
-  toStringOrNull(candidate.label) ??
-  toStringOrNull(candidate.address) ??
-  toStringOrNull(candidate.description);
+const getSuggestionLabel = (candidate: Record<string, unknown>) => {
+  const formatted =
+    toStringOrNull(candidate.formattedAddress) ??
+    toStringOrNull(candidate.fullAddress);
+  if (formatted && formatted.includes(",")) {
+    return formatted;
+  }
+
+  const street =
+    toStringOrNull(candidate.addressLabel) ??
+    [toStringOrNull(candidate.number), toStringOrNull(candidate.street)]
+      .filter(Boolean)
+      .join(" ");
+
+  const city = toStringOrNull(candidate.city);
+  const state =
+    toStringOrNull(candidate.stateCode) ?? toStringOrNull(candidate.state);
+  const zip =
+    toStringOrNull(candidate.postalCode) ?? toStringOrNull(candidate.zip);
+
+  const stateZip = [state, zip].filter(Boolean).join(" ");
+  const cityStateZip = [city, stateZip].filter(Boolean).join(", ");
+
+  if (street && cityStateZip) {
+    return `${street}, ${cityStateZip}`;
+  }
+
+  return (
+    formatted ??
+    toStringOrNull(candidate.addressLabel) ??
+    toStringOrNull(candidate.label) ??
+    toStringOrNull(candidate.address) ??
+    toStringOrNull(candidate.description)
+  );
+};
 
 const getSuggestionId = (candidate: Record<string, unknown>, index: number) =>
   `${toStringOrNull(candidate.placeId) ?? toStringOrNull(candidate.id) ?? "address"}-${index}`;

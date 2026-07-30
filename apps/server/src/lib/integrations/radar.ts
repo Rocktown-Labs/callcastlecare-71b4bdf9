@@ -135,19 +135,46 @@ const getAddressList = (payload: Record<string, unknown> | null) =>
     ? (payload.addresses as Record<string, unknown>[])
     : [];
 
-const getAddressLabel = (address: Record<string, unknown>) =>
-  toStringOrNull(address.formattedAddress) ??
-  toStringOrNull(address.addressLabel) ??
-  toStringOrNull(address.fullAddress) ??
-  [
-    toStringOrNull(address.number),
-    toStringOrNull(address.street),
-    toStringOrNull(address.city),
-    toStringOrNull(address.stateCode),
-    toStringOrNull(address.postalCode),
-  ]
-    .filter(Boolean)
-    .join(", ");
+const getAddressLabel = (address: Record<string, unknown>) => {
+  const formatted =
+    toStringOrNull(address.formattedAddress) ??
+    toStringOrNull(address.fullAddress);
+  if (formatted && formatted.includes(",")) {
+    return formatted;
+  }
+
+  const street =
+    toStringOrNull(address.addressLabel) ??
+    [toStringOrNull(address.number), toStringOrNull(address.street)]
+      .filter(Boolean)
+      .join(" ");
+
+  const city = toStringOrNull(address.city);
+  const state =
+    toStringOrNull(address.stateCode) ?? toStringOrNull(address.state);
+  const zip = toStringOrNull(address.postalCode) ?? toStringOrNull(address.zip);
+
+  const stateZip = [state, zip].filter(Boolean).join(" ");
+  const cityStateZip = [city, stateZip].filter(Boolean).join(", ");
+
+  if (street && cityStateZip) {
+    return `${street}, ${cityStateZip}`;
+  }
+
+  return (
+    formatted ??
+    toStringOrNull(address.addressLabel) ??
+    [
+      toStringOrNull(address.number),
+      toStringOrNull(address.street),
+      city,
+      state,
+      zip,
+    ]
+      .filter(Boolean)
+      .join(", ")
+  );
+};
 
 const toSuggestion = (
   address: Record<string, unknown>

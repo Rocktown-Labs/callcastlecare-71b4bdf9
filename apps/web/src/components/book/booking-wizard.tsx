@@ -2322,14 +2322,12 @@ const BookingWizard = (props: BookingWizardProps) => {
     const validated = await validateAddress(suggestion.label, {
       includeProperty: needsPropertyLookup(draft),
     });
-    if (!validated) {
-      return;
-    }
+    const selected = validated ?? suggestion;
     setDraft((current) =>
       pruneInvalidProductSelections({
         ...current,
-        address: validated.label,
-        property: validated.property ?? null,
+        address: selected.label,
+        property: selected.property ?? null,
       })
     );
     setErrors({});
