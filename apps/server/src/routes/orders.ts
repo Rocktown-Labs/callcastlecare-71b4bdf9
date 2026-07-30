@@ -3,6 +3,8 @@ import {
   addresses,
   dispatchOffers,
   legMediaLinks,
+  mediaAssets,
+  orderItems,
   orderMediaLinks,
   orderTrackingPoints,
   orderStatusHistory,
@@ -164,26 +166,30 @@ export const orderRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order not found" }, 404);
     }
 
-    const [history, legs, orderMedia, offers, address] = await Promise.all([
-      db.query.orderStatusHistory.findMany({
-        orderBy: desc(orderStatusHistory.changedAt),
-        where: eq(orderStatusHistory.orderId, order.id),
-      }),
-      db.query.serviceLegs.findMany({
-        orderBy: serviceLegs.sequence,
-        where: eq(serviceLegs.orderId, order.id),
-      }),
-      db.query.orderMediaLinks.findMany({
-        where: eq(orderMediaLinks.orderId, order.id),
-      }),
-      db.query.dispatchOffers.findMany({
-        orderBy: desc(dispatchOffers.createdAt),
-        where: eq(dispatchOffers.orderId, order.id),
-      }),
-      db.query.addresses.findFirst({
-        where: eq(addresses.id, order.addressId),
-      }),
-    ]);
+    const [history, legs, items, orderMedia, offers, address] =
+      await Promise.all([
+        db.query.orderStatusHistory.findMany({
+          orderBy: desc(orderStatusHistory.changedAt),
+          where: eq(orderStatusHistory.orderId, order.id),
+        }),
+        db.query.serviceLegs.findMany({
+          orderBy: serviceLegs.sequence,
+          where: eq(serviceLegs.orderId, order.id),
+        }),
+        db.query.orderItems.findMany({
+          where: eq(orderItems.orderId, order.id),
+        }),
+        db.query.orderMediaLinks.findMany({
+          where: eq(orderMediaLinks.orderId, order.id),
+        }),
+        db.query.dispatchOffers.findMany({
+          orderBy: desc(dispatchOffers.createdAt),
+          where: eq(dispatchOffers.orderId, order.id),
+        }),
+        db.query.addresses.findFirst({
+          where: eq(addresses.id, order.addressId),
+        }),
+      ]);
 
     const legIds = legs.map((leg) => leg.id);
     const legsMedia =
@@ -192,6 +198,17 @@ export const orderRoutes = new Hono<AppEnv>()
         : await db.query.legMediaLinks.findMany({
             where: inArray(legMediaLinks.legId, legIds),
           });
+    const mediaIds = [
+      ...orderMedia.map((link) => link.mediaAssetId),
+      ...legsMedia.map((link) => link.mediaAssetId),
+    ];
+    const assets =
+      mediaIds.length === 0
+        ? []
+        : await db.query.mediaAssets.findMany({
+            where: inArray(mediaAssets.id, mediaIds),
+          });
+    const assetById = new Map(assets.map((asset) => [asset.id, asset]));
 
     return c.json(
       {
@@ -206,11 +223,18 @@ export const orderRoutes = new Hono<AppEnv>()
             }
           : null,
         customerTimeline: toCustomerTimeline(order, history),
+        items,
         legs,
-        legsMedia,
+        legsMedia: legsMedia.map((link) => ({
+          ...link,
+          asset: assetById.get(link.mediaAssetId) ?? null,
+        })),
         offers,
         order,
-        orderMedia,
+        orderMedia: orderMedia.map((link) => ({
+          ...link,
+          asset: assetById.get(link.mediaAssetId) ?? null,
+        })),
         statusHistory: history,
       },
       200

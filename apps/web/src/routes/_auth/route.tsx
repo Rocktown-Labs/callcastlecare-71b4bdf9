@@ -11,10 +11,11 @@ const AuthLayout = () => (
 );
 
 export const Route = createFileRoute("/_auth")({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const session = await authClient.getSession();
     if (!session.data) {
       throw redirect({
+        search: { redirectTo: location.href },
         to: "/sign-in",
       });
     }

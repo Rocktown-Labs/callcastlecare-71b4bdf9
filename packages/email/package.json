@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@callcastlecare/config": "workspace:*",
+    "@react-email/preview-server": "4.3.2",
     "@types/react": "^19.2.17",
     "typescript": "^6",
     "vitest": "^4.1.10"

@@ -1,5 +1,6 @@
-import { db, eq } from "@callcastlecare/db";
+import { db, eq, inArray } from "@callcastlecare/db";
 import {
+  customers,
   legMediaLinks,
   mediaAssets,
   orderMediaLinks,
@@ -54,6 +55,71 @@ const toOrderRequiredTransition = (value?: string) =>
 const toLegRequiredTransition = (value?: string) =>
   legTransitionMediaStatuses.find((status) => status === value) ?? null;
 
+const canReadPrivateMedia = async (input: {
+  pathname: string;
+  user: NonNullable<ReturnType<typeof requireUser>["user"]>;
+}) => {
+  const isAdmin =
+    input.user.role === "admin" ||
+    input.user.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
+
+  const asset = await db.query.mediaAssets.findFirst({
+    where: eq(mediaAssets.storagePath, input.pathname),
+  });
+
+  if (!asset) {
+    return { allowed: false, found: false };
+  }
+
+  if (isAdmin) {
+    return { allowed: true, found: true };
+  }
+
+  const [customer, worker, orderLinks, legLinks] = await Promise.all([
+    db.query.customers.findFirst({
+      where: eq(customers.userId, input.user.id),
+    }),
+    requireWorkerForUser(input.user),
+    db.query.orderMediaLinks.findMany({
+      where: eq(orderMediaLinks.mediaAssetId, asset.id),
+    }),
+    db.query.legMediaLinks.findMany({
+      where: eq(legMediaLinks.mediaAssetId, asset.id),
+    }),
+  ]);
+
+  const linkedLegIds = legLinks.map((link) => link.legId);
+  const linkedLegs =
+    linkedLegIds.length === 0
+      ? []
+      : await db.query.serviceLegs.findMany({
+          where: inArray(serviceLegs.id, linkedLegIds),
+        });
+  const linkedOrderIds = new Set([
+    ...orderLinks.map((link) => link.orderId),
+    ...linkedLegs.map((leg) => leg.orderId),
+  ]);
+
+  if (linkedOrderIds.size === 0) {
+    return { allowed: false, found: true };
+  }
+
+  const linkedOrders = await db.query.orders.findMany({
+    where: inArray(orders.id, [...linkedOrderIds]),
+  });
+  const canReadAsCustomer =
+    customer && linkedOrders.some((order) => order.customerId === customer.id);
+  const canReadAsWorker =
+    worker &&
+    (linkedOrders.some((order) => order.assignedWorkerId === worker.id) ||
+      linkedLegs.some((leg) => leg.workerId === worker.id));
+
+  return {
+    allowed: Boolean(canReadAsCustomer || canReadAsWorker),
+    found: true,
+  };
+};
+
 export const mediaRoutes = new Hono<AppEnv>()
   .get("/private", async (c) => {
     const userResult = requireUser(c);
@@ -64,6 +130,17 @@ export const mediaRoutes = new Hono<AppEnv>()
     const pathname = c.req.query("pathname");
     if (!pathname) {
       return c.json({ error: "Missing pathname" }, 400);
+    }
+
+    const access = await canReadPrivateMedia({
+      pathname,
+      user: userResult.user,
+    });
+    if (!access.found) {
+      return c.text("Not found", 404);
+    }
+    if (!access.allowed) {
+      return c.json({ error: "forbidden" }, 403);
     }
 
     const result = await getPrivateBlob(pathname);
