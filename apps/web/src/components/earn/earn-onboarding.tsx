@@ -3,6 +3,7 @@ import {
   phoneSchema,
 } from "@callcastlecare/api/validation";
 import { Button } from "@callcastlecare/ui/components/button";
+import { Checkbox } from "@callcastlecare/ui/components/checkbox";
 import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { Textarea } from "@callcastlecare/ui/components/textarea";
@@ -14,11 +15,14 @@ import {
   ArrowRight,
   BadgeCheck,
   BriefcaseBusiness,
+  CalendarDays,
   Car,
   Check,
   ClipboardList,
   Crown,
+  Home,
   LoaderCircle,
+  Lock,
   Mail,
   MapPin,
   Phone,
@@ -28,11 +32,18 @@ import {
 } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
+
+import { RadarAddressInput } from "@/components/home/radar-address-input";
+import type { RadarAddressSuggestion } from "@/components/home/use-radar-address-autocomplete";
+import { validateAddress } from "@/components/home/use-radar-address-autocomplete";
+import { authClient } from "@/lib/auth-client";
 
 const storageKey = "callcastlecare.provider-application.v1";
 const maxVehicleYear = new Date().getFullYear() + 1;
 const minVehicleSearchLength = 5;
+const minimumProviderAge = 18;
 const nhtsaVehicleResponseSchema = z.object({
   Results: z.array(
     z.object({
@@ -76,6 +87,17 @@ const steps = [
   { icon: BriefcaseBusiness, id: "services", label: "Jobs" },
   { icon: Car, id: "vehicle", label: "Vehicle" },
   { icon: Crown, id: "plan", label: "Plan" },
+  { icon: Lock, id: "account", label: "Account" },
+] as const;
+
+const availabilityDays = [
+  { id: "monday", label: "Monday" },
+  { id: "tuesday", label: "Tuesday" },
+  { id: "wednesday", label: "Wednesday" },
+  { id: "thursday", label: "Thursday" },
+  { id: "friday", label: "Friday" },
+  { id: "saturday", label: "Saturday" },
+  { id: "sunday", label: "Sunday" },
 ] as const;
 
 const planOptions = [
@@ -100,13 +122,21 @@ const planOptions = [
 type StepId = (typeof steps)[number]["id"];
 type ProviderServiceId = (typeof providerServices)[number]["id"];
 type ProviderPlan = (typeof planOptions)[number]["id"];
+type AvailabilityDay = (typeof availabilityDays)[number]["id"];
 
 interface ProviderApplicationDraft {
+  addressLatitude: number | null;
+  addressLongitude: number | null;
+  addressValidated: boolean;
+  availableDays: AvailabilityDay[];
+  confirmPassword: string;
+  dateOfBirth: string;
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
   streetAddress: string;
+  unit: string;
   city: string;
   state: string;
   zip: string;
@@ -119,20 +149,28 @@ interface ProviderApplicationDraft {
   vehicleYear: string;
   vehicleColor: string;
   licensePlate: string;
+  password: string;
   vin: string;
   serviceRadiusMiles: string;
-  weeklyAvailability: string;
+  termsAccepted: boolean;
   plan: ProviderPlan;
 }
 
 const initialDraft: ProviderApplicationDraft = {
+  addressLatitude: null,
+  addressLongitude: null,
+  addressValidated: false,
+  availableDays: [],
   canDoAllServices: false,
   city: "",
+  confirmPassword: "",
+  dateOfBirth: "",
   email: "",
   firstName: "",
   hasVehicle: true,
   lastName: "",
   licensePlate: "",
+  password: "",
   phone: "",
   plan: "free",
   serviceNotes: "",
@@ -140,13 +178,34 @@ const initialDraft: ProviderApplicationDraft = {
   services: [],
   state: "AR",
   streetAddress: "",
+  termsAccepted: false,
+  unit: "",
   vehicleColor: "",
   vehicleMake: "",
   vehicleModel: "",
   vehicleYear: "",
   vin: "",
-  weeklyAvailability: "",
   zip: "",
+};
+
+const getAge = (value: string) => {
+  const birthDate = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(birthDate.getTime())) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const hasHadBirthdayThisYear =
+    today.getMonth() > birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() &&
+      today.getDate() >= birthDate.getDate());
+
+  if (!hasHadBirthdayThisYear) {
+    age -= 1;
+  }
+
+  return age;
 };
 
 const serviceSchema = z
@@ -155,12 +214,20 @@ const serviceSchema = z
 
 const contactSchema = z.object({
   city: z.string().trim().min(2, "Enter your city."),
+  dateOfBirth: z
+    .string()
+    .trim()
+    .min(1, "Enter your date of birth.")
+    .refine((value) => (getAge(value) ?? 0) >= minimumProviderAge, {
+      message: `You must be at least ${minimumProviderAge} to apply.`,
+    }),
   email: z.string().trim().email("Enter a valid email."),
   firstName: z.string().trim().min(1, "Enter your first name."),
   lastName: z.string().trim().min(1, "Enter your last name."),
   phone: phoneSchema,
   state: z.string().trim().length(2, "Use the two-letter state code."),
   streetAddress: z.string().trim().min(5, "Enter your street address."),
+  unit: z.string().trim().max(40, "Use 40 characters or fewer.").optional(),
   zip: z
     .string()
     .trim()
@@ -174,6 +241,19 @@ const servicesSchema = z.object({
 
 const vehicleSchema = z
   .object({
+    availableDays: z
+      .array(
+        z.enum([
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday",
+        ])
+      )
+      .min(1, "Select at least one day you can work."),
     hasVehicle: z.boolean(),
     licensePlate: z.string().trim().max(12, "Use 12 characters or fewer."),
     serviceRadiusMiles: z
@@ -195,11 +275,6 @@ const vehicleSchema = z
         (value) => value === "" || /^[A-Z0-9]{17}$/u.test(value),
         "VIN can be added later. If entered now, use 17 characters."
       ),
-    weeklyAvailability: z
-      .string()
-      .trim()
-      .min(10, "Tell us when you can usually work.")
-      .max(600),
   })
   .superRefine((value, context) => {
     if (!value.hasVehicle) {
@@ -244,11 +319,30 @@ const planSchema = z.object({
   plan: z.enum(["free", "pro"]),
 });
 
-const fullApplicationSchema = vehicleSchema.safeExtend({
-  ...contactSchema.shape,
-  ...planSchema.shape,
-  ...servicesSchema.shape,
-});
+const accountSchema = z
+  .object({
+    confirmPassword: z.string().min(8, "Confirm your password."),
+    password: z.string().min(8, "Use at least 8 characters."),
+    termsAccepted: z.boolean().refine((value) => value, {
+      message: "Agree to the provider terms to continue.",
+    }),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    message: "Passwords must match.",
+    path: ["confirmPassword"],
+  });
+
+const fullApplicationSchema = vehicleSchema
+  .safeExtend({
+    ...contactSchema.shape,
+    ...planSchema.shape,
+    ...servicesSchema.shape,
+  })
+  .safeExtend(accountSchema.shape)
+  .refine((value) => value.password === value.confirmPassword, {
+    message: "Passwords must match.",
+    path: ["confirmPassword"],
+  });
 
 type FieldErrors = Partial<Record<keyof ProviderApplicationDraft, string>>;
 
@@ -263,6 +357,26 @@ const getFlattenedErrors = (result: z.SafeParseReturnType<unknown, unknown>) =>
           ([field, messages]) => [field, messages?.[0] ?? "Check this field."]
         )
       );
+
+const getStringField = (source: Record<string, unknown>, key: string) =>
+  typeof source[key] === "string" ? source[key] : "";
+
+const getParsedAddressParts = (suggestion: RadarAddressSuggestion) => {
+  const { raw } = suggestion;
+  const street = [getStringField(raw, "number"), getStringField(raw, "street")]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    city: getStringField(raw, "city"),
+    state: getStringField(raw, "stateCode") || getStringField(raw, "state"),
+    streetAddress: street || getStringField(raw, "street") || suggestion.label,
+    zip: getStringField(raw, "postalCode"),
+  };
+};
+
+const getProviderDashboardPath = (plan: ProviderPlan) =>
+  `/dashboard/provider?plan=${plan}`;
 
 const getStepErrors = (
   step: StepId,
@@ -280,7 +394,11 @@ const getStepErrors = (
     return getFlattenedErrors(vehicleSchema.safeParse(draft)) as FieldErrors;
   }
 
-  return getFlattenedErrors(planSchema.safeParse(draft)) as FieldErrors;
+  if (step === "plan") {
+    return getFlattenedErrors(planSchema.safeParse(draft)) as FieldErrors;
+  }
+
+  return getFlattenedErrors(accountSchema.safeParse(draft)) as FieldErrors;
 };
 
 const FieldError = ({ children }: { children?: string }) =>
@@ -532,6 +650,9 @@ const VehicleLookup = ({
   );
 };
 
+// The wizard keeps step orchestration local so validation, saved draft state,
+// and account creation stay in one place while the provider flow is still new.
+// eslint-disable-next-line complexity
 export default function EarnOnboarding() {
   const navigate = useNavigate({ from: "/earn" });
   const [activeStep, setActiveStep] = useState<StepId>("contact");
@@ -565,6 +686,61 @@ export default function EarnOnboarding() {
 
   const updatePhone = (event: ChangeEvent<HTMLInputElement>) => {
     updateDraft("phone", formatUsPhoneInput(event.target.value));
+  };
+
+  const updateAddress = (value: string) => {
+    setDraft((current) => ({
+      ...current,
+      addressLatitude: null,
+      addressLongitude: null,
+      addressValidated: false,
+      streetAddress: value,
+    }));
+    setErrors((current) => {
+      const { streetAddress: _streetAddress, ...next } = current;
+      return next;
+    });
+  };
+
+  const selectAddress = async (suggestion: RadarAddressSuggestion) => {
+    const validated = await validateAddress(suggestion.label).catch(() => null);
+    const selected = validated ?? suggestion;
+    const parts = getParsedAddressParts(selected);
+
+    setDraft((current) => ({
+      ...current,
+      addressLatitude: selected.latitude,
+      addressLongitude: selected.longitude,
+      addressValidated: Boolean(validated),
+      city: parts.city || current.city,
+      state: parts.state || current.state,
+      streetAddress: parts.streetAddress,
+      zip: parts.zip || current.zip,
+    }));
+    setErrors((current) => {
+      const {
+        city: _city,
+        state: _state,
+        streetAddress: _streetAddress,
+        zip: _zip,
+        ...next
+      } = current;
+      return next;
+    });
+  };
+
+  const toggleAvailabilityDay = (day: AvailabilityDay) => {
+    setDraft((current) => {
+      const availableDays = current.availableDays.includes(day)
+        ? current.availableDays.filter((item) => item !== day)
+        : [...current.availableDays, day];
+
+      return {
+        ...current,
+        availableDays,
+      };
+    });
+    setErrors((current) => ({ ...current, availableDays: undefined }));
   };
 
   const clearVehicleSelection = () => {
@@ -680,17 +856,44 @@ export default function EarnOnboarding() {
     setIsSubmitting(true);
 
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(storageKey, JSON.stringify(result.data));
+      const {
+        confirmPassword: _confirmPassword,
+        password: _password,
+        ...applicationForStorage
+      } = result.data;
+      window.sessionStorage.setItem(
+        storageKey,
+        JSON.stringify(applicationForStorage)
+      );
+      window.sessionStorage.setItem(
+        "better-auth-ui.verify-email",
+        result.data.email
+      );
     }
 
-    await navigate({
-      search: {
-        intent: "earn",
-        plan: result.data.plan,
-        role: "staff",
+    await authClient.signUp.email(
+      {
+        callbackURL: getProviderDashboardPath(result.data.plan),
+        email: result.data.email,
+        name: `${result.data.firstName} ${result.data.lastName}`.trim(),
+        password: result.data.password,
       },
-      to: "/sign-up",
-    });
+      {
+        onError: (error) => {
+          setIsSubmitting(false);
+          toast.error(error.error.message || "Provider account setup failed.");
+        },
+        onSuccess: () => {
+          void navigate({
+            search: {
+              redirectTo: getProviderDashboardPath(result.data.plan),
+            },
+            to: "/verify-email",
+          });
+          toast.success("Check your email to finish the provider account.");
+        },
+      }
+    );
   };
 
   const hasVehicleLookupError =
@@ -750,7 +953,7 @@ export default function EarnOnboarding() {
           className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-4 shadow-2xl shadow-black/25 sm:p-6"
           onSubmit={submitApplication}
         >
-          <div className="grid grid-cols-4 gap-2 rounded-3xl border border-white/10 bg-[#080c16] p-2">
+          <div className="grid grid-cols-5 gap-2 rounded-3xl border border-white/10 bg-[#080c16] p-2">
             {steps.map(({ icon: Icon, id, label }, index) => {
               const isActive = id === activeStep;
               const isComplete = index < activeStepIndex;
@@ -807,6 +1010,42 @@ export default function EarnOnboarding() {
                   value={draft.email}
                 />
                 <WizardInput
+                  error={errors.dateOfBirth}
+                  icon={CalendarDays}
+                  id="provider-date-of-birth"
+                  label="Date of birth"
+                  onChange={updateTextField("dateOfBirth")}
+                  type="date"
+                  value={draft.dateOfBirth}
+                />
+                <div className="sm:col-span-2">
+                  <Label className="text-white/72" htmlFor="provider-address">
+                    Home address
+                  </Label>
+                  <div className="mt-2">
+                    <RadarAddressInput
+                      error={errors.streetAddress}
+                      isValidated={draft.addressValidated}
+                      onChange={updateAddress}
+                      onSelectSuggestion={(suggestion) => {
+                        void selectAddress(suggestion);
+                      }}
+                      tone="dark"
+                      value={draft.streetAddress}
+                    />
+                  </div>
+                  <FieldError>{errors.streetAddress}</FieldError>
+                </div>
+                <WizardInput
+                  error={errors.unit}
+                  icon={Home}
+                  id="provider-unit"
+                  label="Apt, suite, or unit"
+                  onChange={updateTextField("unit")}
+                  placeholder="Optional"
+                  value={draft.unit}
+                />
+                <WizardInput
                   error={errors.phone}
                   icon={Phone}
                   id="provider-phone"
@@ -816,16 +1055,6 @@ export default function EarnOnboarding() {
                   placeholder="(501)-827-1551"
                   value={draft.phone}
                 />
-                <div className="sm:col-span-2">
-                  <WizardInput
-                    error={errors.streetAddress}
-                    icon={MapPin}
-                    id="provider-address"
-                    label="Street address"
-                    onChange={updateTextField("streetAddress")}
-                    value={draft.streetAddress}
-                  />
-                </div>
                 <WizardInput
                   error={errors.city}
                   icon={MapPin}
@@ -1019,21 +1248,39 @@ export default function EarnOnboarding() {
                 </div>
 
                 <div>
-                  <Label
-                    className="text-white/72"
-                    htmlFor="provider-availability"
-                  >
-                    Weekly availability
-                  </Label>
-                  <Textarea
-                    aria-invalid={errors.weeklyAvailability ? true : undefined}
-                    className="mt-2 min-h-28 rounded-2xl border-white/10 bg-white/[0.06] text-white placeholder:text-white/30"
-                    id="provider-availability"
-                    onChange={updateTextField("weeklyAvailability")}
-                    placeholder="Example: weekdays after 4pm, Saturday mornings, or 20 hours per week."
-                    value={draft.weeklyAvailability}
-                  />
-                  <FieldError>{errors.weeklyAvailability}</FieldError>
+                  <Label className="text-white/72">Days you can work</Label>
+                  <p className="mt-1 text-sm text-white/45">
+                    CastleCare runs 6 AM to 6 PM every day. For now, just pick
+                    the days that usually work for you.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {availabilityDays.map((day) => {
+                      const isSelected = draft.availableDays.includes(day.id);
+
+                      return (
+                        <label
+                          className={cn(
+                            "flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-white/70 transition-colors",
+                            isSelected &&
+                              "border-lime-300/60 bg-lime-300/10 text-lime-100"
+                          )}
+                          htmlFor={`provider-availability-${day.id}`}
+                          key={day.id}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            className="rounded-md border-white/20 data-checked:border-lime-300 data-checked:bg-lime-300 data-checked:text-slate-950"
+                            id={`provider-availability-${day.id}`}
+                            onCheckedChange={() =>
+                              toggleAvailabilityDay(day.id)
+                            }
+                          />
+                          {day.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <FieldError>{errors.availableDays}</FieldError>
                 </div>
               </div>
             ) : null}
@@ -1100,6 +1347,86 @@ export default function EarnOnboarding() {
                 <FieldError>{errors.plan}</FieldError>
               </div>
             ) : null}
+
+            {activeStep === "account" ? (
+              <div className="grid gap-5">
+                <div className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm leading-6 text-lime-100">
+                  <ShieldCheck
+                    aria-hidden="true"
+                    className="mb-2 size-5 text-lime-300"
+                  />
+                  We will create this provider account with{" "}
+                  <strong>{draft.email || "your email"}</strong>. After email
+                  verification, you will land on your application status page.
+                </div>
+
+                <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/65 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase text-white/40">
+                      Applicant
+                    </p>
+                    <p className="mt-1 font-bold text-white">
+                      {[draft.firstName, draft.lastName]
+                        .filter(Boolean)
+                        .join(" ") || "Name pending"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase text-white/40">
+                      Path
+                    </p>
+                    <p className="mt-1 font-bold text-white">
+                      {selectedPlan.label}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <WizardInput
+                    error={errors.password}
+                    icon={Lock}
+                    id="provider-password"
+                    label="Password"
+                    onChange={updateTextField("password")}
+                    type="password"
+                    value={draft.password}
+                  />
+                  <WizardInput
+                    error={errors.confirmPassword}
+                    icon={Lock}
+                    id="provider-confirm-password"
+                    label="Confirm password"
+                    onChange={updateTextField("confirmPassword")}
+                    type="password"
+                    value={draft.confirmPassword}
+                  />
+                </div>
+
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-6 text-white/65 transition-colors",
+                    draft.termsAccepted &&
+                      "border-lime-300/60 bg-lime-300/10 text-lime-100"
+                  )}
+                  htmlFor="provider-terms"
+                >
+                  <Checkbox
+                    aria-invalid={errors.termsAccepted ? true : undefined}
+                    checked={draft.termsAccepted}
+                    className="mt-1 rounded-md border-white/20 data-checked:border-lime-300 data-checked:bg-lime-300 data-checked:text-slate-950"
+                    id="provider-terms"
+                    onCheckedChange={(checked) =>
+                      updateDraft("termsAccepted", checked === true)
+                    }
+                  />
+                  <span>
+                    I agree to the CastleCare provider terms, customer privacy
+                    expectations, and service quality standards.
+                  </span>
+                </label>
+                <FieldError>{errors.termsAccepted}</FieldError>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-8 flex flex-col-reverse gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1114,7 +1441,7 @@ export default function EarnOnboarding() {
               Back
             </Button>
 
-            {activeStep === "plan" ? (
+            {activeStep === "account" ? (
               <Button
                 className="h-11 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200"
                 disabled={isSubmitting}
@@ -1127,7 +1454,7 @@ export default function EarnOnboarding() {
                   />
                 ) : null}
                 {draft.plan === "pro"
-                  ? "Continue as CastleCare Pro"
+                  ? "Create Pro account"
                   : "Create provider account"}
                 <ArrowRight aria-hidden="true" className="size-4" />
               </Button>

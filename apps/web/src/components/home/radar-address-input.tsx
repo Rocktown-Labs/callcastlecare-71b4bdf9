@@ -15,6 +15,7 @@ interface RadarAddressInputProps {
   isValidated?: boolean;
   onChange: (value: string) => void;
   onSelectSuggestion: (suggestion: RadarAddressSuggestion) => void;
+  tone?: "dark" | "light";
   value: string;
 }
 
@@ -24,6 +25,7 @@ export const RadarAddressInput = ({
   isValidated = false,
   onChange,
   onSelectSuggestion,
+  tone = "light",
   value,
 }: RadarAddressInputProps) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -96,9 +98,13 @@ export const RadarAddressInput = ({
         aria-autocomplete={isEnabled ? "list" : "none"}
         aria-invalid={Boolean(error)}
         className={cn(
-          "h-11 rounded-2xl border-white/10 bg-white/[0.04] pl-10 text-sm text-white placeholder:text-white/35 focus-visible:border-lime-300/50",
+          "h-11 rounded-2xl pl-10 text-sm focus-visible:border-lime-300/50",
+          tone === "dark"
+            ? "border-white/10 bg-white/[0.06] text-white placeholder:text-white/30"
+            : "border-white/10 bg-white/[0.04] text-white placeholder:text-white/35",
           className,
-          isValidated && "text-lime-600"
+          isValidated && tone === "light" && "text-lime-600",
+          isValidated && tone === "dark" && "text-lime-100"
         )}
         onBlur={() => {
           window.setTimeout(() => setIsFocused(false), 100);
@@ -130,11 +136,23 @@ export const RadarAddressInput = ({
       ) : null}
 
       {shouldShowSuggestions ? (
-        <ul className="absolute z-50 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <ul
+          className={cn(
+            "absolute z-50 mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border shadow-xl",
+            tone === "dark"
+              ? "border-white/10 bg-slate-900"
+              : "border-slate-200 bg-white"
+          )}
+        >
           {shownSuggestions.map((suggestion) => (
             <li key={suggestion.id}>
               <button
-                className="w-full px-3 py-2 text-left text-sm text-slate-700 first:rounded-t-2xl last:rounded-b-2xl hover:bg-slate-50 hover:text-slate-950"
+                className={cn(
+                  "w-full px-3 py-2 text-left text-sm first:rounded-t-2xl last:rounded-b-2xl",
+                  tone === "dark"
+                    ? "text-white/75 hover:bg-lime-300/10 hover:text-white"
+                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                )}
                 onClick={() => {
                   onSelectSuggestion(suggestion);
                   setIsFocused(false);

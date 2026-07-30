@@ -85,6 +85,18 @@ const getOtpEmailContent = (type: AuthOtpType) => {
   };
 };
 
+const authAllowedHosts = [
+  "callcastlecare.com",
+  "www.callcastlecare.com",
+  "localhost:3000",
+  "localhost:3001",
+  "localhost:5173",
+  "127.0.0.1:3000",
+  "127.0.0.1:3001",
+  "127.0.0.1:5173",
+  "*.vercel.app",
+];
+
 export const createAuth = () => {
   const db = createDb();
   const stripePlugin = createStripePlugin();
@@ -96,8 +108,14 @@ export const createAuth = () => {
         sameSite: "none",
         secure: true,
       },
+      trustedProxyHeaders: true,
     },
-    baseURL: env.BETTER_AUTH_URL,
+    basePath: "/api/auth",
+    baseURL: {
+      allowedHosts: authAllowedHosts,
+      fallback: env.BETTER_AUTH_URL,
+      protocol: "auto",
+    },
     database: drizzleAdapter(db, {
       provider: "pg",
 
