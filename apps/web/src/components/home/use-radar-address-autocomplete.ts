@@ -109,7 +109,7 @@ const fetchJson = async (url: URL, init?: RequestInit) => {
 export const validateAddress = async (
   address: string,
   options: { includeProperty?: boolean } = {}
-) => {
+): Promise<RadarAddressSuggestion | null> => {
   const url = new URL("/api/v1/locations/addresses/validate", getServerUrl());
   const payload = await fetchJson(url, {
     body: JSON.stringify({
@@ -139,6 +139,11 @@ export const validateAddress = async (
     return null;
   }
 
+  const propertySource =
+    (rawProperty as Record<string, unknown> | null)?.source === "rentcast"
+      ? ("rentcast" as const)
+      : ("fallback" as const);
+
   return {
     id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
     label,
@@ -156,10 +161,7 @@ export const validateAddress = async (
             lotSizeSqft: toNumberOrNull(
               (rawProperty as Record<string, unknown>).lotSizeSqft
             ),
-            source:
-              (rawProperty as Record<string, unknown>).source === "rentcast"
-                ? "rentcast"
-                : "fallback",
+            source: propertySource,
             stories: toNumberOrNull(
               (rawProperty as Record<string, unknown>).stories
             ),
@@ -172,7 +174,7 @@ export const validateAddress = async (
 export const reverseGeocodeAddress = async (
   latitude: number,
   longitude: number
-) => {
+): Promise<RadarAddressSuggestion> => {
   const url = new URL(
     "/api/v1/locations/addresses/reverse-geocode",
     getServerUrl()
