@@ -226,6 +226,96 @@ describe("BookingWizard", () => {
     ).toBe("(501)-827-1551");
   });
 
+  it("shows the weekly plan and a bedding upgrade CTA when bedding is declined", async () => {
+    mockFetch();
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-08-04"
+        initialServices={["laundry"]}
+      />
+    );
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), {
+      target: { value: "Taylor Customer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "5015550123" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "customer@example.com" },
+    });
+    clickFirstContinue();
+
+    expect(await screen.findByText("Service details")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /no bedding/iu }));
+    clickFirstContinue();
+
+    expect(await screen.findByText("Choose products")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
+    expect(screen.getAllByText("$200.00").length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /add bedding for \$20\.00 more/iu })
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /royal wash \+ bedding/iu })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /add bedding for/iu })
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
+  });
+
+  it("hides the lot size picker and offers the $50 quote deposit without property data", async () => {
+    mockFetch();
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-08-04"
+        initialServices={["lawncare"]}
+      />
+    );
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), {
+      target: { value: "Taylor Customer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "5015550123" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "customer@example.com" },
+    });
+    clickFirstContinue();
+
+    expect(await screen.findByText("Service details")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /low/iu }));
+    expect(screen.queryByText("Lot size")).toBeNull();
+    clickFirstContinue();
+
+    expect(await screen.findByText("Choose products")).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /groundskeeper custom quote deposit/iu,
+      })
+    ).toBeTruthy();
+    expect(screen.getAllByText("$50.00").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper small lot/iu })
+    ).toBeNull();
+  });
+
   it("filters product choices and explains monthly trio service units", async () => {
     mockFetch();
     seedBookingProperty(25_000);

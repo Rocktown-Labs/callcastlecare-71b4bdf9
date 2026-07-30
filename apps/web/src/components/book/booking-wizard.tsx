@@ -206,7 +206,7 @@ const productsByService = {
     },
     {
       description:
-        "Reserve an in-person quote for lawn care over 2 acres or custom commercial work.",
+        "Reserve an in-person quote. We walk the property and confirm final pricing on site.",
       id: "groundskeeper-custom-quote-deposit",
       name: "Groundskeeper Custom Quote Deposit",
       priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-custom-quote-deposit"],
@@ -215,7 +215,7 @@ const productsByService = {
   ],
   "window-washing": [
     {
-      description: "Exterior glass from $5 per pane with a $100 minimum.",
+      description: "Exterior glass from $5 per pane.",
       id: "royal-pane-exterior",
       name: "Royal Pane Shine",
       priceCents: 10_000,
@@ -229,7 +229,7 @@ const productsByService = {
       recurring: false,
     },
     {
-      description: "Monthly exterior glass care using the 20-pane minimum.",
+      description: "Monthly exterior glass care.",
       id: "royal-pane-monthly",
       name: "Royal Pane Monthly",
       priceCents: WINDOW_WASHING_SUBSCRIPTION_PRICES["royal-pane-monthly"],
@@ -275,6 +275,9 @@ const subscriptionPaymentOption = {
 
 const tallGrassFeeCents = 5000;
 const screenWashFeePerScreenCents = 250;
+const beddingUpgradeCents =
+  LAUNDRY_PLAN_PRICES["royal-wash-deluxe"] -
+  LAUNDRY_PLAN_PRICES["royal-wash-basic"];
 const stepKeys = [
   "schedule",
   "contact",
@@ -632,9 +635,6 @@ const getManualLotSizeAcres = (draft: BookingDraft) => {
   return selected?.lotSizeAcres ?? null;
 };
 
-const needsManualLotSize = (draft: BookingDraft) =>
-  draft.services.includes("lawncare") && !getLotSizeAcres(draft.property);
-
 const needsPropertyLookup = (draft: BookingDraft) =>
   draft.services.includes("lawncare");
 
@@ -691,7 +691,9 @@ const getEligibleProductsForDraft = (
     }
 
     if (bedding === "none") {
-      return products.filter((product) => product.id === "royal-wash-basic");
+      return products.filter((product) =>
+        ["royal-wash-basic", "royal-wash-supreme"].includes(product.id)
+      );
     }
   }
 
@@ -843,9 +845,6 @@ const addServiceDetailErrors = (
     !lawncareDetailsSchema.safeParse(draft.serviceDetails.lawncare).success
   ) {
     nextErrors.grassHeight = "Choose a grass height.";
-  }
-  if (needsManualLotSize(draft) && !draft.serviceDetails.lawncare.lotSizeTier) {
-    nextErrors.lotSizeTier = "Choose the closest lot size.";
   }
   if (
     draft.services.includes("laundry") &&
@@ -1924,6 +1923,7 @@ const ServicePhotoUpload = ({
 const ProductAccordion = ({
   draft,
   isOpen,
+  onIncludeBedding,
   onOpen,
   onSelect,
   products,
@@ -1932,6 +1932,7 @@ const ProductAccordion = ({
 }: {
   draft: BookingDraft;
   isOpen: boolean;
+  onIncludeBedding?: () => void;
   onOpen: () => void;
   onSelect: (productId: string) => void;
   products: readonly ProductOption[];
@@ -2001,6 +2002,26 @@ const ProductAccordion = ({
       </button>
       {isOpen ? (
         <div className="grid gap-3 p-4 pt-0">
+          {serviceId === "laundry" &&
+          draft.serviceDetails.laundry.bedding === "none" &&
+          onIncludeBedding ? (
+            <button
+              className="flex w-full items-center justify-between gap-3 rounded-2xl border border-lime-300 bg-lime-50 p-4 text-left transition-colors hover:border-lime-400 hover:bg-lime-100"
+              onClick={onIncludeBedding}
+              type="button"
+            >
+              <div>
+                <p className="font-semibold text-slate-950">
+                  Add bedding for {formatCents(beddingUpgradeCents)} more
+                </p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Sheets, duvet covers, and heavier linens washed and folded
+                  with your pickup.
+                </p>
+              </div>
+              <ArrowRight className="size-4 shrink-0 text-lime-700" />
+            </button>
+          ) : null}
           <div className="grid gap-3">
             <p className="text-xs font-black uppercase tracking-widest text-slate-400">
               One-time
@@ -2652,9 +2673,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                             grassHeight: height.id,
                           },
                         });
-                        if (!needsManualLotSize(draft)) {
-                          completeServiceDetails("lawncare");
-                        }
+                        completeServiceDetails("lawncare");
                       }}
                       type="button"
                     >
@@ -2670,48 +2689,6 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
                 {errors.grassHeight ? (
                   <p className="text-sm text-rose-300">{errors.grassHeight}</p>
-                ) : null}
-                {needsManualLotSize(draft) ? (
-                  <div className="mt-4">
-                    <Label className="text-slate-600">Lot size</Label>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-4">
-                      {manualLotSizeOptions.map((lotSize) => (
-                        <button
-                          className={cn(
-                            "rounded-2xl border p-3 text-left transition-colors",
-                            draft.serviceDetails.lawncare.lotSizeTier ===
-                              lotSize.id
-                              ? "border-lime-500 bg-lime-100 text-slate-950"
-                              : "border-slate-200 bg-white text-slate-600"
-                          )}
-                          key={lotSize.id}
-                          onClick={() => {
-                            setDraftValue("serviceDetails", {
-                              ...draft.serviceDetails,
-                              lawncare: {
-                                ...draft.serviceDetails.lawncare,
-                                lotSizeTier: lotSize.id,
-                              },
-                            });
-                            completeServiceDetails("lawncare");
-                          }}
-                          type="button"
-                        >
-                          <p className="text-sm font-semibold">
-                            {lotSize.name}
-                          </p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            {lotSize.description}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                    {errors.lotSizeTier ? (
-                      <p className="mt-2 text-sm text-rose-300">
-                        {errors.lotSizeTier}
-                      </p>
-                    ) : null}
-                  </div>
                 ) : null}
                 <div className="mt-4">
                   <ServicePhotoUpload
@@ -3058,6 +3035,15 @@ const BookingWizard = (props: BookingWizardProps) => {
                 draft={draft}
                 isOpen={openProductService === serviceId}
                 key={serviceId}
+                onIncludeBedding={() =>
+                  setDraftValue("serviceDetails", {
+                    ...draft.serviceDetails,
+                    laundry: {
+                      ...draft.serviceDetails.laundry,
+                      bedding: "with-bedding",
+                    },
+                  })
+                }
                 onOpen={() => setOpenProductService(serviceId)}
                 onSelect={(productId) => selectProduct(serviceId, productId)}
                 products={getEligibleProductsForDraft(draft, serviceId)}
