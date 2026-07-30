@@ -212,6 +212,19 @@ describe("location routes", () => {
     expect(reverseGeocodeWithRadar).toHaveBeenCalledWith(35.2506, -91.7362);
   });
 
+  it("returns a controlled error when current location cannot be reverse geocoded", async () => {
+    reverseGeocodeWithRadar.mockRejectedValue(new TypeError("fetch failed"));
+
+    const response = await app.request(
+      "/locations/addresses/reverse-geocode?latitude=35.2506&longitude=-91.7362"
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "Current location could not be resolved",
+    });
+  });
+
   it("removes booked launch slots from availability", async () => {
     const scheduledWindow = getScheduledWindowForSlot(
       "2026-07-28",

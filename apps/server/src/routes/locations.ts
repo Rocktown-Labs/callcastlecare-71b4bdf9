@@ -116,7 +116,23 @@ export const locationRoutes = new Hono<AppEnv>()
     const address = await reverseGeocodeWithRadar(
       parsed.data.latitude,
       parsed.data.longitude
-    );
+    ).catch((error: unknown) => {
+      logger.error(
+        {
+          err: error,
+          latitude: parsed.data.latitude,
+          longitude: parsed.data.longitude,
+          requestId: c.get("requestId"),
+        },
+        "location:reverse_geocode_failed"
+      );
+
+      return null;
+    });
+
+    if (!address) {
+      return c.json({ error: "Current location could not be resolved" }, 502);
+    }
 
     return c.json({ address }, 200);
   })

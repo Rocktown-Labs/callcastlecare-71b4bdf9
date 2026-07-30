@@ -65,4 +65,13 @@ describe("Radar integration", () => {
     const { autocompleteRadarAddresses } = await import("./radar");
     await expect(autocompleteRadarAddresses("123 Main")).resolves.toEqual([]);
   });
+
+  it("preserves reverse geocode failures when Radar is unreachable", async () => {
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+
+    const { reverseGeocodeWithRadar } = await import("./radar");
+    await expect(reverseGeocodeWithRadar(35.2506, -91.7362)).rejects.toThrow(
+      "fetch failed"
+    );
+  });
 });

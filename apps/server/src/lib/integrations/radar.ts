@@ -1,5 +1,7 @@
 import { env } from "@callcastlecare/env/server";
 
+import { logger } from "../logger";
+
 export interface RadarAddressSuggestion {
   formattedAddress: string;
   latitude: number | null;
@@ -66,7 +68,15 @@ const getRadarHeaders = () => ({
 const RADAR_API_BASE_URL = "https://api.radar.io";
 const MIN_AUTOCOMPLETE_CHARACTERS = 5;
 
-const radarGet = async (path: string, searchParams: URLSearchParams) => {
+interface RadarGetOptions {
+  returnNullOnFailure?: boolean;
+}
+
+const radarGet = async (
+  path: string,
+  searchParams: URLSearchParams,
+  options: RadarGetOptions = {}
+) => {
   if (!env.RADAR_API_KEY) {
     return null;
   }
@@ -82,11 +92,38 @@ const radarGet = async (path: string, searchParams: URLSearchParams) => {
       headers: getRadarHeaders(),
       method: "GET",
     });
-  } catch {
-    return null;
+  } catch (error) {
+    logger.error(
+      {
+        err: error,
+        path,
+        vendor: "radar",
+      },
+      "radar:request_failed"
+    );
+
+    if (options.returnNullOnFailure) {
+      return null;
+    }
+
+    throw error;
   }
 
   if (!response.ok) {
+    logger.warn(
+      {
+        path,
+        status: response.status,
+        statusText: response.statusText,
+        vendor: "radar",
+      },
+      "radar:request_unsuccessful"
+    );
+
+    if (!options.returnNullOnFailure) {
+      throw new Error(`Radar request failed with status ${response.status}`);
+    }
+
     return null;
   }
 
@@ -187,7 +224,8 @@ export const autocompleteRadarAddresses = async (
       layers: "address",
       limit: "8",
       query: trimmed,
-    })
+    }),
+    { returnNullOnFailure: true }
   );
 
   return getAddressList(payload)
@@ -207,6 +245,10 @@ export const reverseGeocodeWithRadar = async (
       coordinates: `${latitude},${longitude}`,
     })
   );
+
+  if (!payload) {
+    throw new Error("Radar reverse geocode returned no address");
+  }
 
   return toVerifiedAddress(`${latitude}, ${longitude}`, payload);
 };
