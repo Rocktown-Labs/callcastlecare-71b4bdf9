@@ -479,6 +479,24 @@ const formatLongDate = (value: string) => {
   }).format(parsed);
 };
 
+const formatInvoiceDate = (value: string) => {
+  if (!value) {
+    return "the selected date";
+  }
+
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "the selected date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "long",
+    weekday: "long",
+    year: "numeric",
+  }).format(parsed);
+};
+
 const toDateInputValue = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate()
@@ -3211,6 +3229,35 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </p>
               </div>
               <div className="space-y-3 p-5 text-sm">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-950">
+                        Appointment invoice
+                      </p>
+                      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                        This invoice reserves your CastleCare appointment for{" "}
+                        <span className="font-semibold text-slate-950">
+                          {formatInvoiceDate(draft.date)}
+                        </span>
+                        , with arrival expected between{" "}
+                        <span className="font-semibold text-slate-950">
+                          {draft.timeSlot || "the selected time window"}
+                        </span>
+                        . Final timing may shift slightly for route, travel, or
+                        weather conditions.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white px-4 py-3 text-left shadow-sm sm:text-right">
+                      <span className="block text-xs font-semibold uppercase text-slate-500 tracking-normal">
+                        Service quote
+                      </span>
+                      <span className="mt-1 block text-lg font-black text-slate-950">
+                        {formatCents(estimatedTotalCents)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
                 {selectedCombo && planEstimateCents !== null ? (
                   <div className="rounded-2xl border border-lime-200 bg-lime-50 p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
