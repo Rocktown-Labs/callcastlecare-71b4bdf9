@@ -361,17 +361,79 @@ const getFlattenedErrors = (result: z.SafeParseReturnType<unknown, unknown>) =>
 const getStringField = (source: Record<string, unknown>, key: string) =>
   typeof source[key] === "string" ? source[key] : "";
 
+const parseAddressString = (address: string) => {
+  const zipMatch = address.match(/\b(?<zip>\d{5})(?:-\d{4})?\b/u);
+  const zip = zipMatch?.groups?.zip ?? "";
+
+  const stateMatch = address.match(/\b(?<state>[A-Z]{2})\b(?:\s+\d{5})?/iu);
+  const state = stateMatch?.groups?.state?.toUpperCase() ?? "";
+
+  let city = "";
+  let streetAddress = address;
+
+  const parts = address.split(",").map((part) => part.trim());
+  if (parts.length >= 3) {
+    streetAddress = parts[0] ?? address;
+    city = parts[1] ?? "";
+  } else if (parts.length === 2) {
+    streetAddress = parts[0] ?? address;
+    const cityStatePart = parts[1] ?? "";
+    const cleanCity = cityStatePart
+      .replace(/\b[A-Z]{2}\b/iu, "")
+      .replace(/\b\d{5}(?:-\d{4})?\b/u, "")
+      .trim();
+    if (cleanCity) {
+      city = cleanCity;
+    }
+  }
+
+  return { city, state, streetAddress, zip };
+};
+
+const getNestedRaw = (raw: Record<string, unknown>) =>
+  typeof raw.raw === "object" && raw.raw !== null
+    ? (raw.raw as Record<string, unknown>)
+    : {};
+
+const getRawField = (
+  raw: Record<string, unknown>,
+  nestedRaw: Record<string, unknown>,
+  ...keys: string[]
+) => {
+  for (const key of keys) {
+    const val = getStringField(raw, key) || getStringField(nestedRaw, key);
+    if (val) {
+      return val;
+    }
+  }
+  return "";
+};
+
 const getParsedAddressParts = (suggestion: RadarAddressSuggestion) => {
-  const { raw } = suggestion;
-  const street = [getStringField(raw, "number"), getStringField(raw, "street")]
-    .filter(Boolean)
-    .join(" ");
+  const raw = suggestion.raw ?? {};
+  const nestedRaw = getNestedRaw(raw);
+
+  const numberStr = getRawField(raw, nestedRaw, "number");
+  const streetStr = getRawField(raw, nestedRaw, "street");
+  const streetCombined =
+    numberStr && streetStr ? `${numberStr} ${streetStr}` : streetStr;
+
+  const city = getRawField(raw, nestedRaw, "city");
+  const state = getRawField(raw, nestedRaw, "stateCode", "state");
+  const zip = getRawField(raw, nestedRaw, "postalCode", "zip");
+
+  const fallback = parseAddressString(suggestion.label);
+  const finalState = state.length === 2 ? state.toUpperCase() : fallback.state;
 
   return {
-    city: getStringField(raw, "city"),
-    state: getStringField(raw, "stateCode") || getStringField(raw, "state"),
-    streetAddress: street || getStringField(raw, "street") || suggestion.label,
-    zip: getStringField(raw, "postalCode"),
+    city: city || fallback.city,
+    state: finalState,
+    streetAddress:
+      streetCombined ||
+      getStringField(raw, "streetAddress") ||
+      fallback.streetAddress ||
+      suggestion.label,
+    zip: zip || fallback.zip,
   };
 };
 
@@ -689,15 +751,25 @@ export default function EarnOnboarding() {
   };
 
   const updateAddress = (value: string) => {
+    const parsed = parseAddressString(value);
     setDraft((current) => ({
       ...current,
       addressLatitude: null,
       addressLongitude: null,
       addressValidated: false,
+      city: parsed.city || current.city,
+      state: parsed.state || current.state,
       streetAddress: value,
+      zip: parsed.zip || current.zip,
     }));
     setErrors((current) => {
-      const { streetAddress: _streetAddress, ...next } = current;
+      const {
+        city: _city,
+        state: _state,
+        streetAddress: _streetAddress,
+        zip: _zip,
+        ...next
+      } = current;
       return next;
     });
   };
@@ -812,8 +884,45 @@ export default function EarnOnboarding() {
     }
   };
 
-  const goNext = () => {
-    const nextErrors = getStepErrors(activeStep, draft);
+  const goNext = async () => {
+    let currentDraft = draft;
+
+    if (
+      activeStep === "contact" &&
+      currentDraft.streetAddress.trim() &&
+      (!currentDraft.city || !currentDraft.state || !currentDraft.zip)
+    ) {
+      const validated = await validateAddress(currentDraft.streetAddress).catch(
+        () => null
+      );
+      if (validated) {
+        const parts = getParsedAddressParts(validated);
+        currentDraft = {
+          ...currentDraft,
+          addressLatitude: validated.latitude,
+          addressLongitude: validated.longitude,
+          addressValidated: true,
+          city: parts.city || currentDraft.city,
+          state: parts.state || currentDraft.state,
+          streetAddress: parts.streetAddress || currentDraft.streetAddress,
+          zip: parts.zip || currentDraft.zip,
+        };
+        setDraft(currentDraft);
+      } else {
+        const fallbackParts = parseAddressString(currentDraft.streetAddress);
+        if (fallbackParts.city || fallbackParts.state || fallbackParts.zip) {
+          currentDraft = {
+            ...currentDraft,
+            city: fallbackParts.city || currentDraft.city,
+            state: fallbackParts.state || currentDraft.state,
+            zip: fallbackParts.zip || currentDraft.zip,
+          };
+          setDraft(currentDraft);
+        }
+      }
+    }
+
+    const nextErrors = getStepErrors(activeStep, currentDraft);
 
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -1024,7 +1133,12 @@ export default function EarnOnboarding() {
                   </Label>
                   <div className="mt-2">
                     <RadarAddressInput
-                      error={errors.streetAddress}
+                      error={
+                        errors.streetAddress ||
+                        errors.city ||
+                        errors.state ||
+                        errors.zip
+                      }
                       isValidated={draft.addressValidated}
                       onChange={updateAddress}
                       onSelectSuggestion={(suggestion) => {
@@ -1034,7 +1148,12 @@ export default function EarnOnboarding() {
                       value={draft.streetAddress}
                     />
                   </div>
-                  <FieldError>{errors.streetAddress}</FieldError>
+                  <FieldError>
+                    {errors.streetAddress ||
+                      (errors.city || errors.state || errors.zip
+                        ? "Select a full address with city, state, and ZIP from the suggestions."
+                        : undefined)}
+                  </FieldError>
                 </div>
                 <WizardInput
                   error={errors.unit}
@@ -1055,37 +1174,6 @@ export default function EarnOnboarding() {
                   placeholder="(501)-827-1551"
                   value={draft.phone}
                 />
-                <WizardInput
-                  error={errors.city}
-                  icon={MapPin}
-                  id="provider-city"
-                  label="City"
-                  onChange={updateTextField("city")}
-                  value={draft.city}
-                />
-                <div className="grid grid-cols-[0.65fr_1fr] gap-3">
-                  <WizardInput
-                    error={errors.state}
-                    icon={MapPin}
-                    id="provider-state"
-                    label="State"
-                    maxLength={2}
-                    onChange={(event) =>
-                      updateDraft("state", event.target.value.toUpperCase())
-                    }
-                    value={draft.state}
-                  />
-                  <WizardInput
-                    error={errors.zip}
-                    icon={MapPin}
-                    id="provider-zip"
-                    inputMode="numeric"
-                    label="ZIP"
-                    maxLength={5}
-                    onChange={updateTextField("zip")}
-                    value={draft.zip}
-                  />
-                </div>
               </div>
             ) : null}
 
