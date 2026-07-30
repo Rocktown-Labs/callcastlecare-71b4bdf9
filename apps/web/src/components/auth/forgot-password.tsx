@@ -146,6 +146,16 @@ export function ForgotPassword({ className }: ForgotPasswordProps) {
 
         <div className="flex flex-col gap-3 items-center w-full mt-4">
           <FieldDescription className="text-center">
+            Need a faster reset?{" "}
+            <Link
+              href="/reset-password-otp"
+              className="underline underline-offset-4"
+            >
+              Use a one-time code
+            </Link>
+          </FieldDescription>
+
+          <FieldDescription className="text-center">
             {localization.auth.rememberYourPassword}{" "}
             <Link
               href={`${basePaths.auth}/${viewPaths.auth.signIn}`}

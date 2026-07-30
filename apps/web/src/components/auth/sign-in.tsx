@@ -343,12 +343,23 @@ export function SignIn({
 
         <div className="flex flex-col gap-3 items-center w-full mt-4">
           {emailAndPassword?.enabled && emailAndPassword?.forgotPassword && (
-            <Link
-              href={`${basePaths.auth}/${viewPaths.auth.forgotPassword}`}
-              className="self-center text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline"
-            >
-              {localization.auth.forgotPasswordLink}
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm">
+              <Link
+                href={`${basePaths.auth}/${viewPaths.auth.forgotPassword}`}
+                className="font-medium text-white/80 underline-offset-4 hover:text-white hover:underline"
+              >
+                {localization.auth.forgotPasswordLink}
+              </Link>
+              <span className="text-white/25" aria-hidden="true">
+                /
+              </span>
+              <Link
+                href="/claim-account"
+                className="font-medium text-lime-200 underline-offset-4 hover:text-lime-100 hover:underline"
+              >
+                Email me a code
+              </Link>
+            </div>
           )}
 
           {emailAndPassword?.enabled && (

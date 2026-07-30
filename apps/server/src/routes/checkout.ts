@@ -556,7 +556,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
     );
 
     const origin = getCheckoutOrigin(c);
-    const successUrl = `${origin}/book?checkout=success&stripe_session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
     const stripeCheckoutSession = await createStripeCheckoutSession({
       amountDueCents,
       cancelUrl: `${origin}/book?checkout=cancelled`,
