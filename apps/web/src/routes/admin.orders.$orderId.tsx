@@ -8,6 +8,7 @@ import {
   useParams,
   useRouteContext,
 } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { upload } from "@vercel/blob/client";
 import {
   ArrowLeft,
@@ -309,8 +310,9 @@ const MediaUpload = ({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {media.map((link) =>
           link.asset ? (
-            <img
+            <Image
               alt={`${title} ${link.asset.id}`}
+              aspectRatio={1}
               className="aspect-square rounded-2xl border border-slate-200 object-cover"
               key={link.id}
               src={getPrivateMediaUrl(link.asset.storagePath)}

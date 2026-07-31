@@ -1,5 +1,6 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { Link } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { ArrowRight, Box, Grid2x2, Scissors } from "lucide-react";
 
 const services = [
@@ -65,8 +66,9 @@ export default function EarnServices() {
                 key={id}
               >
                 <div className="relative aspect-[4/3] border-b border-white/10 bg-slate-950">
-                  <img
+                  <Image
                     alt={`${title} opportunity`}
+                    aspectRatio={4 / 3}
                     className="absolute inset-0 size-full object-cover"
                     src={image}
                   />

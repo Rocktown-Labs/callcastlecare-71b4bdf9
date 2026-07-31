@@ -1,4 +1,5 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
 import { z } from "zod";
 
@@ -14,9 +15,11 @@ const RouteComponent = () => {
   return (
     <main className="grid min-h-svh bg-[#070b13] text-foreground lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)]">
       <section className="relative hidden min-h-svh overflow-hidden lg:block">
-        <img
+        <Image
           alt="CastleCare technician arriving for a home service visit"
           className="absolute inset-0 size-full object-cover"
+          layout="fullWidth"
+          priority
           src="/callcastlecare/media/technician-van-night.png"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/55 to-black/20" />
@@ -55,10 +58,12 @@ const RouteComponent = () => {
 
       <section className="relative flex min-h-svh flex-col overflow-hidden px-5 py-6 sm:px-8 lg:px-10">
         <div className="absolute inset-0 lg:hidden">
-          <img
+          <Image
             alt=""
             aria-hidden="true"
             className="size-full object-cover opacity-30"
+            layout="fullWidth"
+            priority
             src="/callcastlecare/media/technician-van-night.png"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#070b13]/75 via-[#070b13]/95 to-[#070b13]" />

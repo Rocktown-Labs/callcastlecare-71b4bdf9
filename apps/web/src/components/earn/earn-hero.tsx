@@ -1,4 +1,5 @@
 import { Button } from "@callcastlecare/ui/components/button";
+import { Image } from "@unpic/react";
 import { ArrowRight, Briefcase, Car, Wrench } from "lucide-react";
 
 const serviceHighlights = [
@@ -62,9 +63,11 @@ export default function EarnHero() {
         </div>
 
         <figure className="relative min-h-[360px] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 shadow-2xl shadow-slate-950/40 md:min-h-[520px]">
-          <img
+          <Image
             alt="CastleCare provider standing by a service van"
             className="absolute inset-0 size-full object-cover"
+            layout="fullWidth"
+            priority
             src="/callcastlecare/media/technician-van-night.png"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#080c16] via-[#080c16]/25 to-transparent" />

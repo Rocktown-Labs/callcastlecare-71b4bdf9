@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { Camera, MessageCircle, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -57,7 +58,7 @@ export default function Footer() {
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
             <Link aria-label="CallCastleCare home" to="/">
-              <img
+              <Image
                 alt="CallCastleCare"
                 className="h-14 w-auto"
                 height={100}

@@ -1,5 +1,6 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { Link, createFileRoute, useParams } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import {
   ArrowLeft,
   Camera,
@@ -275,8 +276,9 @@ const RouteComponent = () => {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {photos.map((link) =>
               link.asset ? (
-                <img
+                <Image
                   alt={`Completed service ${link.asset.id}`}
+                  aspectRatio={1}
                   className="aspect-square rounded-2xl border border-slate-200 object-cover"
                   key={`${link.asset.id}-${link.id}`}
                   src={getPrivateMediaUrl(link.asset.storagePath)}
