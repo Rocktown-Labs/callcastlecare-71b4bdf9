@@ -327,31 +327,43 @@ export const validateRadarAddress = async (
     return parseAddressFromInput(input);
   }
 
-  const coordinateMatch = trimmed.match(
-    /^\s*(?<latitude>-?\d+(?:\.\d+)?)\s*,\s*(?<longitude>-?\d+(?:\.\d+)?)\s*$/u
-  );
-  if (coordinateMatch) {
-    const { latitude, longitude } = coordinateMatch.groups ?? {};
-    return reverseGeocodeWithRadar(Number(latitude), Number(longitude));
-  }
+  try {
+    const coordinateMatch = trimmed.match(
+      /^\s*(?<latitude>-?\d+(?:\.\d+)?)\s*,\s*(?<longitude>-?\d+(?:\.\d+)?)\s*$/u
+    );
+    if (coordinateMatch) {
+      const { latitude, longitude } = coordinateMatch.groups ?? {};
+      return await reverseGeocodeWithRadar(Number(latitude), Number(longitude));
+    }
 
-  const forwardPayload = await forwardGeocodeWithRadar(trimmed);
-  const [first] = getAddressList(forwardPayload);
-  if (!first) {
+    const forwardPayload = await forwardGeocodeWithRadar(trimmed);
+    const [first] = getAddressList(forwardPayload);
+    if (!first) {
+      return parseAddressFromInput(input);
+    }
+
+    const validated =
+      (await validateStructuredAddress(first, trimmed).catch(() => null)) ??
+      toVerifiedAddress(trimmed, forwardPayload);
+
+    return {
+      ...validated,
+      raw: {
+        forward: forwardPayload,
+        validate: validated.raw,
+      },
+    };
+  } catch (error) {
+    logger.warn(
+      {
+        err: error,
+        input,
+        vendor: "radar",
+      },
+      "radar:validate_address_fallback"
+    );
     return parseAddressFromInput(input);
   }
-
-  const validated =
-    (await validateStructuredAddress(first, trimmed)) ??
-    toVerifiedAddress(trimmed, forwardPayload);
-
-  return {
-    ...validated,
-    raw: {
-      forward: forwardPayload,
-      validate: validated.raw,
-    },
-  };
 };
 
 export const verifyAddressWithRadar = validateRadarAddress;
