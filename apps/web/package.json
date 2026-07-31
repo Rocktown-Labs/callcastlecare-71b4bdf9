@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@amplitude/unified": "^1",
     "@better-auth-ui/core": "^1.6.40",
     "@better-auth-ui/react": "^1.6.40",
     "@callcastlecare/api": "workspace:*",

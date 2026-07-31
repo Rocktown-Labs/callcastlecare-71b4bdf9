@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import EarnCtaSection from "@/components/home/earn-cta";
 import HeroSection from "@/components/home/hero";
 import MarketingLayout from "@/components/home/marketing-layout";
 import ServicesSection from "@/components/home/services";
+import { trackAmplitudeEvent } from "@/lib/amplitude";
 
 const siteUrl = "https://callcastlecare.com";
 const homeTitle = "CastleCare | Fast & Affordable Home Services, On Demand";
@@ -11,13 +13,19 @@ const homeDescription =
   "Book fast, affordable lawn care, laundry pickup, and window washing with CastleCare across Arkansas.";
 const homeImage = `${siteUrl}/callcastlecare/media/home-og.png`;
 
-const HomeComponent = () => (
-  <MarketingLayout>
-    <HeroSection />
-    <ServicesSection />
-    <EarnCtaSection />
-  </MarketingLayout>
-);
+const HomeComponent = () => {
+  useEffect(() => {
+    trackAmplitudeEvent("Viewed Home Page");
+  }, []);
+
+  return (
+    <MarketingLayout>
+      <HeroSection />
+      <ServicesSection />
+      <EarnCtaSection />
+    </MarketingLayout>
+  );
+};
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,

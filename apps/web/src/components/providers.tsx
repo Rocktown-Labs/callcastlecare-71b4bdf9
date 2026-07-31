@@ -1,9 +1,10 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import type { MouseEventHandler, ReactNode } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { initAmplitude } from "@/lib/amplitude";
 import { authClient } from "@/lib/auth-client";
 import { createWebQueryClient } from "@/lib/query-client";
 
@@ -55,6 +56,10 @@ export default function Providers({
   const navigate = useNavigate();
   const search = location.search as { redirectTo?: unknown };
   const redirectTo = getRedirectTo(search.redirectTo);
+
+  useEffect(() => {
+    initAmplitude();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
