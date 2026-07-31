@@ -1,11 +1,19 @@
 export const STANDARD_DEPOSIT_CENTS = 5000;
 export const HOME_PREORDER_DEPOSIT_CENTS = STANDARD_DEPOSIT_CENTS;
+export const TECHNOLOGY_FEE_CENTS = 500;
 
-export const TRAVEL_FEE_CONFIG = {
-  includedMiles: 55,
-  originLabel: "Searcy, AR",
-  pricePerExtraMileCents: 200,
-} as const;
+export {
+  SERVICE_HQ,
+  TRAVEL_FEE_CONFIG,
+  buildTravelEstimate,
+  calculateTipAmountCents,
+  calculateTravelFeeCents,
+  estimateDriveMinutes,
+  estimateRoadDistanceMiles,
+  milesBetweenCoordinates,
+  TIP_PERCENT_OPTIONS,
+} from "./travel";
+export type { TipPercentOption, TravelEstimate, TravelFeeKind } from "./travel";
 
 export const LAWNCARE_LOT_SIZE_ACRES = {
   customQuoteAt: 2,
@@ -66,6 +74,9 @@ export const COMBO_SUBSCRIPTION_PRICES = {
   "bi-weekly-royal-duo-large": 62_500,
   "bi-weekly-royal-duo-medium": 37_500,
   "bi-weekly-royal-duo-small": 25_000,
+  "crown-estate-trio-deluxe-large": 92_500,
+  "crown-estate-trio-deluxe-medium": 67_500,
+  "crown-estate-trio-deluxe-small": 36_000,
   "crown-estate-trio-large": 77_500,
   "crown-estate-trio-medium": 52_500,
   "crown-estate-trio-small": 30_000,
@@ -160,17 +171,4 @@ export const getLawncarePricingTier = (
     return "medium";
   }
   return "small";
-};
-
-export const calculateTravelFeeCents = (distanceMiles?: number | null) => {
-  if (!distanceMiles || !Number.isFinite(distanceMiles)) {
-    return 0;
-  }
-
-  const extraMiles = Math.max(
-    0,
-    Math.ceil(distanceMiles - TRAVEL_FEE_CONFIG.includedMiles)
-  );
-
-  return extraMiles * TRAVEL_FEE_CONFIG.pricePerExtraMileCents;
 };

@@ -88,10 +88,17 @@ export const mediaTypeEnum = pgEnum("media_type", [
   "service_after",
   "lawncare_before",
   "lawncare_after",
+  "property_front",
+  "property_left",
+  "property_right",
+  "property_back",
+  "property_baseline",
+  "laundry_front",
   "laundry_pickup",
   "laundry_scan",
   "laundry_folded",
   "laundry_dropoff",
+  "dispute_evidence",
 ]);
 
 export const notificationChannelEnum = pgEnum("notification_channel", [

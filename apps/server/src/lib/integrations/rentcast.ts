@@ -1,5 +1,7 @@
 import { env } from "@callcastlecare/env/server";
 
+import { logger } from "../logger";
+
 export interface PropertyLookupData {
   fallbackUsed: boolean;
   homeSqft: number | null;
@@ -109,6 +111,14 @@ export const lookupPropertyWithRentCast = async (
     });
 
     if (!response.ok) {
+      logger.warn(
+        {
+          status: response.status,
+          statusText: response.statusText,
+          vendor: "rentcast",
+        },
+        "rentcast:request_unsuccessful"
+      );
       return fallbackPropertyData(address, `http_${response.status}`);
     }
 
@@ -118,7 +128,14 @@ export const lookupPropertyWithRentCast = async (
     }
 
     return parseRentCastProperty(property);
-  } catch {
+  } catch (error) {
+    logger.error(
+      {
+        err: error,
+        vendor: "rentcast",
+      },
+      "rentcast:request_failed"
+    );
     return fallbackPropertyData(address, "fetch_failed");
   }
 };

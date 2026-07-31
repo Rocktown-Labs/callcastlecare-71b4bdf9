@@ -41,6 +41,7 @@ describe("Radar integration", () => {
     expect(requestUrl.pathname).toBe("/v1/search/autocomplete");
     expect(requestUrl.searchParams.get("countryCode")).toBe("US");
     expect(requestUrl.searchParams.get("layers")).toBe("address");
+    expect(requestUrl.searchParams.get("near")).toBe("35.247964,-91.704566");
     expect(requestUrl.searchParams.get("query")).toBe("123 Main");
     expect(init.headers).toEqual({ Authorization: "prj_test_pk_123" });
     expect(suggestions).toEqual([

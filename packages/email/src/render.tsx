@@ -22,6 +22,8 @@ import { ServiceStatusUpdateEmail } from "./templates/service-status-update";
 import type { ServiceStatusUpdateEmailProps } from "./templates/service-status-update";
 import { SubscriptionStartedEmail } from "./templates/subscription-started";
 import type { SubscriptionStartedEmailProps } from "./templates/subscription-started";
+import { TipRequestEmail } from "./templates/tip-request";
+import type { TipRequestEmailProps } from "./templates/tip-request";
 
 interface RenderedEmail {
   html: string;
@@ -74,3 +76,6 @@ export const renderServiceStatusUpdateEmail = (
 export const renderSubscriptionStartedEmail = (
   props: SubscriptionStartedEmailProps
 ) => renderEmail(<SubscriptionStartedEmail {...props} />);
+
+export const renderTipRequestEmail = (props: TipRequestEmailProps) =>
+  renderEmail(<TipRequestEmail {...props} />);

@@ -18,7 +18,9 @@ describe("computeCheckoutPreview", () => {
       ],
     });
 
-    expect(preview.totalCents).toBe(52_500);
+    expect(preview.subtotalCents).toBe(52_500);
+    expect(preview.technologyFeeCents).toBe(500);
+    expect(preview.totalCents).toBe(53_000);
     expect(preview.lineItems[0]).toMatchObject({
       basePriceCents: 52_500,
       label: "Crown Estate Trio Medium",
@@ -41,10 +43,39 @@ describe("computeCheckoutPreview", () => {
       ],
     });
 
-    expect(preview.totalCents).toBe(36_000);
+    expect(preview.subtotalCents).toBe(36_000);
+    expect(preview.technologyFeeCents).toBe(500);
+    expect(preview.totalCents).toBe(36_500);
     expect(preview.lineItems[0]).toMatchObject({
       basePriceCents: 36_000,
       label: "Royal Pane Bi-Annual Detail",
     });
+  });
+
+  it("includes technology fee line item and calculates totals properly with travel fees and tips", () => {
+    const preview = computeCheckoutPreview({
+      address: "123 Main St, Fayetteville, AR",
+      items: [
+        {
+          itemKind: CheckoutItemKind.Lawncare,
+          planId: "groundskeeper-one-time-medium",
+          timingType: "scheduled",
+        },
+      ],
+      tipAmountCents: 1000,
+      travelFeeCents: 5000,
+    });
+
+    expect(preview.subtotalCents).toBe(15_000);
+    expect(preview.technologyFeeCents).toBe(500);
+    expect(preview.travelFeeCents).toBe(5000);
+    expect(preview.tipAmountCents).toBe(1000);
+    expect(preview.totalCents).toBe(15_000 + 500 + 5000 + 1000);
+    expect(preview.lineItems.map((li) => li.label)).toEqual([
+      "Groundskeeper Medium Lot",
+      "Technology fee",
+      "Travel fee (in state)",
+      "Tip",
+    ]);
   });
 });

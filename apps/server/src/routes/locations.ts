@@ -1,13 +1,14 @@
 import {
   bookingTimeSlots,
+  buildTravelEstimate,
   getAvailableBookingTimeSlots,
   getBookingDateRange,
   getBookingZoneHour,
   getSlotStartHour,
 } from "@callcastlecare/api";
 import type { BookingTimeSlot } from "@callcastlecare/api";
-import { and, db, gte, inArray, lt } from "@callcastlecare/db";
-import { orders } from "@callcastlecare/db/schema/index";
+import { and, db, eq, gte, inArray, lt } from "@callcastlecare/db";
+import { markets, orders } from "@callcastlecare/db/schema/index";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -36,6 +37,14 @@ const reverseGeocodeSchema = z.object({
 
 const availabilityQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  driveMinutes: z.coerce
+    .number()
+    .min(0)
+    .max(24 * 60)
+    .optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  stateCode: z.string().trim().min(2).max(2).optional(),
 });
 
 const activeOrderStatuses = [
@@ -102,7 +111,63 @@ export const locationRoutes = new Hono<AppEnv>()
         )
       : null;
 
-    return c.json({ address, property }, 200);
+    const travel =
+      address.latitude !== null && address.longitude !== null
+        ? buildTravelEstimate({
+            latitude: address.latitude,
+            longitude: address.longitude,
+            stateCode: address.state,
+          })
+        : null;
+
+    let marketRow: {
+      label: string;
+      mode: "on_demand" | "subscription_first" | "paused";
+      stateCode: string;
+    } | null = null;
+    if (travel) {
+      try {
+        const rows = await db
+          .select()
+          .from(markets)
+          .where(eq(markets.stateCode, address.state.toUpperCase()))
+          .limit(1);
+        marketRow = rows[0] ?? null;
+      } catch (error) {
+        logger.warn(
+          { err: error, stateCode: address.state },
+          "location:market_lookup_failed"
+        );
+      }
+    }
+
+    logger.info(
+      {
+        distanceMiles: travel?.distanceMiles ?? null,
+        feeCents: travel?.feeCents ?? null,
+        inState: travel?.inState ?? null,
+        marketMode: marketRow?.mode ?? null,
+        requestId: c.get("requestId"),
+        stateCode: address.state,
+      },
+      "location:address_validated"
+    );
+
+    return c.json(
+      {
+        address,
+        market: marketRow
+          ? {
+              label: marketRow.label,
+              mode: marketRow.mode,
+              stateCode: marketRow.stateCode,
+            }
+          : null,
+        property,
+        travel,
+      },
+      200
+    );
   })
   .get("/addresses/reverse-geocode", async (c) => {
     const parsed = reverseGeocodeSchema.safeParse({
@@ -139,10 +204,26 @@ export const locationRoutes = new Hono<AppEnv>()
   .get("/availability", async (c) => {
     const parsed = availabilityQuerySchema.safeParse({
       date: c.req.query("date"),
+      driveMinutes: c.req.query("driveMinutes"),
+      latitude: c.req.query("latitude"),
+      longitude: c.req.query("longitude"),
+      stateCode: c.req.query("stateCode"),
     });
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
+
+    const travel =
+      typeof parsed.data.latitude === "number" &&
+      typeof parsed.data.longitude === "number"
+        ? buildTravelEstimate({
+            latitude: parsed.data.latitude,
+            longitude: parsed.data.longitude,
+            stateCode: parsed.data.stateCode,
+          })
+        : null;
+
+    const driveMinutes = parsed.data.driveMinutes ?? travel?.driveMinutes ?? 0;
 
     const bookedSlots: BookingTimeSlot[] = await getBookedSlots(
       parsed.data.date
@@ -161,12 +242,15 @@ export const locationRoutes = new Hono<AppEnv>()
     const availableSlots = getAvailableBookingTimeSlots({
       bookedSlots,
       date: parsed.data.date,
+      driveMinutes,
     });
     return c.json(
       {
         availableSlots,
         bookedSlots,
+        driveMinutes,
         nextAvailableSlot: availableSlots[0] ?? null,
+        travel,
       },
       200
     );

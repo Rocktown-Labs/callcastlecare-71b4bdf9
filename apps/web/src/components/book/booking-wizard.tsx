@@ -7,6 +7,7 @@ import {
   getScheduledWindowForSlot,
   LAUNDRY_PLAN_PRICES,
   LAWNCARE_PLAN_PRICES,
+  TECHNOLOGY_FEE_CENTS,
   WINDOW_WASHING_SUBSCRIPTION_PRICES,
 } from "@callcastlecare/api";
 import type { CheckoutPreviewItemInput } from "@callcastlecare/api";
@@ -313,15 +314,22 @@ const lawncareDetailsSchema = z.object({
   grassHeight: z.enum(["low", "medium", "tall"], {
     message: "Choose a grass height.",
   }),
+  hasPets: z.enum(["yes", "no"], {
+    message: "Tell us if pets are on the property.",
+  }),
   lotSizeTier: z
     .enum(["small", "medium", "large", "custom"])
     .optional()
     .or(z.literal("")),
+  obstacles: z.string().trim().max(500).optional().or(z.literal("")),
 });
 
 const laundryDetailsSchema = z.object({
   bedding: z.enum(["none", "with-bedding"], {
     message: "Choose a bedding option.",
+  }),
+  pickupMode: z.enum(["outside", "knock"], {
+    message: "Choose outside (contactless) or knock to collect.",
   }),
 });
 
@@ -380,6 +388,9 @@ type WizardStepKey = (typeof stepKeys)[number];
 
 interface BookingDraft {
   address: string;
+  addressLatitude: number | null;
+  addressLongitude: number | null;
+  addressStateCode: string | null;
   contact: {
     email: string;
     name: string;
@@ -387,6 +398,7 @@ interface BookingDraft {
     smsUpdates: boolean;
   };
   date: string;
+  marketMode: "on_demand" | "paused" | "subscription_first" | null;
   paymentOption: PaymentOptionId | "";
   products: Partial<Record<ServiceId, string>>;
   property: PropertyEstimate | null;
@@ -394,10 +406,13 @@ interface BookingDraft {
     laundry: {
       bedding: "none" | "with-bedding" | "";
       photoNames: string[];
+      pickupMode: "outside" | "knock" | "";
     };
     lawncare: {
       grassHeight: "low" | "medium" | "tall" | "";
+      hasPets: "yes" | "no" | "";
       lotSizeTier: ManualLotSizeId | "";
+      obstacles: string;
       photoNames: string[];
     };
     "window-washing": {
@@ -413,6 +428,17 @@ interface BookingDraft {
   services: ServiceId[];
   subscriptionId: string;
   timeSlot: string;
+  tipCustomPercent: string;
+  tipPercent: 0 | 5 | 10 | 15 | 20 | "custom" | "";
+  travel: {
+    distanceMiles: number;
+    driveMinutes: number;
+    feeCents: number;
+    feeKind: "free" | "in_state" | "out_of_state";
+    inState: boolean;
+    isLocal: boolean;
+    prefersSubscription: boolean;
+  } | null;
 }
 
 interface BookingWizardProps {
@@ -432,6 +458,9 @@ const emptyDraft = ({
   initialTimeSlot = bookingTimeSlots[2],
 }: BookingWizardProps): BookingDraft => ({
   address: initialAddress,
+  addressLatitude: null,
+  addressLongitude: null,
+  addressStateCode: null,
   contact: {
     email: "",
     name: "",
@@ -439,12 +468,19 @@ const emptyDraft = ({
     smsUpdates: false,
   },
   date: initialDate,
+  marketMode: null,
   paymentOption: "",
   products: {},
   property: null,
   serviceDetails: {
-    laundry: { bedding: "", photoNames: [] },
-    lawncare: { grassHeight: "", lotSizeTier: "", photoNames: [] },
+    laundry: { bedding: "", photoNames: [], pickupMode: "" },
+    lawncare: {
+      grassHeight: "",
+      hasPets: "",
+      lotSizeTier: "",
+      obstacles: "",
+      photoNames: [],
+    },
     "window-washing": {
       cleaningScope: "",
       finalizeOnSite: false,
@@ -458,6 +494,9 @@ const emptyDraft = ({
   services: sortServiceIds(initialServices),
   subscriptionId: "",
   timeSlot: initialTimeSlot,
+  tipCustomPercent: "",
+  tipPercent: "",
+  travel: null,
 });
 
 const formatCents = (cents: number) =>
@@ -819,6 +858,32 @@ const getQuoteAddOns = (draft: BookingDraft) => {
   return addOns;
 };
 
+const getDraftTipAmountCents = (draft: BookingDraft, subtotalCents: number) => {
+  if (draft.tipPercent === "") {
+    return null;
+  }
+
+  if (draft.tipPercent === "custom") {
+    const custom = Number(draft.tipCustomPercent);
+    if (!Number.isFinite(custom) || custom < 0) {
+      return null;
+    }
+    return Math.round((subtotalCents * custom) / 100);
+  }
+
+  return Math.round((subtotalCents * draft.tipPercent) / 100);
+};
+
+const getTipOptionLabel = (option: TipPercentOption) => {
+  if (option === 0) {
+    return "None";
+  }
+  if (option === "custom") {
+    return "Custom";
+  }
+  return `${option}%`;
+};
+
 const getServiceLabel = (serviceId: ServiceId) =>
   serviceCatalog.find(({ id }) => id === serviceId)?.shortName ?? serviceId;
 
@@ -829,17 +894,29 @@ const addServiceDetailErrors = (
   draft: BookingDraft,
   nextErrors: Record<string, string>
 ) => {
-  if (
-    draft.services.includes("lawncare") &&
-    !lawncareDetailsSchema.safeParse(draft.serviceDetails.lawncare).success
-  ) {
-    nextErrors.grassHeight = "Choose a grass height.";
+  if (draft.services.includes("lawncare")) {
+    const lawn = lawncareDetailsSchema.safeParse(draft.serviceDetails.lawncare);
+    if (!lawn.success) {
+      const [issue] = lawn.error.issues;
+      if (issue?.path[0] === "hasPets") {
+        nextErrors.hasPets = "Tell us if pets are on the property.";
+      } else {
+        nextErrors.grassHeight = "Choose a grass height.";
+      }
+    }
   }
-  if (
-    draft.services.includes("laundry") &&
-    !laundryDetailsSchema.safeParse(draft.serviceDetails.laundry).success
-  ) {
-    nextErrors.bedding = "Choose a bedding option.";
+  if (draft.services.includes("laundry")) {
+    const laundry = laundryDetailsSchema.safeParse(
+      draft.serviceDetails.laundry
+    );
+    if (!laundry.success) {
+      const [issue] = laundry.error.issues;
+      if (issue?.path[0] === "pickupMode") {
+        nextErrors.pickupMode = "Choose outside or knock for pickup.";
+      } else {
+        nextErrors.bedding = "Choose a bedding option.";
+      }
+    }
   }
   if (!draft.services.includes("window-washing")) {
     return;
@@ -1031,6 +1108,12 @@ const getSubscriptionPriceCents = (draft: BookingDraft) => {
     ];
   }
 
+  if (draft.subscriptionId === "crown_estate_trio_deluxe") {
+    return COMBO_SUBSCRIPTION_PRICES[
+      `crown-estate-trio-deluxe-${tier}` as keyof typeof COMBO_SUBSCRIPTION_PRICES
+    ];
+  }
+
   if (draft.subscriptionId === "royal_linen_panes_duo") {
     return COMBO_SUBSCRIPTION_PRICES["royal-linen-panes-duo"];
   }
@@ -1054,6 +1137,10 @@ const getComboPlanId = (draft: BookingDraft) => {
 
   if (draft.subscriptionId === "crown_estate_trio") {
     return `crown-estate-trio-${tier}`;
+  }
+
+  if (draft.subscriptionId === "crown_estate_trio_deluxe") {
+    return `crown-estate-trio-deluxe-${tier}`;
   }
 
   if (draft.subscriptionId === "royal_linen_panes_duo") {
@@ -1346,13 +1433,23 @@ const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
     }
   }
 
-  if (
-    step === 5 &&
-    !getPaymentOptionsForDraft(draft).some(
-      (option) => option.id === draft.paymentOption
-    )
-  ) {
-    nextErrors.paymentOption = "Choose a checkout option.";
+  if (step === 5) {
+    if (
+      !getPaymentOptionsForDraft(draft).some(
+        (option) => option.id === draft.paymentOption
+      )
+    ) {
+      nextErrors.paymentOption = "Choose a checkout option.";
+    }
+
+    if (draft.tipPercent === "") {
+      nextErrors.tipPercent = "Choose a tip amount or None.";
+    } else if (draft.tipPercent === "custom") {
+      const custom = Number(draft.tipCustomPercent);
+      if (!Number.isFinite(custom) || custom < 0) {
+        nextErrors.tipPercent = "Enter a valid custom tip percent.";
+      }
+    }
   }
 
   return nextErrors;
@@ -1552,14 +1649,22 @@ const RoundedField = ({
 const ScheduleDateTimePicker = ({
   date,
   dateError,
+  driveMinutes = 0,
+  latitude = null,
+  longitude = null,
   onDateChange,
   onTimeSlotChange,
+  stateCode = null,
   timeSlot,
 }: {
   date: string;
   dateError?: string;
+  driveMinutes?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   onDateChange: (value: string) => void;
   onTimeSlotChange: (value: string) => void;
+  stateCode?: string | null;
   timeSlot: string;
 }) => {
   const selectedDate = date ? new Date(`${date}T12:00:00`) : new Date();
@@ -1584,7 +1689,13 @@ const ScheduleDateTimePicker = ({
 
     const loadAvailability = async () => {
       try {
-        const availability = await fetchBookingAvailability(date);
+        const availability = await fetchBookingAvailability({
+          date,
+          driveMinutes,
+          latitude,
+          longitude,
+          stateCode,
+        });
         if (!isCurrent) {
           return;
         }
@@ -1596,8 +1707,19 @@ const ScheduleDateTimePicker = ({
           !availability.availableSlots.some((slot) => slot === timeSlot)
         ) {
           onTimeSlotChange(availability.nextAvailableSlot);
+          const travelNote =
+            driveMinutes > 0
+              ? ` Travel time from HQ is about ${Math.ceil(driveMinutes / 60)}h ${driveMinutes % 60}m, so earlier windows are hidden.`
+              : "";
           setAvailabilityMessage(
-            `That window is booked, so we moved you to ${availability.nextAvailableSlot}.`
+            `We moved you to ${availability.nextAvailableSlot}.${travelNote}`
+          );
+          return;
+        }
+
+        if (driveMinutes >= 90) {
+          setAvailabilityMessage(
+            `Longer trip from HQ (~${Math.ceil(driveMinutes / 60)}h ${driveMinutes % 60}m). Only windows we can reach after a 6am departure are shown.`
           );
           return;
         }
@@ -1616,7 +1738,15 @@ const ScheduleDateTimePicker = ({
     return () => {
       isCurrent = false;
     };
-  }, [date, onTimeSlotChange, timeSlot]);
+  }, [
+    date,
+    driveMinutes,
+    latitude,
+    longitude,
+    onTimeSlotChange,
+    stateCode,
+    timeSlot,
+  ]);
 
   return (
     <div className="grid gap-4">
@@ -2347,7 +2477,12 @@ const BookingWizard = (props: BookingWizardProps) => {
       pruneInvalidProductSelections({
         ...current,
         address: selected.label,
+        addressLatitude: selected.latitude,
+        addressLongitude: selected.longitude,
+        addressStateCode: selected.stateCode ?? null,
+        marketMode: selected.market?.mode ?? null,
         property: selected.property ?? null,
+        travel: selected.travel ?? null,
       })
     );
     setErrors({});
@@ -2363,6 +2498,19 @@ const BookingWizard = (props: BookingWizardProps) => {
     setIsCheckoutSubmitting(true);
 
     try {
+      const checkoutAddOns = getQuoteAddOns(draft);
+      let checkoutAddOnTotal = 0;
+      for (const addOn of checkoutAddOns) {
+        checkoutAddOnTotal += addOn.priceCents;
+      }
+      const checkoutSubtotal =
+        (hasSubscriptionCheckout(draft)
+          ? (getSubscriptionPriceCents(draft) ?? 0)
+          : selectedProductTotal(draft) + checkoutAddOnTotal) ||
+        selectedProductTotal(draft) + checkoutAddOnTotal;
+      const checkoutTipCents =
+        getDraftTipAmountCents(draft, checkoutSubtotal) ?? 0;
+
       await persistQuoteRequest({
         draft,
         lastCompletedStep: 6,
@@ -2378,6 +2526,10 @@ const BookingWizard = (props: BookingWizardProps) => {
             contact: draft.contact,
             items: getCheckoutItems(draft),
             paymentOption: draft.paymentOption,
+            tipAmountCents: checkoutTipCents,
+            travelDistanceMiles: draft.travel?.distanceMiles,
+            travelFeeCents: draft.travel?.feeCents ?? 0,
+            travelStateCode: draft.addressStateCode,
           }),
           headers: {
             "Content-Type": "application/json",
@@ -2416,7 +2568,6 @@ const BookingWizard = (props: BookingWizardProps) => {
   for (const addOn of quoteAddOns) {
     addOnTotalCents += addOn.priceCents;
   }
-  const subtotalCents = selectedProductTotal(draft) + addOnTotalCents;
   const selectedCombo =
     draft.subscriptionId && draft.subscriptionId !== "one_time"
       ? comboSubscriptions.find((combo) => combo.id === draft.subscriptionId)
@@ -2426,7 +2577,17 @@ const BookingWizard = (props: BookingWizardProps) => {
   const planEstimateCents = selectedCombo
     ? getSubscriptionPriceCents(draft)
     : null;
-  const estimatedTotalCents = planEstimateCents ?? subtotalCents;
+  const servicesSubtotalCents =
+    planEstimateCents ?? selectedProductTotal(draft) + addOnTotalCents;
+
+  const travelFeeCents = draft.travel?.feeCents ?? 0;
+  const techFeeCents = TECHNOLOGY_FEE_CENTS;
+  const feesTotalCents = travelFeeCents + techFeeCents;
+  const preTipTotalCents = servicesSubtotalCents + feesTotalCents;
+
+  const tipAmountCents =
+    getDraftTipAmountCents(draft, servicesSubtotalCents) ?? 0;
+  const estimatedTotalCents = preTipTotalCents + tipAmountCents;
   const depositCents = 5000;
   const isLaundryOnly =
     draft.services.length === 1 && draft.services[0] === "laundry";
@@ -2436,7 +2597,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     hasSubscriptionSelected;
   const dueTodayCents = shouldChargeFullAmountToday
     ? estimatedTotalCents
-    : Math.min(depositCents, estimatedTotalCents);
+    : Math.min(depositCents, preTipTotalCents) + tipAmountCents;
   const hasRecurringProduct = draft.services.some((serviceId) =>
     productsByService[serviceId].some(
       (product) => product.id === draft.products[serviceId] && product.recurring
@@ -2553,11 +2714,50 @@ const BookingWizard = (props: BookingWizardProps) => {
                 ) : null}
               </div>
 
+              {draft.travel ? (
+                <div
+                  className={cn(
+                    "rounded-2xl border p-4 text-sm",
+                    draft.travel.prefersSubscription
+                      ? "border-amber-200 bg-amber-50 text-amber-950"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  )}
+                >
+                  <p className="font-semibold">
+                    ~{draft.travel.distanceMiles} mi ·{" "}
+                    {Math.floor(draft.travel.driveMinutes / 60)}h{" "}
+                    {draft.travel.driveMinutes % 60}m from HQ
+                  </p>
+                  {draft.travel.feeCents > 0 ? (
+                    <p className="mt-1">
+                      Travel fee: {formatCents(draft.travel.feeCents)} (
+                      {draft.travel.feeKind === "out_of_state"
+                        ? "out of state"
+                        : "in state beyond free radius"}
+                      )
+                    </p>
+                  ) : (
+                    <p className="mt-1">Within free travel radius.</p>
+                  )}
+                  {draft.travel.prefersSubscription ||
+                  draft.marketMode === "subscription_first" ? (
+                    <p className="mt-2 font-medium">
+                      Out-of-state jobs work best on a Crown Estate recurring
+                      plan so we can batch the full property visit.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <ScheduleDateTimePicker
                 date={draft.date}
                 dateError={errors.date}
+                driveMinutes={draft.travel?.driveMinutes ?? 0}
+                latitude={draft.addressLatitude}
+                longitude={draft.addressLongitude}
                 onDateChange={(value) => setDraftValue("date", value)}
                 onTimeSlotChange={(value) => setDraftValue("timeSlot", value)}
+                stateCode={draft.addressStateCode}
                 timeSlot={draft.timeSlot}
               />
             </div>
@@ -2649,7 +2849,10 @@ const BookingWizard = (props: BookingWizardProps) => {
             {draft.services.includes("lawncare") ? (
               <QuestionAccordion
                 icon={serviceQuestionIcons.grass}
-                isComplete={Boolean(draft.serviceDetails.lawncare.grassHeight)}
+                isComplete={Boolean(
+                  draft.serviceDetails.lawncare.grassHeight &&
+                  draft.serviceDetails.lawncare.hasPets
+                )}
                 isOpen={openDetailService === "lawncare"}
                 onOpen={() => setOpenDetailService("lawncare")}
                 title="How tall is the grass?"
@@ -2672,7 +2875,6 @@ const BookingWizard = (props: BookingWizardProps) => {
                             grassHeight: height.id,
                           },
                         });
-                        completeServiceDetails("lawncare");
                       }}
                       type="button"
                     >
@@ -2691,6 +2893,69 @@ const BookingWizard = (props: BookingWizardProps) => {
                     {errors.grassHeight}
                   </p>
                 ) : null}
+                <div className="mt-4 grid gap-3">
+                  <p className="text-sm font-semibold text-slate-950">
+                    Any pets on the property?
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ["no", "No pets"],
+                        ["yes", "Yes, pets on site"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        className={cn(
+                          "rounded-2xl border p-3 text-left text-sm font-semibold",
+                          draft.serviceDetails.lawncare.hasPets === id
+                            ? "border-lime-500 bg-lime-100"
+                            : "border-slate-200 bg-white"
+                        )}
+                        key={id}
+                        onClick={() => {
+                          const nextLawn = {
+                            ...draft.serviceDetails.lawncare,
+                            hasPets: id,
+                          };
+                          setDraftValue("serviceDetails", {
+                            ...draft.serviceDetails,
+                            lawncare: nextLawn,
+                          });
+                          if (nextLawn.grassHeight) {
+                            completeServiceDetails("lawncare");
+                          }
+                        }}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {errors.hasPets ? (
+                    <p className="text-sm font-medium text-rose-600">
+                      {errors.hasPets}
+                    </p>
+                  ) : null}
+                  <label className="grid gap-2 text-sm text-slate-700">
+                    <span className="font-semibold text-slate-950">
+                      Obstacles or items to move? (optional)
+                    </span>
+                    <textarea
+                      className="min-h-20 rounded-2xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-lime-500"
+                      onChange={(event) =>
+                        setDraftValue("serviceDetails", {
+                          ...draft.serviceDetails,
+                          lawncare: {
+                            ...draft.serviceDetails.lawncare,
+                            obstacles: event.target.value,
+                          },
+                        })
+                      }
+                      placeholder="Toys, furniture, locked gates, steep slopes..."
+                      value={draft.serviceDetails.lawncare.obstacles}
+                    />
+                  </label>
+                </div>
                 <div className="mt-4">
                   <ServicePhotoUpload
                     fileNames={draft.serviceDetails.lawncare.photoNames}
@@ -2711,7 +2976,10 @@ const BookingWizard = (props: BookingWizardProps) => {
             {draft.services.includes("laundry") ? (
               <QuestionAccordion
                 icon={serviceQuestionIcons.bedding}
-                isComplete={Boolean(draft.serviceDetails.laundry.bedding)}
+                isComplete={Boolean(
+                  draft.serviceDetails.laundry.bedding &&
+                  draft.serviceDetails.laundry.pickupMode
+                )}
                 isOpen={openDetailService === "laundry"}
                 onOpen={() => setOpenDetailService("laundry")}
                 title="Will this include bedding?"
@@ -2741,7 +3009,6 @@ const BookingWizard = (props: BookingWizardProps) => {
                             bedding: id as "none" | "with-bedding",
                           },
                         });
-                        completeServiceDetails("laundry");
                       }}
                       type="button"
                     >
@@ -2757,6 +3024,59 @@ const BookingWizard = (props: BookingWizardProps) => {
                 {errors.bedding ? (
                   <p className="text-sm text-rose-300">{errors.bedding}</p>
                 ) : null}
+                <div className="mt-4 grid gap-3">
+                  <p className="text-sm font-semibold text-slate-950">
+                    How should we collect the bag?
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        [
+                          "outside",
+                          "Outside (contactless)",
+                          "Leave the CastleCare bag outside for pickup.",
+                        ],
+                        [
+                          "knock",
+                          "Knock to collect",
+                          "We knock and collect the bag from you.",
+                        ],
+                      ] as const
+                    ).map(([id, name, description]) => (
+                      <button
+                        className={cn(
+                          "rounded-2xl border p-3 text-left transition-colors",
+                          draft.serviceDetails.laundry.pickupMode === id
+                            ? "border-sky-500 bg-sky-50 text-slate-950"
+                            : "border-slate-200 bg-white text-slate-600"
+                        )}
+                        key={id}
+                        onClick={() => {
+                          const nextLaundry = {
+                            ...draft.serviceDetails.laundry,
+                            pickupMode: id,
+                          };
+                          setDraftValue("serviceDetails", {
+                            ...draft.serviceDetails,
+                            laundry: nextLaundry,
+                          });
+                          if (nextLaundry.bedding) {
+                            completeServiceDetails("laundry");
+                          }
+                        }}
+                        type="button"
+                      >
+                        <p className="text-sm font-semibold">{name}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          {description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                  {errors.pickupMode ? (
+                    <p className="text-sm text-rose-600">{errors.pickupMode}</p>
+                  ) : null}
+                </div>
                 <div className="mt-4">
                   <ServicePhotoUpload
                     fileNames={draft.serviceDetails.laundry.photoNames}
@@ -2770,6 +3090,10 @@ const BookingWizard = (props: BookingWizardProps) => {
                       })
                     }
                   />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Optional: front-of-house photo helps us confirm the right
+                    address on laundry-only visits.
+                  </p>
                 </div>
               </QuestionAccordion>
             ) : null}
@@ -3127,7 +3451,7 @@ const BookingWizard = (props: BookingWizardProps) => {
             {shownCombos.map((combo) => {
               const comboPriceCents = getComboPriceCents(draft, combo.id) ?? 0;
               const comboBadge =
-                comboPriceCents <= subtotalCents
+                comboPriceCents <= servicesSubtotalCents
                   ? "Best value"
                   : "Monthly plan";
 
@@ -3333,6 +3657,38 @@ const BookingWizard = (props: BookingWizardProps) => {
                         </span>
                       </div>
                     ))}
+                    <div className="flex justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <span>
+                        <span className="block font-semibold text-slate-950">
+                          Technology fee
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          Platform & dispatch fee
+                        </span>
+                      </span>
+                      <span className="font-black text-slate-950">
+                        {formatCents(TECHNOLOGY_FEE_CENTS)}
+                      </span>
+                    </div>
+                    {draft.travel && draft.travel.feeCents > 0 ? (
+                      <div className="flex justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                        <span>
+                          <span className="block font-semibold text-slate-950">
+                            {draft.travel.feeKind === "out_of_state"
+                              ? "Travel fee (out of state)"
+                              : "Travel fee (in state)"}
+                          </span>
+                          <span className="text-xs text-amber-800">
+                            {draft.travel.feeKind === "out_of_state"
+                              ? `${draft.travel.distanceMiles} mi from HQ · out of state`
+                              : `${draft.travel.distanceMiles} mi from HQ · beyond free radius`}
+                          </span>
+                        </span>
+                        <span className="font-black text-slate-950">
+                          {formatCents(draft.travel.feeCents)}
+                        </span>
+                      </div>
+                    ) : null}
                   </>
                 )}
                 <div className="border-t border-slate-200 pt-3">
@@ -3364,6 +3720,56 @@ const BookingWizard = (props: BookingWizardProps) => {
                       {formatCents(estimatedTotalCents)}
                     </span>
                   </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="mb-2 text-sm font-semibold text-slate-950">
+                    Tip (optional amount, required choice)
+                  </p>
+                  <p className="mb-3 text-xs text-slate-500">
+                    Based on {formatCents(servicesSubtotalCents)}. Choose None
+                    or a percentage.
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {([0, 5, 10, 15, 20, "custom"] as const).map((option) => (
+                      <button
+                        className={cn(
+                          "rounded-2xl border px-2 py-3 text-sm font-semibold",
+                          draft.tipPercent === option
+                            ? "border-lime-500 bg-lime-100 text-slate-950"
+                            : "border-slate-200 bg-slate-50 text-slate-700"
+                        )}
+                        key={String(option)}
+                        onClick={() => setDraftValue("tipPercent", option)}
+                        type="button"
+                      >
+                        {getTipOptionLabel(option)}
+                      </button>
+                    ))}
+                  </div>
+                  {draft.tipPercent === "custom" ? (
+                    <div className="mt-3">
+                      <RoundedField
+                        label="Custom tip %"
+                        onChange={(event) =>
+                          setDraftValue("tipCustomPercent", event.target.value)
+                        }
+                        placeholder="12"
+                        type="number"
+                        value={draft.tipCustomPercent}
+                      />
+                    </div>
+                  ) : null}
+                  {tipAmountCents > 0 ? (
+                    <p className="mt-2 text-sm font-semibold text-lime-700">
+                      Tip: {formatCents(tipAmountCents)}
+                    </p>
+                  ) : null}
+                  {errors.tipPercent ? (
+                    <p className="mt-2 text-sm text-rose-600">
+                      {errors.tipPercent}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="border-t border-slate-200 pt-4">
@@ -3409,7 +3815,11 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
                 <Button
                   className="mt-6 h-12 w-full rounded-2xl bg-lime-300 text-base font-bold text-slate-950 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!draft.paymentOption || isCheckoutSubmitting}
+                  disabled={
+                    !draft.paymentOption ||
+                    draft.tipPercent === "" ||
+                    isCheckoutSubmitting
+                  }
                   onClick={() => void startSecureCheckout()}
                   type="button"
                 >

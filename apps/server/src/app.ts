@@ -9,7 +9,10 @@ import { requestLogger, logger } from "./lib/logger";
 import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
+import { disputeRoutes } from "./routes/disputes";
+import { laundryBagRoutes } from "./routes/laundry-bags";
 import { locationRoutes } from "./routes/locations";
+import { marketRoutes } from "./routes/markets";
 import { meRoutes } from "./routes/me";
 import { mediaRoutes } from "./routes/media";
 import { notificationRoutes } from "./routes/notifications";
@@ -140,6 +143,9 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/me", meRoutes)
   .route("/addresses", addressesRoutes)
   .route("/locations", locationRoutes)
+  .route("/markets", marketRoutes)
+  .route("/laundry-bags", laundryBagRoutes)
+  .route("/disputes", disputeRoutes)
   .route("/media", mediaRoutes)
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)

@@ -8,8 +8,11 @@ export interface RadarAddressSuggestion {
   label: string;
   latitude: number | null;
   longitude: number | null;
+  market?: MarketHint | null;
   property?: PropertyEstimate;
   raw: Record<string, unknown>;
+  stateCode?: string | null;
+  travel?: TravelEstimateClient | null;
 }
 
 const DEBOUNCE_MS = 300;
@@ -21,6 +24,22 @@ export interface PropertyEstimate {
   lotSizeSqft: number | null;
   source?: "fallback" | "rentcast";
   stories?: number | null;
+}
+
+export interface TravelEstimateClient {
+  distanceMiles: number;
+  driveMinutes: number;
+  feeCents: number;
+  feeKind: "free" | "in_state" | "out_of_state";
+  inState: boolean;
+  isLocal: boolean;
+  prefersSubscription: boolean;
+}
+
+export interface MarketHint {
+  label: string;
+  mode: "on_demand" | "paused" | "subscription_first";
+  stateCode: string;
 }
 
 const toStringOrNull = (value: unknown) =>
@@ -136,6 +155,50 @@ const fetchJson = async (url: URL, init?: RequestInit) => {
   return response.json() as Promise<unknown>;
 };
 
+const parseTravel = (raw: unknown): TravelEstimateClient | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    distanceMiles: toNumberOrNull(obj.distanceMiles) ?? 0,
+    driveMinutes: toNumberOrNull(obj.driveMinutes) ?? 0,
+    feeCents: toNumberOrNull(obj.feeCents) ?? 0,
+    feeKind: (obj.feeKind as "free" | "in_state" | "out_of_state") ?? "free",
+    inState: toBoolean(obj.inState),
+    isLocal: toBoolean(obj.isLocal),
+    prefersSubscription: toBoolean(obj.prefersSubscription),
+  };
+};
+
+const parseMarket = (raw: unknown): MarketHint | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    label: toStringOrNull(obj.label) ?? "Market",
+    mode:
+      (obj.mode as "on_demand" | "paused" | "subscription_first") ??
+      "subscription_first",
+    stateCode: toStringOrNull(obj.stateCode) ?? "",
+  };
+};
+
+const parseProperty = (raw: unknown): PropertyEstimate | undefined => {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    fallbackUsed: toBoolean(obj.fallbackUsed),
+    homeSqft: toNumberOrNull(obj.homeSqft),
+    lotSizeSqft: toNumberOrNull(obj.lotSizeSqft),
+    source: obj.source === "rentcast" ? "rentcast" : "fallback",
+    stories: toNumberOrNull(obj.stories),
+  };
+};
+
 export const validateAddress = async (
   address: string,
   options: { includeProperty?: boolean } = {}
@@ -158,7 +221,6 @@ export const validateAddress = async (
 
   const response = payload as Record<string, unknown>;
   const rawAddress = response.address;
-  const rawProperty = response.property;
   if (!rawAddress || typeof rawAddress !== "object") {
     return null;
   }
@@ -169,35 +231,16 @@ export const validateAddress = async (
     return null;
   }
 
-  const propertySource =
-    (rawProperty as Record<string, unknown> | null)?.source === "rentcast"
-      ? ("rentcast" as const)
-      : ("fallback" as const);
-
   return {
     id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
     label,
     latitude: toNumberOrNull(candidate.latitude),
     longitude: toNumberOrNull(candidate.longitude),
-    property:
-      rawProperty && typeof rawProperty === "object"
-        ? {
-            fallbackUsed: toBoolean(
-              (rawProperty as Record<string, unknown>).fallbackUsed
-            ),
-            homeSqft: toNumberOrNull(
-              (rawProperty as Record<string, unknown>).homeSqft
-            ),
-            lotSizeSqft: toNumberOrNull(
-              (rawProperty as Record<string, unknown>).lotSizeSqft
-            ),
-            source: propertySource,
-            stories: toNumberOrNull(
-              (rawProperty as Record<string, unknown>).stories
-            ),
-          }
-        : undefined,
+    market: parseMarket(response.market),
+    property: parseProperty(response.property),
     raw: candidate,
+    stateCode: toStringOrNull(candidate.state),
+    travel: parseTravel(response.travel),
   };
 };
 

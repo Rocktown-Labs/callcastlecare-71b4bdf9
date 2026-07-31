@@ -79,7 +79,6 @@
         "@callcastlecare/db": "workspace:*",
         "@callcastlecare/email": "workspace:*",
         "@callcastlecare/env": "workspace:*",
-        "@hono/node-server": "^2.0.8",
         "@hono/zod-openapi": "^1.5.1",
         "@vercel/blob": "^2.3.0",
         "@vercel/queue": "^0.1.3",
@@ -96,6 +95,7 @@
       },
       "devDependencies": {
         "@callcastlecare/config": "workspace:*",
+        "@hono/node-server": "^2.0.8",
         "@types/node": "^22.13.14",
         "tsdown": "^0.22.3",
         "tsx": "catalog:",

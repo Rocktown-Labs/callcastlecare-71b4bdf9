@@ -13,7 +13,8 @@ export type CastleCareEmailKey =
   | "quote-saved"
   | "service-completed"
   | "service-status-update"
-  | "subscription-started";
+  | "subscription-started"
+  | "tip-request";
 
 export interface EmailCatalogEntry {
   audience: "admin" | "customer" | "provider";
@@ -116,6 +117,15 @@ export const emailCatalog = [
     subject: "Your CastleCare service is complete",
     transactional: true,
     trigger: "Admin or provider marks the order complete",
+  },
+  {
+    audience: "customer",
+    key: "tip-request",
+    purpose:
+      "Ask the customer to choose None, a tip percentage, or a custom tip after the job is complete.",
+    subject: "Add a tip for your CastleCare visit?",
+    transactional: true,
+    trigger: "Order completed when tip action is still needed",
   },
   {
     audience: "customer",

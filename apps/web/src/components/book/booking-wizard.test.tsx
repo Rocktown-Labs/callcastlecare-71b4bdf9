@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -128,6 +129,9 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /no bedding/iu }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /outside \(contactless\)/iu })
+    );
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
@@ -254,6 +258,9 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /no bedding/iu }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /outside \(contactless\)/iu })
+    );
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
@@ -301,6 +308,7 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /low/iu }));
+    fireEvent.click(screen.getByRole("button", { name: /no pets/iu }));
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
@@ -344,7 +352,11 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /low/iu }));
+    fireEvent.click(screen.getByRole("button", { name: /no pets/iu }));
     clickLastText("Include bedding");
+    fireEvent.click(
+      screen.getByRole("button", { name: /outside \(contactless\)/iu })
+    );
     fireEvent.click(screen.getByRole("button", { name: /inside and out/iu }));
     fireEvent.click(screen.getByRole("button", { name: /^1$/u }));
     fireEvent.change(screen.getByPlaceholderText("Around 20"), {
@@ -373,9 +385,13 @@ describe("BookingWizard", () => {
     ).toBeNull();
 
     expect(await screen.findByText("Subscription options")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: /crown estate trio/iu })
-    );
+    const trioButton = screen
+      .getAllByRole("button", { name: /crown estate trio/iu })
+      .find((btn) => !btn.textContent?.includes("Deluxe"));
+    if (!trioButton) {
+      throw new Error("Crown Estate Trio button not found.");
+    }
+    fireEvent.click(trioButton);
     clickFirstContinue();
 
     expect(await screen.findByText("Review and reserve")).toBeTruthy();

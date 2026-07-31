@@ -1,5 +1,8 @@
 import { bookingTimeSlots, isBookingTimeSlot } from "@callcastlecare/api";
-import type { BookingTimeSlot as ApiBookingTimeSlot } from "@callcastlecare/api";
+import type {
+  BookingTimeSlot as ApiBookingTimeSlot,
+  TravelEstimate,
+} from "@callcastlecare/api";
 
 import { getServerUrl } from "./server-url";
 
@@ -16,7 +19,17 @@ export {
 export interface BookingAvailability {
   availableSlots: ApiBookingTimeSlot[];
   bookedSlots: ApiBookingTimeSlot[];
+  driveMinutes: number;
   nextAvailableSlot: ApiBookingTimeSlot | null;
+  travel: TravelEstimate | null;
+}
+
+export interface AvailabilityQuery {
+  date: string;
+  driveMinutes?: number;
+  latitude?: number | null;
+  longitude?: number | null;
+  stateCode?: string | null;
 }
 
 const parseSlots = (value: unknown) => {
@@ -30,18 +43,33 @@ const parseSlots = (value: unknown) => {
 export const getDefaultBookingAvailability = (): BookingAvailability => ({
   availableSlots: [...bookingTimeSlots],
   bookedSlots: [],
+  driveMinutes: 0,
   nextAvailableSlot: bookingTimeSlots[0],
+  travel: null,
 });
 
 export const fetchBookingAvailability = async (
-  date: string
+  input: string | AvailabilityQuery
 ): Promise<BookingAvailability> => {
-  if (!date) {
+  const query = typeof input === "string" ? { date: input } : input;
+  if (!query.date) {
     return getDefaultBookingAvailability();
   }
 
   const url = new URL("/api/v1/locations/availability", getServerUrl());
-  url.searchParams.set("date", date);
+  url.searchParams.set("date", query.date);
+  if (typeof query.driveMinutes === "number") {
+    url.searchParams.set("driveMinutes", String(query.driveMinutes));
+  }
+  if (typeof query.latitude === "number") {
+    url.searchParams.set("latitude", String(query.latitude));
+  }
+  if (typeof query.longitude === "number") {
+    url.searchParams.set("longitude", String(query.longitude));
+  }
+  if (query.stateCode) {
+    url.searchParams.set("stateCode", query.stateCode);
+  }
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -58,6 +86,12 @@ export const fetchBookingAvailability = async (
   return {
     availableSlots,
     bookedSlots,
+    driveMinutes:
+      typeof payload.driveMinutes === "number" ? payload.driveMinutes : 0,
     nextAvailableSlot,
+    travel:
+      payload.travel && typeof payload.travel === "object"
+        ? (payload.travel as TravelEstimate)
+        : null,
   };
 };

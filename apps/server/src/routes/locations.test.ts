@@ -19,7 +19,15 @@ vi.mock("@callcastlecare/db", () => ({
         findMany: findManyOrders,
       },
     },
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    }),
   },
+  eq: vi.fn(),
   gte: vi.fn(),
   inArray: vi.fn(),
   lt: vi.fn(),
@@ -250,7 +258,9 @@ describe("location routes", () => {
         "4:00 PM - 6:00 PM",
       ],
       bookedSlots: ["10:00 AM - 12:00 PM"],
+      driveMinutes: 0,
       nextAvailableSlot: "6:00 AM - 8:00 AM",
+      travel: null,
     });
   });
 });

@@ -1,3 +1,4 @@
+import { SERVICE_HQ } from "@callcastlecare/api";
 import { env } from "@callcastlecare/env/server";
 
 import { logger } from "../logger";
@@ -67,6 +68,7 @@ const getRadarHeaders = () => ({
 
 const RADAR_API_BASE_URL = "https://api.radar.io";
 const MIN_AUTOCOMPLETE_CHARACTERS = 5;
+const DEFAULT_NEAR = `${SERVICE_HQ.latitude},${SERVICE_HQ.longitude}`;
 
 interface RadarGetOptions {
   returnNullOnFailure?: boolean;
@@ -250,6 +252,7 @@ export const autocompleteRadarAddresses = async (
       countryCode: "US",
       layers: "address",
       limit: "8",
+      near: DEFAULT_NEAR,
       query: trimmed,
     }),
     { returnNullOnFailure: true }
@@ -311,6 +314,7 @@ export const validateRadarAddress = async (
         countryCode: "US",
         layers: "address",
         limit: "1",
+        near: DEFAULT_NEAR,
         query: trimmed,
       }),
       { returnNullOnFailure: true }

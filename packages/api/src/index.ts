@@ -2,9 +2,12 @@ import type { Hono } from "hono";
 import { hc } from "hono/client";
 
 export * from "./contracts";
+export * from "./geofence";
+export * from "./photo-checklist";
 export * from "./pricing";
 export * from "./scheduling";
 export * from "./stripe-catalog";
+export * from "./travel";
 export * from "./window-washing";
 
 export interface CreateApiClientOptions {

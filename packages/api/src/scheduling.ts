@@ -135,28 +135,46 @@ export const getBookingZoneDate = (date = new Date()) => {
 
 export const getBookingZoneHour = (date: Date) => getZonedParts(date).hour;
 
+export const serviceDayOpenMinutes = 6 * 60;
+
+export const getEarliestSlotStartMinutesForDrive = (
+  driveMinutes: number
+): number => {
+  const safeDrive = Math.max(0, Math.ceil(driveMinutes));
+  return serviceDayOpenMinutes + safeDrive;
+};
+
 export const getAvailableBookingTimeSlots = ({
   bookedSlots = [],
   date,
+  driveMinutes = 0,
   now = new Date(),
 }: {
   bookedSlots?: readonly BookingTimeSlot[];
   date: string;
+  driveMinutes?: number;
   now?: Date;
 }) => {
   const booked = new Set(bookedSlots);
   const bookingZoneDate = getBookingZoneDate(now);
   const nowParts = getZonedParts(now);
-  const minimumStartMinutes =
+  const sameDayMinimumStartMinutes =
     nowParts.hour * 60 + nowParts.minute + sameDayBookingBufferMinutes;
+  const travelMinimumStartMinutes =
+    getEarliestSlotStartMinutesForDrive(driveMinutes);
 
   return bookingTimeSlots.filter((slot) => {
     if (booked.has(slot)) {
       return false;
     }
 
+    const slotStart = getSlotStartMinutes(slot);
+    if (slotStart < travelMinimumStartMinutes) {
+      return false;
+    }
+
     return date === bookingZoneDate
-      ? getSlotStartMinutes(slot) > minimumStartMinutes
+      ? slotStart > sameDayMinimumStartMinutes
       : true;
   });
 };

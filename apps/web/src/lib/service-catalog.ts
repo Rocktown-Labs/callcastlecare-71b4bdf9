@@ -406,11 +406,20 @@ export const comboSubscriptions = [
   },
   {
     description:
-      "2 Lawn Care visits, 4 wash and fold pickups, and 1 exterior Window Washing visit each month.",
+      "Bi-weekly mow, bi-weekly wash and fold, and 1 monthly exterior Window Washing visit — best for longer travel days.",
     discountLabel: "From $300/month",
     frequency: "Monthly billing",
     id: "crown_estate_trio",
     name: "Crown Estate Trio",
+    requiredServices: ["lawncare", "laundry", "window-washing"],
+  },
+  {
+    description:
+      "Crown Estate Trio plus inside-and-out windows and bedding on laundry visits.",
+    discountLabel: "From $360/month",
+    frequency: "Monthly billing",
+    id: "crown_estate_trio_deluxe",
+    name: "Crown Estate Trio Deluxe",
     requiredServices: ["lawncare", "laundry", "window-washing"],
   },
 ] as const;

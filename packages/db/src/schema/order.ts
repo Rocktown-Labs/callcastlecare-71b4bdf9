@@ -67,7 +67,10 @@ export const orders = pgTable(
     stripePaymentIntentId: text("stripe_payment_intent_id"),
     timingType: timingTypeEnum("timing_type").notNull(),
     tipAmountCents: integer("tip_amount_cents").notNull().default(0),
+    tipSettledAt: timestamp("tip_settled_at", { withTimezone: true }),
     totalPriceCents: integer("total_price_cents").notNull(),
+    travelDistanceMiles: integer("travel_distance_miles"),
+    travelFeeCents: integer("travel_fee_cents").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
