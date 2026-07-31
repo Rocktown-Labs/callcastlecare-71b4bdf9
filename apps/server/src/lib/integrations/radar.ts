@@ -288,37 +288,6 @@ const forwardGeocodeWithRadar = (input: string) =>
     })
   );
 
-const validateStructuredAddress = (
-  address: Record<string, unknown>,
-  fallbackInput: string
-) => {
-  const params = new URLSearchParams({
-    country: toStringOrNull(address.countryCode) ?? "US",
-  });
-  const mappedFields = [
-    ["city", toStringOrNull(address.city)],
-    ["number", toStringOrNull(address.number)],
-    ["postalCode", toStringOrNull(address.postalCode)],
-    ["state", toStringOrNull(address.stateCode)],
-    ["street", toStringOrNull(address.street)],
-  ] as const;
-
-  for (const [key, value] of mappedFields) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-
-  const hasEnoughStructuredData = params.has("street") && params.has("city");
-  if (!hasEnoughStructuredData) {
-    return null;
-  }
-
-  return radarGet("/v1/addresses/validate", params).then((payload) =>
-    payload ? toVerifiedAddress(fallbackInput, payload) : null
-  );
-};
-
 export const validateRadarAddress = async (
   input: string
 ): Promise<VerifiedAddress> => {
@@ -336,21 +305,32 @@ export const validateRadarAddress = async (
       return await reverseGeocodeWithRadar(Number(latitude), Number(longitude));
     }
 
-    const forwardPayload = await forwardGeocodeWithRadar(trimmed);
-    const [first] = getAddressList(forwardPayload);
+    const autocompletePayload = await radarGet(
+      "/v1/search/autocomplete",
+      new URLSearchParams({
+        countryCode: "US",
+        layers: "address",
+        limit: "1",
+        query: trimmed,
+      }),
+      { returnNullOnFailure: true }
+    );
+
+    const payload =
+      getAddressList(autocompletePayload).length > 0
+        ? autocompletePayload
+        : await forwardGeocodeWithRadar(trimmed);
+
+    const [first] = getAddressList(payload);
     if (!first) {
       return parseAddressFromInput(input);
     }
 
-    const validated =
-      (await validateStructuredAddress(first, trimmed).catch(() => null)) ??
-      toVerifiedAddress(trimmed, forwardPayload);
-
+    const verified = toVerifiedAddress(trimmed, payload);
     return {
-      ...validated,
+      ...verified,
       raw: {
-        forward: forwardPayload,
-        validate: validated.raw,
+        search: payload,
       },
     };
   } catch (error) {
