@@ -1,8 +1,7 @@
 import * as amplitude from "@amplitude/unified";
 import { env } from "@callcastlecare/env/web";
 
-const AMPLITUDE_API_KEY =
-  env.VITE_AMPLITUDE_API_KEY || "b9d0f4f16f1e3290f3563e4df9f97dca";
+const AMPLITUDE_API_KEY = env.VITE_AMPLITUDE_API_KEY;
 
 let isInitialized = false;
 
