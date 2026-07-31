@@ -140,6 +140,7 @@ interface ProviderApplicationDraft {
   city: string;
   state: string;
   zip: string;
+  fullAddress: string;
   services: ProviderServiceId[];
   canDoAllServices: boolean;
   serviceNotes: string;
@@ -167,6 +168,7 @@ const initialDraft: ProviderApplicationDraft = {
   dateOfBirth: "",
   email: "",
   firstName: "",
+  fullAddress: "",
   hasVehicle: true,
   lastName: "",
   licensePlate: "",
@@ -758,8 +760,9 @@ export default function EarnOnboarding() {
       addressLongitude: null,
       addressValidated: false,
       city: parsed.city || current.city,
+      fullAddress: value,
       state: parsed.state || current.state,
-      streetAddress: value,
+      streetAddress: parsed.streetAddress || value,
       zip: parsed.zip || current.zip,
     }));
     setErrors((current) => {
@@ -785,8 +788,9 @@ export default function EarnOnboarding() {
       addressLongitude: selected.longitude,
       addressValidated: Boolean(validated),
       city: parts.city || current.city,
+      fullAddress: selected.label,
       state: parts.state || current.state,
-      streetAddress: parts.streetAddress,
+      streetAddress: parts.streetAddress || selected.label,
       zip: parts.zip || current.zip,
     }));
     setErrors((current) => {
@@ -884,42 +888,57 @@ export default function EarnOnboarding() {
     }
   };
 
+  const ensureValidatedAddress = async (
+    currentDraft: ProviderApplicationDraft
+  ) => {
+    const addressQuery = (
+      currentDraft.fullAddress || currentDraft.streetAddress
+    ).trim();
+    if (
+      !addressQuery ||
+      (currentDraft.addressValidated &&
+        currentDraft.city &&
+        currentDraft.state &&
+        currentDraft.zip)
+    ) {
+      return currentDraft;
+    }
+
+    const validated = await validateAddress(addressQuery).catch(() => null);
+    if (validated) {
+      const parts = getParsedAddressParts(validated);
+      return {
+        ...currentDraft,
+        addressLatitude: validated.latitude,
+        addressLongitude: validated.longitude,
+        addressValidated: true,
+        city: parts.city || currentDraft.city,
+        fullAddress: validated.label,
+        state: parts.state || currentDraft.state,
+        streetAddress: parts.streetAddress || currentDraft.streetAddress,
+        zip: parts.zip || currentDraft.zip,
+      };
+    }
+
+    const fallbackParts = parseAddressString(addressQuery);
+    if (fallbackParts.city || fallbackParts.state || fallbackParts.zip) {
+      return {
+        ...currentDraft,
+        city: fallbackParts.city || currentDraft.city,
+        state: fallbackParts.state || currentDraft.state,
+        zip: fallbackParts.zip || currentDraft.zip,
+      };
+    }
+
+    return currentDraft;
+  };
+
   const goNext = async () => {
     let currentDraft = draft;
 
-    if (
-      activeStep === "contact" &&
-      currentDraft.streetAddress.trim() &&
-      (!currentDraft.city || !currentDraft.state || !currentDraft.zip)
-    ) {
-      const validated = await validateAddress(currentDraft.streetAddress).catch(
-        () => null
-      );
-      if (validated) {
-        const parts = getParsedAddressParts(validated);
-        currentDraft = {
-          ...currentDraft,
-          addressLatitude: validated.latitude,
-          addressLongitude: validated.longitude,
-          addressValidated: true,
-          city: parts.city || currentDraft.city,
-          state: parts.state || currentDraft.state,
-          streetAddress: parts.streetAddress || currentDraft.streetAddress,
-          zip: parts.zip || currentDraft.zip,
-        };
-        setDraft(currentDraft);
-      } else {
-        const fallbackParts = parseAddressString(currentDraft.streetAddress);
-        if (fallbackParts.city || fallbackParts.state || fallbackParts.zip) {
-          currentDraft = {
-            ...currentDraft,
-            city: fallbackParts.city || currentDraft.city,
-            state: fallbackParts.state || currentDraft.state,
-            zip: fallbackParts.zip || currentDraft.zip,
-          };
-          setDraft(currentDraft);
-        }
-      }
+    if (activeStep === "contact") {
+      currentDraft = await ensureValidatedAddress(currentDraft);
+      setDraft(currentDraft);
     }
 
     const nextErrors = getStepErrors(activeStep, currentDraft);
@@ -1145,7 +1164,7 @@ export default function EarnOnboarding() {
                         void selectAddress(suggestion);
                       }}
                       tone="dark"
-                      value={draft.streetAddress}
+                      value={draft.fullAddress || draft.streetAddress}
                     />
                   </div>
                   <FieldError>

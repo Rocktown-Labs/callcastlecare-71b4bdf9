@@ -273,7 +273,7 @@ describe("BookingWizard", () => {
     expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
   });
 
-  it("hides the lot size picker and offers the $50 quote deposit without property data", async () => {
+  it("offers the $50 quote deposit for an on-site visit without property data", async () => {
     mockFetch();
 
     render(
@@ -301,7 +301,6 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /low/iu }));
-    expect(screen.queryByText("Lot size")).toBeNull();
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();

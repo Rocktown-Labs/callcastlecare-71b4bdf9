@@ -95,12 +95,12 @@ export const locationRoutes = new Hono<AppEnv>()
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
-    const [address, property] = await Promise.all([
-      validateRadarAddress(parsed.data.address),
-      parsed.data.includeProperty
-        ? lookupPropertyWithRentCast(parsed.data.address)
-        : Promise.resolve(null),
-    ]);
+    const address = await validateRadarAddress(parsed.data.address);
+    const property = parsed.data.includeProperty
+      ? await lookupPropertyWithRentCast(
+          address?.formattedAddress ?? parsed.data.address
+        )
+      : null;
 
     return c.json({ address, property }, 200);
   })

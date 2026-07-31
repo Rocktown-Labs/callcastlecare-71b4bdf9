@@ -2,6 +2,7 @@ import {
   CheckoutItemKind,
   COMBO_SUBSCRIPTION_PRICES,
   calculateWindowWashingQuote,
+  getLawncareLotTier,
   getLawncarePlanId,
   getScheduledWindowForSlot,
   LAUNDRY_PLAN_PRICES,
@@ -206,7 +207,7 @@ const productsByService = {
     },
     {
       description:
-        "Reserve an in-person quote. We walk the property and confirm final pricing on site.",
+        "Your $50 deposit covers an on-site visit to inspect the property and provide your custom quote.",
       id: "groundskeeper-custom-quote-deposit",
       name: "Groundskeeper Custom Quote Deposit",
       priceCents: LAWNCARE_PLAN_PRICES["groundskeeper-custom-quote-deposit"],
@@ -627,14 +628,6 @@ const getLotSizeAcres = (property: PropertyEstimate | null) => {
   return property.lotSizeSqft / SQFT_PER_ACRE;
 };
 
-const getManualLotSizeAcres = (draft: BookingDraft) => {
-  const selected = manualLotSizeOptions.find(
-    (option) => option.id === draft.serviceDetails.lawncare.lotSizeTier
-  );
-
-  return selected?.lotSizeAcres ?? null;
-};
-
 const needsPropertyLookup = (draft: BookingDraft) =>
   draft.services.includes("lawncare");
 
@@ -642,13 +635,9 @@ const shouldFetchPropertyForDraft = (draft: BookingDraft) =>
   needsPropertyLookup(draft) && !getLotSizeAcres(draft.property);
 
 const getDraftLotSizeAcres = (draft: BookingDraft) =>
-  getLotSizeAcres(draft.property) ?? getManualLotSizeAcres(draft);
+  getLotSizeAcres(draft.property);
 
 const getLawncareFitPlanIds = (draft: BookingDraft) => {
-  if (draft.serviceDetails.lawncare.lotSizeTier === "custom") {
-    return new Set(["groundskeeper-custom-quote-deposit"]);
-  }
-
   const lotSizeAcres = getDraftLotSizeAcres(draft);
   if (!lotSizeAcres) {
     return new Set(["groundskeeper-custom-quote-deposit"]);
@@ -1006,6 +995,16 @@ const getLawnSubscriptionTier = (draft: BookingDraft) => {
 
   if (selectedLawnProduct.includes("medium")) {
     return "medium";
+  }
+
+  if (selectedLawnProduct.includes("small")) {
+    return "small";
+  }
+
+  const lotSizeAcres = getDraftLotSizeAcres(draft);
+  const tierFromAcreage = getLawncareLotTier(lotSizeAcres);
+  if (tierFromAcreage !== "custom") {
+    return tierFromAcreage;
   }
 
   return "small";
@@ -2688,7 +2687,9 @@ const BookingWizard = (props: BookingWizardProps) => {
                   ))}
                 </div>
                 {errors.grassHeight ? (
-                  <p className="text-sm text-rose-300">{errors.grassHeight}</p>
+                  <p className="mt-1 text-sm text-rose-600 font-medium">
+                    {errors.grassHeight}
+                  </p>
                 ) : null}
                 <div className="mt-4">
                   <ServicePhotoUpload
