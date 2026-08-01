@@ -668,12 +668,6 @@ const getLotSizeAcres = (property: PropertyEstimate | null) => {
   return property.lotSizeSqft / SQFT_PER_ACRE;
 };
 
-const needsPropertyLookup = (draft: BookingDraft) =>
-  draft.services.includes("lawncare");
-
-const shouldFetchPropertyForDraft = (draft: BookingDraft) =>
-  needsPropertyLookup(draft) && !getLotSizeAcres(draft.property);
-
 const getDraftLotSizeAcres = (draft: BookingDraft) =>
   getLotSizeAcres(draft.property);
 
@@ -1063,8 +1057,7 @@ const getPaymentOptionsForServices = (services: ServiceId[]) =>
     : paymentOptions;
 
 const hasSubscriptionCheckout = (draft: BookingDraft) =>
-  Boolean(draft.subscriptionId && draft.subscriptionId !== "one_time") ||
-  hasSelectedRecurringProduct(draft);
+  Boolean(draft.subscriptionId && draft.subscriptionId !== "one_time");
 
 const getLawnSubscriptionTier = (draft: BookingDraft) => {
   const selectedLawnProduct = draft.products.lawncare ?? "";
@@ -2386,21 +2379,30 @@ const BookingWizard = (props: BookingWizardProps) => {
   };
 
   const enrichDraftPropertyIfNeeded = async () => {
-    if (!shouldFetchPropertyForDraft(draft)) {
+    if (!draft.address || draft.address.trim().length < 5) {
+      return draft;
+    }
+
+    if (draft.property && draft.travel) {
       return draft;
     }
 
     const validated = await validateAddress(draft.address, {
       includeProperty: true,
     });
-    if (!validated?.property) {
+    if (!validated) {
       return draft;
     }
 
     const nextDraft = pruneInvalidProductSelections({
       ...draft,
       address: validated.label,
-      property: validated.property,
+      addressLatitude: validated.latitude,
+      addressLongitude: validated.longitude,
+      addressStateCode: validated.stateCode ?? null,
+      marketMode: validated.market?.mode ?? null,
+      property: validated.property ?? draft.property ?? null,
+      travel: validated.travel ?? draft.travel ?? null,
     });
     setDraft(nextDraft);
     setIsAddressValidated(true);
@@ -2466,7 +2468,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     suggestion: RadarAddressSuggestion
   ) => {
     const validated = await validateAddress(suggestion.label, {
-      includeProperty: needsPropertyLookup(draft),
+      includeProperty: true,
     });
     const selected = validated ?? suggestion;
     setDraft((current) =>
@@ -3380,51 +3382,71 @@ const BookingWizard = (props: BookingWizardProps) => {
               </div>
             ) : null}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <button
-                className={cn(
-                  "flex flex-col justify-between rounded-3xl border p-5 text-left transition-all shadow-sm hover:shadow-md",
-                  draft.subscriptionId === "one_time"
-                    ? "border-lime-500 bg-lime-50/60 ring-2 ring-lime-400"
-                    : "border-slate-200 bg-white hover:border-slate-300"
-                )}
-                onClick={() => {
-                  setDraft((current) => ({
-                    ...current,
-                    paymentOption: "",
-                    subscriptionId: "one_time",
-                  }));
-                  setErrors({});
-                }}
-                type="button"
-              >
+            <button
+              aria-label="No subscription today. Keep as a single appointment."
+              aria-pressed={
+                draft.subscriptionId === "one_time" || !draft.subscriptionId
+              }
+              className={cn(
+                "w-full flex items-center justify-between rounded-3xl border p-5 text-left transition-all shadow-sm hover:shadow-md",
+                draft.subscriptionId === "one_time" || !draft.subscriptionId
+                  ? "border-lime-500 bg-lime-50/70 ring-2 ring-lime-400"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              )}
+              onClick={() => {
+                setDraft((current) => ({
+                  ...current,
+                  paymentOption: "",
+                  subscriptionId: "one_time",
+                }));
+                setErrors({});
+              }}
+              type="button"
+            >
+              <div className="flex items-center gap-3.5">
+                <div
+                  className={cn(
+                    "flex size-10 shrink-0 items-center justify-center rounded-2xl border transition-colors",
+                    draft.subscriptionId === "one_time" || !draft.subscriptionId
+                      ? "border-lime-500 bg-lime-400 text-slate-950 font-bold"
+                      : "border-slate-200 bg-slate-100 text-slate-400"
+                  )}
+                >
+                  {draft.subscriptionId === "one_time" ||
+                  !draft.subscriptionId ? (
+                    <Check className="size-5 text-slate-950 stroke-[3]" />
+                  ) : (
+                    <Calendar className="size-5" />
+                  )}
+                </div>
                 <div>
                   <p className="font-bold text-slate-950 text-base">
                     No subscription today
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-slate-600">
+                  <p className="text-xs leading-5 text-slate-600 mt-0.5">
                     Keep this as a single appointment and choose recurring care
                     later.
                   </p>
                 </div>
-                <div className="mt-6 border-t border-slate-100 pt-3 text-xs font-semibold text-slate-400">
-                  Single visit
-                </div>
-              </button>
+              </div>
+              <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-full shrink-0 border border-slate-200/80">
+                Single appointment
+              </span>
+            </button>
 
-              {shownCombos.length === 0 && hasRecurringProductSelected ? (
-                <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                  <p className="font-bold text-slate-950">
-                    Recurring service plan
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-slate-600">
-                    Your selected item is eligible for recurring care. We will
-                    map the exact billing cadence when Stripe products are
-                    synced.
-                  </p>
-                </div>
-              ) : null}
+            {shownCombos.length === 0 && hasRecurringProductSelected ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                <p className="font-bold text-slate-950">
+                  Recurring service plan
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Your selected item is eligible for recurring care. We will map
+                  the exact billing cadence when Stripe products are synced.
+                </p>
+              </div>
+            ) : null}
 
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {shownCombos.map((combo) => {
                 const comboPriceCents =
                   getComboPriceCents(draft, combo.id) ?? 0;
@@ -3432,14 +3454,16 @@ const BookingWizard = (props: BookingWizardProps) => {
                   comboPriceCents <= servicesSubtotalCents
                     ? "Best value"
                     : "Monthly plan";
+                const isSelected = draft.subscriptionId === combo.id;
 
                 return (
                   <button
-                    aria-label={combo.name}
+                    aria-label={`${combo.name} plan - ${formatCents(comboPriceCents)} per month`}
+                    aria-pressed={isSelected}
                     className={cn(
                       "flex flex-col justify-between rounded-3xl border p-5 text-left transition-all shadow-sm hover:shadow-md",
-                      draft.subscriptionId === combo.id
-                        ? "border-lime-500 bg-lime-50/60 ring-2 ring-lime-400"
+                      isSelected
+                        ? "border-lime-500 bg-lime-50/70 ring-2 ring-lime-400"
                         : "border-slate-200 bg-white hover:border-slate-300"
                     )}
                     key={combo.id}
@@ -3455,29 +3479,29 @@ const BookingWizard = (props: BookingWizardProps) => {
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <Crown className="size-4 text-lime-700 shrink-0" />
                           <p className="font-bold text-slate-950 text-base">
                             {combo.name}
                           </p>
                         </div>
-                        <span className="rounded-full bg-lime-300 px-2 py-0.5 text-[10px] font-black uppercase text-slate-950">
+                        <span className="rounded-full bg-lime-300 px-2.5 py-1 text-[10px] font-black uppercase text-slate-950 shadow-sm">
                           {comboBadge}
                         </span>
                       </div>
                       <p className="mt-2 text-xs leading-5 text-slate-600">
                         {combo.description}
                       </p>
-                      <div className="mt-4 grid gap-2">
+                      <div className="mt-4 space-y-2">
                         {getComboIncludedItems(combo, draft).map((item) => (
                           <div
-                            className="flex items-start gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 p-2.5"
+                            className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50 p-2.5"
                             key={item.name}
                           >
-                            <span className="rounded-md bg-lime-200/80 px-1.5 py-0.5 text-[11px] font-extrabold text-slate-900 shrink-0">
+                            <span className="rounded-lg bg-lime-200 px-2 py-0.5 text-xs font-black text-slate-950 shrink-0">
                               {item.name}
                             </span>
-                            <span className="text-[11px] leading-4 text-slate-600 mt-0.5">
+                            <span className="text-xs font-medium text-slate-600 text-right truncate ml-2">
                               {item.description}
                             </span>
                           </div>
