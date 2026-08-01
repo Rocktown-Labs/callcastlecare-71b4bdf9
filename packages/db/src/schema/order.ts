@@ -76,13 +76,16 @@ export const orders = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("idx_orders_address_id").on(table.addressId),
     index("idx_orders_assigned_worker").on(table.assignedWorkerId),
     index("idx_orders_checkout_session_id").on(table.checkoutSessionId),
     index("idx_orders_created_at").on(table.createdAt),
     index("idx_orders_customer_id").on(table.customerId),
     index("idx_orders_next_wave_status").on(table.nextWaveAt, table.status),
+    index("idx_orders_quote_id").on(table.quoteId),
     index("idx_orders_service_type").on(table.serviceType),
     index("idx_orders_status_start").on(table.status, table.scheduledStartAt),
+    index("idx_orders_stripe_payment_intent").on(table.stripePaymentIntentId),
   ]
 );
 
