@@ -44,7 +44,7 @@ import {
   X,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { bookingTimeSlots, fetchBookingAvailability } from "@/lib/scheduling";
@@ -60,7 +60,10 @@ import {
 import type { ServiceId } from "@/lib/service-catalog";
 
 import { RadarAddressInput } from "../home/radar-address-input";
-import { validateAddress } from "../home/use-radar-address-autocomplete";
+import {
+  getCachedValidatedAddress,
+  validateAddress,
+} from "../home/use-radar-address-autocomplete";
 import type {
   PropertyEstimate,
   RadarAddressSuggestion,
@@ -668,8 +671,19 @@ const getLotSizeAcres = (property: PropertyEstimate | null) => {
   return property.lotSizeSqft / SQFT_PER_ACRE;
 };
 
-const getDraftLotSizeAcres = (draft: BookingDraft) =>
-  getLotSizeAcres(draft.property);
+const getDraftLotSizeAcres = (draft: BookingDraft) => {
+  const directLot = getLotSizeAcres(draft.property);
+  if (directLot) {
+    return directLot;
+  }
+  if (draft.address) {
+    const cached = getCachedValidatedAddress(draft.address);
+    if (cached?.property) {
+      return getLotSizeAcres(cached.property);
+    }
+  }
+  return null;
+};
 
 const getLawncareFitPlanIds = (draft: BookingDraft) => {
   const lotSizeAcres = getDraftLotSizeAcres(draft);
@@ -2269,6 +2283,61 @@ const BookingWizard = (props: BookingWizardProps) => {
     props.initialTimeSlot,
   ]);
 
+  const enrichDraftPropertyIfNeeded = useCallback(async () => {
+    if (!draft.address || draft.address.trim().length < 5) {
+      return draft;
+    }
+
+    if (draft.property && draft.travel) {
+      return draft;
+    }
+
+    const validated = await validateAddress(draft.address, {
+      includeProperty: true,
+    });
+    if (!validated) {
+      return draft;
+    }
+
+    const nextDraft = pruneInvalidProductSelections({
+      ...draft,
+      address: validated.label,
+      addressLatitude: validated.latitude,
+      addressLongitude: validated.longitude,
+      addressStateCode: validated.stateCode ?? null,
+      marketMode: validated.market?.mode ?? null,
+      property: validated.property ?? draft.property ?? null,
+      travel: validated.travel ?? draft.travel ?? null,
+    });
+    setDraft(nextDraft);
+    setIsAddressValidated(true);
+    return nextDraft;
+  }, [draft]);
+
+  useEffect(() => {
+    let active = true;
+    if (
+      draft.address &&
+      draft.address.trim().length >= 5 &&
+      (!draft.property || !draft.travel)
+    ) {
+      const timer = setTimeout(() => {
+        if (active) {
+          void enrichDraftPropertyIfNeeded();
+        }
+      }, 0);
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    }
+  }, [
+    draft.address,
+    draft.property,
+    draft.travel,
+    enrichDraftPropertyIfNeeded,
+  ]);
+
   const paymentOptionsForDraft = getPaymentOptionsForDraft(draft);
 
   const setDraftValue = <Key extends keyof BookingDraft>(
@@ -2376,37 +2445,6 @@ const BookingWizard = (props: BookingWizardProps) => {
     const nextErrors = getStepErrors(draft, step);
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
-  };
-
-  const enrichDraftPropertyIfNeeded = async () => {
-    if (!draft.address || draft.address.trim().length < 5) {
-      return draft;
-    }
-
-    if (draft.property && draft.travel) {
-      return draft;
-    }
-
-    const validated = await validateAddress(draft.address, {
-      includeProperty: true,
-    });
-    if (!validated) {
-      return draft;
-    }
-
-    const nextDraft = pruneInvalidProductSelections({
-      ...draft,
-      address: validated.label,
-      addressLatitude: validated.latitude,
-      addressLongitude: validated.longitude,
-      addressStateCode: validated.stateCode ?? null,
-      marketMode: validated.market?.mode ?? null,
-      property: validated.property ?? draft.property ?? null,
-      travel: validated.travel ?? draft.travel ?? null,
-    });
-    setDraft(nextDraft);
-    setIsAddressValidated(true);
-    return nextDraft;
   };
 
   const continueFromStep = async (step: WizardStep) => {

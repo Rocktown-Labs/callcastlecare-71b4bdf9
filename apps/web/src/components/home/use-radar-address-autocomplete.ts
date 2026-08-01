@@ -199,49 +199,89 @@ const parseProperty = (raw: unknown): PropertyEstimate | undefined => {
   };
 };
 
-export const validateAddress = async (
+const addressValidationCache = new Map<string, RadarAddressSuggestion>();
+const inFlightAddressValidations = new Map<
+  string,
+  Promise<RadarAddressSuggestion | null>
+>();
+
+const normalizeAddressKey = (address: string) =>
+  address.trim().toLowerCase().replaceAll(/\s+/gu, " ");
+
+export const getCachedValidatedAddress = (address: string) =>
+  addressValidationCache.get(normalizeAddressKey(address)) ?? null;
+
+export const validateAddress = (
   address: string,
   options: { includeProperty?: boolean } = {}
 ): Promise<RadarAddressSuggestion | null> => {
-  const url = new URL("/api/v1/locations/addresses/validate", getServerUrl());
-  const payload = await fetchJson(url, {
-    body: JSON.stringify({
-      address,
-      includeProperty: options.includeProperty === true,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
+  const cacheKey = normalizeAddressKey(address);
+  const cached = addressValidationCache.get(cacheKey);
 
-  if (!payload || typeof payload !== "object") {
-    return null;
+  if (cached && (cached.property || options.includeProperty !== true)) {
+    return Promise.resolve(cached);
   }
 
-  const response = payload as Record<string, unknown>;
-  const rawAddress = response.address;
-  if (!rawAddress || typeof rawAddress !== "object") {
-    return null;
+  const inFlight = inFlightAddressValidations.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
   }
 
-  const candidate = rawAddress as Record<string, unknown>;
-  const label = toStringOrNull(candidate.formattedAddress);
-  if (!label) {
-    return null;
-  }
+  const promise = (async () => {
+    try {
+      const url = new URL(
+        "/api/v1/locations/addresses/validate",
+        getServerUrl()
+      );
+      const payload = await fetchJson(url, {
+        body: JSON.stringify({
+          address,
+          includeProperty: options.includeProperty === true,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
 
-  return {
-    id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
-    label,
-    latitude: toNumberOrNull(candidate.latitude),
-    longitude: toNumberOrNull(candidate.longitude),
-    market: parseMarket(response.market),
-    property: parseProperty(response.property),
-    raw: candidate,
-    stateCode: toStringOrNull(candidate.state),
-    travel: parseTravel(response.travel),
-  };
+      if (!payload || typeof payload !== "object") {
+        return cached ?? null;
+      }
+
+      const response = payload as Record<string, unknown>;
+      const rawAddress = response.address;
+      if (!rawAddress || typeof rawAddress !== "object") {
+        return cached ?? null;
+      }
+
+      const candidate = rawAddress as Record<string, unknown>;
+      const label = toStringOrNull(candidate.formattedAddress);
+      if (!label) {
+        return cached ?? null;
+      }
+
+      const result: RadarAddressSuggestion = {
+        id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
+        label,
+        latitude: toNumberOrNull(candidate.latitude),
+        longitude: toNumberOrNull(candidate.longitude),
+        market: parseMarket(response.market),
+        property: parseProperty(response.property) ?? cached?.property,
+        raw: candidate,
+        stateCode: toStringOrNull(candidate.state),
+        travel: parseTravel(response.travel) ?? cached?.travel,
+      };
+
+      addressValidationCache.set(cacheKey, result);
+      addressValidationCache.set(normalizeAddressKey(label), result);
+      return result;
+    } finally {
+      inFlightAddressValidations.delete(cacheKey);
+    }
+  })();
+
+  inFlightAddressValidations.set(cacheKey, promise);
+  return promise;
 };
 
 export const reverseGeocodeAddress = async (
