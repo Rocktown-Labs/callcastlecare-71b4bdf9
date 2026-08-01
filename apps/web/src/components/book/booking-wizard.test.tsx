@@ -396,8 +396,8 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Review and reserve")).toBeTruthy();
     expect(screen.getAllByText("$525.00").length).toBeGreaterThan(0);
-    expect(screen.getByText("4 laundry pickups")).toBeTruthy();
-    expect(screen.getByText("1 Window Washing visit")).toBeTruthy();
+    expect(screen.getByText("2x Wash & Fold")).toBeTruthy();
+    expect(screen.getByText("1x Window Wash")).toBeTruthy();
     expect(screen.queryByText("Estimated plan savings")).toBeNull();
   });
 });

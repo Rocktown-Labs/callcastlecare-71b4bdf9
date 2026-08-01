@@ -71,6 +71,13 @@
       "when": 1785505200000,
       "tag": "0009_launch_ops_markets",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785550000000,
+      "tag": "0010_addresses_formatted_address",
+      "breakpoints": true
     }
   ]
 }

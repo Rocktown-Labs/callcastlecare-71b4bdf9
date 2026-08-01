@@ -405,8 +405,7 @@ export const comboSubscriptions = [
     requiredServices: ["lawncare", "window-washing"],
   },
   {
-    description:
-      "Bi-weekly mow, bi-weekly wash and fold, and 1 monthly exterior Window Washing visit — best for longer travel days.",
+    description: "Bi-weekly mow, wash and fold, and 1 monthly window washing.",
     discountLabel: "From $300/month",
     frequency: "Monthly billing",
     id: "crown_estate_trio",

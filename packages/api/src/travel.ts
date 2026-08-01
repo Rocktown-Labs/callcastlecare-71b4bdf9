@@ -6,12 +6,12 @@ export const SERVICE_HQ = {
 } as const;
 
 export const TRAVEL_FEE_CONFIG = {
-  averageSpeedMph: 50,
+  averageSpeedMph: 65,
   flatInStateCents: 5000,
   flatOutOfStateCents: 10_000,
-  includedMiles: 60,
+  includedMiles: 70,
   originLabel: SERVICE_HQ.address,
-  roadDistanceFactor: 1.3,
+  roadDistanceFactor: 1.1,
 } as const;
 
 export type TravelFeeKind = "free" | "in_state" | "out_of_state";

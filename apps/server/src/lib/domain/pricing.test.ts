@@ -36,14 +36,14 @@ describe("pricing", () => {
       inState: false,
     });
     expect(
-      calculateTravelFeeCents({ distanceMiles: 65, stateCode: "AR" })
+      calculateTravelFeeCents({ distanceMiles: 75, stateCode: "AR" })
     ).toEqual({
       feeCents: 5000,
       feeKind: "in_state",
       inState: true,
     });
     expect(
-      calculateTravelFeeCents({ distanceMiles: 65, stateCode: "TX" })
+      calculateTravelFeeCents({ distanceMiles: 75, stateCode: "TX" })
     ).toEqual({
       feeCents: 10_000,
       feeKind: "out_of_state",
