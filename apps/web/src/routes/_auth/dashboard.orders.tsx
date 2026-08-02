@@ -108,7 +108,7 @@ const DashboardOrdersRoute = () => {
               order for status, totals, and support context.
             </p>
           </div>
-          <Link to="/dashboard/book">
+          <Link to="/dashboard/orders/new">
             <Button
               className="h-11 rounded-full bg-lime-300 px-5 font-bold text-slate-950 hover:bg-lime-200"
               type="button"
@@ -133,7 +133,7 @@ const DashboardOrdersRoute = () => {
                 Your bookings, invoices, and visit status will appear here after
                 checkout.
               </p>
-              <Link to="/dashboard/book">
+              <Link to="/dashboard/orders/new">
                 <Button
                   className="mt-5 rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
                   type="button"

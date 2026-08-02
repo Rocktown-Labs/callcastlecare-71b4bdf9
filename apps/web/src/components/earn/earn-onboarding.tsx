@@ -1385,60 +1385,61 @@ export default function EarnOnboarding() {
             ) : null}
 
             {activeStep === "plan" ? (
-              <div className="grid gap-4">
-                <div className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm leading-6 text-lime-100">
-                  <Sparkles
-                    aria-hidden="true"
-                    className="mb-2 size-5 text-lime-300"
-                  />
-                  Your provider dashboard will open with application status,
-                  manual review notes, and the next setup CTAs. Stripe Connect
-                  can come after the account is created.
+              <div className="grid gap-6">
+                <div className="mx-auto max-w-lg text-center">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/30 bg-lime-300/10 px-3.5 py-1 text-xs font-bold tracking-wider text-lime-300 uppercase">
+                    <Sparkles className="size-3.5" />
+                    CastleCare Pro Membership
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-white/70">
+                    One-time $50 express setup includes background and MVR
+                    screening. Starts at 60/40 payout split on day one with
+                    performance progression up to 80/20.
+                  </p>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="mx-auto w-full max-w-md">
                   {planOptions.map((option) => {
                     const isSelected = draft.plan === option.id;
 
                     return (
                       <button
                         className={cn(
-                          "rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition-colors",
-                          isSelected && "border-lime-300/70 bg-lime-300/10"
+                          "w-full rounded-3xl border border-lime-300/50 bg-slate-900/90 p-6 text-left shadow-xl transition-all duration-200 hover:border-lime-300",
+                          isSelected &&
+                            "border-2 border-lime-300 bg-lime-300/10 ring-2 ring-lime-300/30"
                         )}
                         key={option.id}
                         onClick={() => updateDraft("plan", option.id)}
                         type="button"
                       >
-                        <span className="flex items-start justify-between gap-3">
-                          <span>
-                            <span className="block text-lg font-bold text-white">
+                        <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+                          <div>
+                            <span className="block text-xl font-bold text-white">
                               {option.label}
                             </span>
-                            <span className="mt-1 block text-3xl font-black text-white">
+                            <span className="mt-1 block text-4xl font-black text-white">
                               {option.price}
                             </span>
+                          </div>
+                          <span className="flex size-8 items-center justify-center rounded-full border border-lime-300 bg-lime-300 text-slate-950">
+                            <Check
+                              aria-hidden="true"
+                              className="size-5 font-bold"
+                            />
                           </span>
-                          <span
-                            className={cn(
-                              "flex size-7 items-center justify-center rounded-full border border-white/20 text-slate-950",
-                              isSelected && "border-lime-300 bg-lime-300"
-                            )}
-                          >
-                            {isSelected ? (
-                              <Check aria-hidden="true" className="size-4" />
-                            ) : null}
+                        </div>
+                        <div className="mt-4">
+                          <span className="block text-xs font-semibold tracking-wider text-white/50 uppercase">
+                            Payout Split Progression
                           </span>
-                        </span>
-                        <span className="mt-4 block text-sm text-white/55">
-                          Starting split
-                        </span>
-                        <span className="mt-1 block text-2xl font-bold text-lime-200">
-                          {option.split}
-                        </span>
-                        <span className="mt-3 block text-sm leading-6 text-white/58">
+                          <span className="mt-1 block text-2xl font-extrabold text-lime-300">
+                            {option.split}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-white/70">
                           {option.description}
-                        </span>
+                        </p>
                       </button>
                     );
                   })}

@@ -307,7 +307,7 @@ const CustomerDashboard = ({ userEmail }: { userEmail: string }) => {
               status from your CastleCare crew.
             </p>
           </div>
-          <Link to="/dashboard/book">
+          <Link to="/dashboard/orders/new">
             <Button
               className="h-11 rounded-full bg-lime-300 px-5 font-bold text-slate-950 hover:bg-lime-200"
               type="button"
@@ -488,7 +488,7 @@ const CustomerDashboard = ({ userEmail }: { userEmail: string }) => {
                   Book your first CastleCare visit and the schedule, status, and
                   receipts will show up here.
                 </p>
-                <Link to="/dashboard/book">
+                <Link to="/dashboard/orders/new">
                   <Button
                     className="mt-5 rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
                     type="button"

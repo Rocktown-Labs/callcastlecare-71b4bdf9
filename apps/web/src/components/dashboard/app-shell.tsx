@@ -11,6 +11,7 @@ import {
   Settings,
   ShoppingBag,
   ShieldCheck,
+  Star,
   UsersRound,
   UserRound,
 } from "lucide-react";
@@ -43,9 +44,14 @@ const getNavigation = (variant: AppShellVariant, isAdmin: boolean) => {
       label: "Orders",
     },
     {
-      href: "/dashboard/book",
+      href: "/dashboard/orders/new",
       icon: CalendarPlus,
       label: "Book service",
+    },
+    {
+      href: "/dashboard/reviews",
+      icon: Star,
+      label: "Reviews",
     },
     {
       href: "/dashboard/help",

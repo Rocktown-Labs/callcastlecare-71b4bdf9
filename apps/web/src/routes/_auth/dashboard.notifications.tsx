@@ -114,7 +114,7 @@ const DashboardNotificationsRoute = () => {
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
               Book a service and the important status updates will appear here.
             </p>
-            <Link to="/dashboard/book">
+            <Link to="/dashboard/orders/new">
               <Button
                 className="mt-5 rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
                 type="button"
