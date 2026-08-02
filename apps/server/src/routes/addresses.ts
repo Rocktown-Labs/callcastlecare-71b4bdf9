@@ -230,4 +230,30 @@ export const addressesRoutes = new Hono<AppEnv>()
     }
 
     return c.json({ address: updated }, 200);
+  })
+  .delete("/:addressId", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
+    const addressId = parseAddressId(c.req.param("addressId"));
+    if (!addressId) {
+      return c.json({ error: "Invalid address id" }, 400);
+    }
+
+    const customer = await getOrCreateCustomerForUser(userResult.user);
+    const target = await db.query.addresses.findFirst({
+      where: and(
+        eq(addresses.id, addressId),
+        eq(addresses.customerId, customer.id)
+      ),
+    });
+
+    if (!target) {
+      return c.json({ error: "Address not found" }, 404);
+    }
+
+    await db.delete(addresses).where(eq(addresses.id, target.id));
+    return c.json({ success: true }, 200);
   });

@@ -4,11 +4,13 @@ import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { Textarea } from "@callcastlecare/ui/components/textarea";
 import { createFileRoute, useBlocker } from "@tanstack/react-router";
-import { Check, Home, Plus, Save, Settings } from "lucide-react";
+import { Check, Home, Plus, Save, Settings, Trash2 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { RadarAddressInput } from "@/components/home/radar-address-input";
+import type { RadarAddressSuggestion } from "@/components/home/use-radar-address-autocomplete";
 import { getServerUrl } from "@/lib/server-url";
 
 interface CustomerProfile {
@@ -34,6 +36,7 @@ interface CustomerAddress {
 
 const emptyAddressForm = {
   city: "",
+  formattedAddress: "",
   instructions: "",
   isDefault: true,
   label: "Home",
@@ -105,7 +108,9 @@ const DashboardSettingsRoute = () => {
       try {
         await loadSettings();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Settings failed");
+        toast.error(
+          error instanceof Error ? error.message : "Settings failed to load"
+        );
         setIsLoading(false);
       }
     };
@@ -117,11 +122,6 @@ const DashboardSettingsRoute = () => {
     };
   }, []);
 
-  const needsOnboarding = useMemo(
-    () => !profile?.phone || addresses.length === 0,
-    [addresses.length, profile?.phone]
-  );
-
   const updateProfileField = (
     field: keyof typeof profileForm,
     value: string
@@ -132,11 +132,36 @@ const DashboardSettingsRoute = () => {
 
   const updateAddressField = (
     field: keyof typeof addressForm,
-    value: boolean | string
+    value: string
   ) => {
     setAddressForm((current) => ({ ...current, [field]: value }));
     setIsDirty(true);
   };
+
+  const handleSelectRadarSuggestion = (suggestion: RadarAddressSuggestion) => {
+    const raw = suggestion.raw as Record<string, unknown> | undefined;
+    const addressStr = suggestion.label;
+
+    setAddressForm((current) => ({
+      ...current,
+      city: String(raw?.city ?? raw?.town ?? current.city ?? ""),
+      formattedAddress: addressStr,
+      state: String(raw?.stateCode ?? raw?.state ?? current.state ?? "AR"),
+      street: String(
+        raw?.addressLine1 ?? raw?.street ?? addressStr.split(",")[0] ?? ""
+      ),
+      zip: String(raw?.postalCode ?? current.zip ?? ""),
+    }));
+    setIsDirty(true);
+    toast.success("Address filled from suggestion");
+  };
+
+  const needsOnboarding = useMemo(() => {
+    if (!profile) {
+      return false;
+    }
+    return !profile.phone || addresses.length === 0;
+  }, [profile, addresses]);
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -213,12 +238,33 @@ const DashboardSettingsRoute = () => {
         isDefault: address.id === addressId,
       }))
     );
+    toast.success("Default address updated.");
+  };
+
+  const deleteAddress = async (addressId: number) => {
+    const response = await fetch(
+      new URL(`/api/v1/addresses/${addressId}`, getServerUrl()),
+      {
+        credentials: "include",
+        method: "DELETE",
+      }
+    );
+
+    if (!response.ok) {
+      toast.error("Address could not be deleted.");
+      return;
+    }
+
+    setAddresses((current) =>
+      current.filter((address) => address.id !== addressId)
+    );
+    toast.success("Address deleted.");
   };
 
   return (
     <main className="px-4 py-6 text-slate-950 sm:py-10">
       <div className="mx-auto grid max-w-5xl gap-6">
-        <section className="grid gap-3 border-slate-200 border-b bg-white px-1 pb-6">
+        <section className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
             <Settings className="size-4" />
             Customer settings
@@ -347,12 +393,13 @@ const DashboardSettingsRoute = () => {
                     />
                   </div>
                   <div className="grid gap-2 md:col-span-2">
-                    <Label htmlFor="street">Street</Label>
-                    <Input
-                      id="street"
-                      onChange={(event) =>
-                        updateAddressField("street", event.target.value)
-                      }
+                    <Label htmlFor="street">
+                      Street Address Search (Autocomplete)
+                    </Label>
+                    <RadarAddressInput
+                      onChange={(val) => updateAddressField("street", val)}
+                      onSelectSuggestion={handleSelectRadarSuggestion}
+                      tone="light"
                       value={addressForm.street}
                     />
                   </div>
@@ -438,17 +485,28 @@ const DashboardSettingsRoute = () => {
                           </p>
                         ) : null}
                       </div>
-                      {address.isDefault ? null : (
+                      <div className="flex flex-wrap gap-2">
+                        {address.isDefault ? null : (
+                          <Button
+                            className="rounded-full border-slate-200"
+                            onClick={() => void setDefaultAddress(address.id)}
+                            type="button"
+                            variant="outline"
+                          >
+                            <Check className="size-4" />
+                            Make default
+                          </Button>
+                        )}
                         <Button
-                          className="rounded-full border-slate-200"
-                          onClick={() => void setDefaultAddress(address.id)}
+                          className="rounded-full border-rose-200 text-rose-600 hover:bg-rose-50"
+                          onClick={() => void deleteAddress(address.id)}
                           type="button"
                           variant="outline"
                         >
-                          <Check className="size-4" />
-                          Make default
+                          <Trash2 className="size-4" />
+                          Delete
                         </Button>
-                      )}
+                      </div>
                     </div>
                   </article>
                 ))}
