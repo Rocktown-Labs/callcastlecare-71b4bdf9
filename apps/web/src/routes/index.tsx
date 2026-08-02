@@ -67,9 +67,9 @@ export const Route = createFileRoute("/")({
               "@id": `${siteUrl}/#service-catalog`,
               "@type": "OfferCatalog",
               itemListElement: [
-                "Lawn care",
+                "Lawn Care",
                 "Laundry pickup and wash and fold",
-                "Window washing",
+                "Window Washing",
               ].map((name) => ({
                 "@type": "Offer",
                 itemOffered: {

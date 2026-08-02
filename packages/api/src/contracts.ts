@@ -72,6 +72,10 @@ export interface CheckoutPreviewRequest {
   address?: string;
   addressId?: number;
   items: CheckoutPreviewItemInput[];
+  tipAmountCents?: number;
+  travelDistanceMiles?: number;
+  travelFeeCents?: number;
+  travelStateCode?: string;
 }
 
 export interface CheckoutPreviewLineItem {
@@ -90,7 +94,9 @@ export interface CheckoutPreviewResponse {
   addressId: number | null;
   lineItems: CheckoutPreviewLineItem[];
   subtotalCents: number;
+  tipAmountCents: number;
   totalCents: number;
+  travelFeeCents: number;
 }
 
 export interface CheckoutConfirmRequest extends CheckoutPreviewRequest {

@@ -1,7 +1,7 @@
 /* @jsxImportSource react */
 import { Section, Text } from "@react-email/components";
 
-import { formatCents } from "../theme";
+import { castleCareUrl, formatCents } from "../theme";
 import { EmailShell, InfoRow, PrimaryButton } from "./components";
 
 export interface BookingReceivedEmailProps {
@@ -17,14 +17,14 @@ export interface BookingReceivedEmailProps {
 
 export const BookingReceivedEmail = Object.assign(
   ({
-    address,
-    appointmentWindow,
-    customerName,
-    dashboardUrl,
-    depositCents,
-    paymentChoice,
-    services,
-    totalCents,
+    address = "Address pending",
+    appointmentWindow = "Appointment window pending",
+    customerName = "there",
+    dashboardUrl = castleCareUrl("/dashboard"),
+    depositCents = 0,
+    paymentChoice = "Payment choice pending",
+    services = [],
+    totalCents = 0,
   }: BookingReceivedEmailProps) => (
     <EmailShell
       preview="We received your CastleCare booking details and are preparing your service."
@@ -59,7 +59,7 @@ export const BookingReceivedEmail = Object.assign(
       address: "1200 Main Street, Little Rock, AR",
       appointmentWindow: "Friday, August 7, 10:00 AM-12:00 PM",
       customerName: "Jordan",
-      dashboardUrl: "https://callcastlecare.com/dashboard",
+      dashboardUrl: castleCareUrl("/dashboard/orders/1042"),
       depositCents: 5000,
       paymentChoice: "Deposit today, invoice later",
       services: ["Groundskeeper Lawncare", "Royal Pane Window Washing"],

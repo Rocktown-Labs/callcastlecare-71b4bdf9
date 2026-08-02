@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import type { MouseEventHandler, ReactNode } from "react";
 import { useMemo } from "react";
 
@@ -35,11 +35,26 @@ const AuthLink = ({
   </Link>
 );
 
+const getRedirectTo = (value: unknown) => {
+  if (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//")
+  ) {
+    return value;
+  }
+
+  return "/dashboard";
+};
+
 export default function Providers({
   children,
 }: Readonly<{ children: ReactNode }>) {
   const queryClient = useMemo(() => createWebQueryClient(), []);
+  const location = useLocation();
   const navigate = useNavigate();
+  const search = location.search as { redirectTo?: unknown };
+  const redirectTo = getRedirectTo(search.redirectTo);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -58,7 +73,7 @@ export default function Providers({
         navigate={({ replace, to }) => {
           void navigate({ replace, to });
         }}
-        redirectTo="/dashboard"
+        redirectTo={redirectTo}
         socialProviders={["google"]}
         viewPaths={{ auth: authViewPaths }}
       >

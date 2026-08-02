@@ -9,8 +9,12 @@ import { requestLogger, logger } from "./lib/logger";
 import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
+import { disputeRoutes } from "./routes/disputes";
+import { laundryBagRoutes } from "./routes/laundry-bags";
 import { locationRoutes } from "./routes/locations";
+import { marketRoutes } from "./routes/markets";
 import { meRoutes } from "./routes/me";
+import { mediaRoutes } from "./routes/media";
 import { notificationRoutes } from "./routes/notifications";
 import { orderRoutes } from "./routes/orders";
 import { supportRoutes } from "./routes/support";
@@ -129,12 +133,20 @@ export const apiRoutes = new Hono<AppEnv>()
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    return c.json({ session, user }, 200);
+    const isAdmin =
+      user.role === "admin" ||
+      user.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
+
+    return c.json({ isAdmin, session, user }, 200);
   })
   .route("/checkout", checkoutRoutes)
   .route("/me", meRoutes)
   .route("/addresses", addressesRoutes)
   .route("/locations", locationRoutes)
+  .route("/markets", marketRoutes)
+  .route("/laundry-bags", laundryBagRoutes)
+  .route("/disputes", disputeRoutes)
+  .route("/media", mediaRoutes)
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)
   .route("/support", supportRoutes)
@@ -142,6 +154,8 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/admin", adminRoutes);
 
 const routes = app
+  .route("/api/v1", apiRoutes)
+  .route("/v1", apiRoutes)
   .route("/api", apiRoutes)
   .route("/", apiRoutes)
   .get("/", (c) => c.text("OK"));

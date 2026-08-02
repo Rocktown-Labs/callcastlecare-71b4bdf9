@@ -7,8 +7,8 @@ import {
   supportRequestSchema,
 } from "./schemas";
 
-const scheduledStartAt = "2026-07-28T14:00:00.000Z";
-const scheduledEndAt = "2026-07-28T16:00:00.000Z";
+const scheduledStartAt = "2099-07-28T14:00:00.000Z";
+const scheduledEndAt = "2099-07-28T16:00:00.000Z";
 
 describe("checkout schemas", () => {
   it("accepts a scheduled two-hour window washing line item", () => {
@@ -40,6 +40,26 @@ describe("checkout schemas", () => {
       expect(result.error.issues[0]?.message).toBe(
         "Scheduled services must reserve exactly two hours."
       );
+    }
+  });
+
+  it("rejects scheduled service windows in the past", () => {
+    const result = checkoutPreviewItemSchema.safeParse({
+      itemKind: "lawncare",
+      planId: "groundskeeper-one-time",
+      scheduledEndAt: "2026-07-28T16:00:00.000Z",
+      scheduledStartAt: "2026-07-28T14:00:00.000Z",
+      timingType: "scheduled",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some(
+          (issue) =>
+            issue.message === "Scheduled services must start in the future."
+        )
+      ).toBe(true);
     }
   });
 

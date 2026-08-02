@@ -19,7 +19,7 @@
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "resend": "^6.9.3",
-    "stripe": "^20.4.0",
+    "stripe": "^22.3.0",
     "zod": "catalog:"
   },
   "devDependencies": {

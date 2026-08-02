@@ -1,4 +1,5 @@
 import type { ServiceStatusUpdateEmailProps } from "./templates/service-status-update";
+import { castleCareUrl } from "./theme";
 
 interface EventEmailDefinition {
   body: string;
@@ -72,5 +73,9 @@ export const getServiceStatusEmailProps = (input: {
   ...(input.customerName ? { customerName: input.customerName } : {}),
   ...(input.orderId ? { orderLabel: `Order #${input.orderId}` } : {}),
   statusLabel: input.statusLabel,
-  ...(input.statusUrl ? { statusUrl: input.statusUrl } : {}),
+  statusUrl:
+    input.statusUrl ??
+    (input.orderId
+      ? castleCareUrl(`/dashboard/orders/${input.orderId}`)
+      : undefined),
 });

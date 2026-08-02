@@ -67,19 +67,25 @@ export const orders = pgTable(
     stripePaymentIntentId: text("stripe_payment_intent_id"),
     timingType: timingTypeEnum("timing_type").notNull(),
     tipAmountCents: integer("tip_amount_cents").notNull().default(0),
+    tipSettledAt: timestamp("tip_settled_at", { withTimezone: true }),
     totalPriceCents: integer("total_price_cents").notNull(),
+    travelDistanceMiles: integer("travel_distance_miles"),
+    travelFeeCents: integer("travel_fee_cents").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
+    index("idx_orders_address_id").on(table.addressId),
     index("idx_orders_assigned_worker").on(table.assignedWorkerId),
     index("idx_orders_checkout_session_id").on(table.checkoutSessionId),
     index("idx_orders_created_at").on(table.createdAt),
     index("idx_orders_customer_id").on(table.customerId),
     index("idx_orders_next_wave_status").on(table.nextWaveAt, table.status),
+    index("idx_orders_quote_id").on(table.quoteId),
     index("idx_orders_service_type").on(table.serviceType),
     index("idx_orders_status_start").on(table.status, table.scheduledStartAt),
+    index("idx_orders_stripe_payment_intent").on(table.stripePaymentIntentId),
   ]
 );
 

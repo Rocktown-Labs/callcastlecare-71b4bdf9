@@ -8,16 +8,47 @@ export interface RadarAddressSuggestion {
   label: string;
   latitude: number | null;
   longitude: number | null;
+  market?: MarketHint | null;
+  property?: PropertyEstimate;
   raw: Record<string, unknown>;
+  stateCode?: string | null;
+  travel?: TravelEstimateClient | null;
 }
 
 const DEBOUNCE_MS = 300;
+const MIN_AUTOCOMPLETE_CHARACTERS = 5;
+
+export interface PropertyEstimate {
+  fallbackUsed: boolean;
+  homeSqft: number | null;
+  lotSizeSqft: number | null;
+  source?: "fallback" | "rentcast";
+  stories?: number | null;
+}
+
+export interface TravelEstimateClient {
+  distanceMiles: number;
+  driveMinutes: number;
+  feeCents: number;
+  feeKind: "free" | "in_state" | "out_of_state";
+  inState: boolean;
+  isLocal: boolean;
+  prefersSubscription: boolean;
+}
+
+export interface MarketHint {
+  label: string;
+  mode: "on_demand" | "paused" | "subscription_first";
+  stateCode: string;
+}
 
 const toStringOrNull = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : null;
 
 const toNumberOrNull = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const toBoolean = (value: unknown) => value === true;
 
 const getRawSuggestions = (payload: unknown) => {
   if (Array.isArray(payload)) {
@@ -42,11 +73,41 @@ const getRawSuggestions = (payload: unknown) => {
   return [];
 };
 
-const getSuggestionLabel = (candidate: Record<string, unknown>) =>
-  toStringOrNull(candidate.formattedAddress) ??
-  toStringOrNull(candidate.label) ??
-  toStringOrNull(candidate.address) ??
-  toStringOrNull(candidate.description);
+const getSuggestionLabel = (candidate: Record<string, unknown>) => {
+  const formatted =
+    toStringOrNull(candidate.formattedAddress) ??
+    toStringOrNull(candidate.fullAddress);
+  if (formatted && formatted.includes(",")) {
+    return formatted;
+  }
+
+  const street =
+    toStringOrNull(candidate.addressLabel) ??
+    [toStringOrNull(candidate.number), toStringOrNull(candidate.street)]
+      .filter(Boolean)
+      .join(" ");
+
+  const city = toStringOrNull(candidate.city);
+  const state =
+    toStringOrNull(candidate.stateCode) ?? toStringOrNull(candidate.state);
+  const zip =
+    toStringOrNull(candidate.postalCode) ?? toStringOrNull(candidate.zip);
+
+  const stateZip = [state, zip].filter(Boolean).join(" ");
+  const cityStateZip = [city, stateZip].filter(Boolean).join(", ");
+
+  if (street && cityStateZip) {
+    return `${street}, ${cityStateZip}`;
+  }
+
+  return (
+    formatted ??
+    toStringOrNull(candidate.addressLabel) ??
+    toStringOrNull(candidate.label) ??
+    toStringOrNull(candidate.address) ??
+    toStringOrNull(candidate.description)
+  );
+};
 
 const getSuggestionId = (candidate: Record<string, unknown>, index: number) =>
   `${toStringOrNull(candidate.placeId) ?? toStringOrNull(candidate.id) ?? "address"}-${index}`;
@@ -94,47 +155,141 @@ const fetchJson = async (url: URL, init?: RequestInit) => {
   return response.json() as Promise<unknown>;
 };
 
-export const validateAddress = async (address: string) => {
-  const url = new URL("/api/locations/addresses/validate", getServerUrl());
-  const payload = await fetchJson(url, {
-    body: JSON.stringify({ address }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
-
-  if (!payload || typeof payload !== "object") {
+const parseTravel = (raw: unknown): TravelEstimateClient | null => {
+  if (!raw || typeof raw !== "object") {
     return null;
   }
-
-  const response = payload as Record<string, unknown>;
-  const rawAddress = response.address;
-  if (!rawAddress || typeof rawAddress !== "object") {
-    return null;
-  }
-
-  const candidate = rawAddress as Record<string, unknown>;
-  const label = toStringOrNull(candidate.formattedAddress);
-  if (!label) {
-    return null;
-  }
-
+  const obj = raw as Record<string, unknown>;
   return {
-    id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
-    label,
-    latitude: toNumberOrNull(candidate.latitude),
-    longitude: toNumberOrNull(candidate.longitude),
-    raw: candidate,
+    distanceMiles: toNumberOrNull(obj.distanceMiles) ?? 0,
+    driveMinutes: toNumberOrNull(obj.driveMinutes) ?? 0,
+    feeCents: toNumberOrNull(obj.feeCents) ?? 0,
+    feeKind: (obj.feeKind as "free" | "in_state" | "out_of_state") ?? "free",
+    inState: toBoolean(obj.inState),
+    isLocal: toBoolean(obj.isLocal),
+    prefersSubscription: toBoolean(obj.prefersSubscription),
   };
+};
+
+const parseMarket = (raw: unknown): MarketHint | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    label: toStringOrNull(obj.label) ?? "Market",
+    mode:
+      (obj.mode as "on_demand" | "paused" | "subscription_first") ??
+      "subscription_first",
+    stateCode: toStringOrNull(obj.stateCode) ?? "",
+  };
+};
+
+const parseProperty = (raw: unknown): PropertyEstimate | undefined => {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    fallbackUsed: toBoolean(obj.fallbackUsed),
+    homeSqft: toNumberOrNull(obj.homeSqft),
+    lotSizeSqft: toNumberOrNull(obj.lotSizeSqft),
+    source: obj.source === "rentcast" ? "rentcast" : "fallback",
+    stories: toNumberOrNull(obj.stories),
+  };
+};
+
+const addressValidationCache = new Map<string, RadarAddressSuggestion>();
+const inFlightAddressValidations = new Map<
+  string,
+  Promise<RadarAddressSuggestion | null>
+>();
+
+const normalizeAddressKey = (address: string) =>
+  address.trim().toLowerCase().replaceAll(/\s+/gu, " ");
+
+export const getCachedValidatedAddress = (address: string) =>
+  addressValidationCache.get(normalizeAddressKey(address)) ?? null;
+
+export const validateAddress = (
+  address: string,
+  options: { includeProperty?: boolean } = {}
+): Promise<RadarAddressSuggestion | null> => {
+  const cacheKey = normalizeAddressKey(address);
+  const cached = addressValidationCache.get(cacheKey);
+
+  if (cached && (cached.property || options.includeProperty !== true)) {
+    return Promise.resolve(cached);
+  }
+
+  const inFlight = inFlightAddressValidations.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const promise = (async () => {
+    try {
+      const url = new URL(
+        "/api/v1/locations/addresses/validate",
+        getServerUrl()
+      );
+      const payload = await fetchJson(url, {
+        body: JSON.stringify({
+          address,
+          includeProperty: options.includeProperty === true,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!payload || typeof payload !== "object") {
+        return cached ?? null;
+      }
+
+      const response = payload as Record<string, unknown>;
+      const rawAddress = response.address;
+      if (!rawAddress || typeof rawAddress !== "object") {
+        return cached ?? null;
+      }
+
+      const candidate = rawAddress as Record<string, unknown>;
+      const label = toStringOrNull(candidate.formattedAddress);
+      if (!label) {
+        return cached ?? null;
+      }
+
+      const result: RadarAddressSuggestion = {
+        id: toStringOrNull(candidate.placeId) ?? `validated-${label}`,
+        label,
+        latitude: toNumberOrNull(candidate.latitude),
+        longitude: toNumberOrNull(candidate.longitude),
+        market: parseMarket(response.market),
+        property: parseProperty(response.property) ?? cached?.property,
+        raw: candidate,
+        stateCode: toStringOrNull(candidate.state),
+        travel: parseTravel(response.travel) ?? cached?.travel,
+      };
+
+      addressValidationCache.set(cacheKey, result);
+      addressValidationCache.set(normalizeAddressKey(label), result);
+      return result;
+    } finally {
+      inFlightAddressValidations.delete(cacheKey);
+    }
+  })();
+
+  inFlightAddressValidations.set(cacheKey, promise);
+  return promise;
 };
 
 export const reverseGeocodeAddress = async (
   latitude: number,
   longitude: number
-) => {
+): Promise<RadarAddressSuggestion> => {
   const url = new URL(
-    "/api/locations/addresses/reverse-geocode",
+    "/api/v1/locations/addresses/reverse-geocode",
     getServerUrl()
   );
   url.searchParams.set("latitude", String(latitude));
@@ -175,14 +330,15 @@ export const useRadarAddressAutocomplete = (query: string) => {
 
   useEffect(() => {
     const trimmed = debouncedQuery.trim();
-    if (trimmed.length < 3) {
+    if (trimmed.length < MIN_AUTOCOMPLETE_CHARACTERS) {
+      requestIdRef.current += 1;
       return;
     }
 
     const currentRequestId = requestIdRef.current + 1;
     requestIdRef.current = currentRequestId;
     const url = new URL(
-      "/api/locations/addresses/autocomplete",
+      "/api/v1/locations/addresses/autocomplete",
       getServerUrl()
     );
     url.searchParams.set("input", trimmed);
@@ -211,7 +367,11 @@ export const useRadarAddressAutocomplete = (query: string) => {
 
   return {
     isEnabled: true,
-    isLoading: isLoading && debouncedQuery.trim().length >= 3,
-    suggestions: debouncedQuery.trim().length >= 3 ? suggestions : [],
+    isLoading:
+      isLoading && debouncedQuery.trim().length >= MIN_AUTOCOMPLETE_CHARACTERS,
+    suggestions:
+      debouncedQuery.trim().length >= MIN_AUTOCOMPLETE_CHARACTERS
+        ? suggestions
+        : [],
   };
 };

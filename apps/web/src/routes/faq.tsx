@@ -16,7 +16,7 @@ const faqs = [
   },
   {
     answer:
-      "Lawn care and window washing use a $50 deposit to reserve the appointment, then the remaining balance can be invoiced, paid up front, or handled after service. Laundry-only bookings are designed to be paid up front.",
+      "Lawn Care and Window Washing use a $50 deposit to reserve the appointment, then the remaining balance can be invoiced, paid up front, or handled after service. Laundry-only bookings are designed to be paid up front.",
     question: "Why do some services require a deposit?",
   },
   {

@@ -1,6 +1,7 @@
 /* @jsxImportSource react */
 import { Section, Text } from "@react-email/components";
 
+import { castleCareUrl } from "../theme";
 import { EmailShell, InfoRow, PrimaryButton } from "./components";
 
 export interface AppointmentReminderEmailProps {
@@ -14,12 +15,12 @@ export interface AppointmentReminderEmailProps {
 
 export const AppointmentReminderEmail = Object.assign(
   ({
-    address,
-    appointmentWindow,
-    customerName,
-    manageUrl,
-    preparationNotes,
-    services,
+    address = "Address pending",
+    appointmentWindow = "your scheduled appointment window",
+    customerName = "there",
+    manageUrl = castleCareUrl("/dashboard"),
+    preparationNotes = [],
+    services = [],
   }: AppointmentReminderEmailProps) => (
     <EmailShell
       preview={`Reminder: your CastleCare appointment is ${appointmentWindow}.`}
@@ -59,7 +60,7 @@ export const AppointmentReminderEmail = Object.assign(
       address: "1200 Main Street, Little Rock, AR",
       appointmentWindow: "Tomorrow, 10:00 AM-12:00 PM",
       customerName: "Jordan",
-      manageUrl: "https://callcastlecare.com/dashboard",
+      manageUrl: castleCareUrl("/dashboard/orders/1042"),
       preparationNotes: [
         "Make sure gates are unlocked and pets are secure.",
         "Leave laundry bags in the pickup spot you selected.",

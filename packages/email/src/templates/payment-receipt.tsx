@@ -1,7 +1,7 @@
 /* @jsxImportSource react */
 import { Section, Text } from "@react-email/components";
 
-import { formatCents } from "../theme";
+import { castleCareUrl, formatCents } from "../theme";
 import { EmailShell, InfoRow, PrimaryButton } from "./components";
 
 export interface PaymentReceiptEmailProps {
@@ -17,14 +17,14 @@ export interface PaymentReceiptEmailProps {
 
 export const PaymentReceiptEmail = Object.assign(
   ({
-    amountPaidCents,
-    customerName,
-    dashboardUrl,
-    paymentChoice,
-    receiptLabel,
-    remainingBalanceCents,
-    services,
-    totalCents,
+    amountPaidCents = 0,
+    customerName = "there",
+    dashboardUrl = castleCareUrl("/dashboard"),
+    paymentChoice = "Payment received",
+    receiptLabel = "CastleCare payment",
+    remainingBalanceCents = 0,
+    services = [],
+    totalCents = 0,
   }: PaymentReceiptEmailProps) => (
     <EmailShell
       preview={`We received ${formatCents(amountPaidCents)} for your CastleCare booking.`}
@@ -60,7 +60,7 @@ export const PaymentReceiptEmail = Object.assign(
     PreviewProps: {
       amountPaidCents: 5000,
       customerName: "Jordan",
-      dashboardUrl: "https://callcastlecare.com/dashboard",
+      dashboardUrl: castleCareUrl("/dashboard/orders/1042"),
       paymentChoice: "Deposit today, invoice later",
       receiptLabel: "CastleCare deposit",
       remainingBalanceCents: 13_500,

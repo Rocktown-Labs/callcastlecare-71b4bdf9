@@ -1,5 +1,6 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { Link } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { ArrowRight, Box, Grid2x2, Scissors } from "lucide-react";
 
 const services = [
@@ -21,7 +22,7 @@ const services = [
     id: "lawncare",
     image: "/callcastlecare/media/lawn-care-rider-night.png",
     requirements: ["Vehicle", "Push or ride-on mower", "Edger or trimmer"],
-    title: "Lawn care professional",
+    title: "Lawn Care professional",
   },
   {
     color: "text-cyan-300",
@@ -29,9 +30,9 @@ const services = [
       "Clean exterior glass, inside-and-out upgrades, and screens with clear photo documentation.",
     icon: Grid2x2,
     id: "window-washing",
-    image: "/callcastlecare/media/premium-home-services-poster.png",
+    image: "/callcastlecare/media/window-washing-hero.png",
     requirements: ["Reliable vehicle", "Window tools", "Ladder safety"],
-    title: "Window washing professional",
+    title: "Window Washing professional",
   },
 ] as const;
 
@@ -65,8 +66,9 @@ export default function EarnServices() {
                 key={id}
               >
                 <div className="relative aspect-[4/3] border-b border-white/10 bg-slate-950">
-                  <img
+                  <Image
                     alt={`${title} opportunity`}
+                    aspectRatio={4 / 3}
                     className="absolute inset-0 size-full object-cover"
                     src={image}
                   />

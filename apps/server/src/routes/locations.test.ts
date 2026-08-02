@@ -1,3 +1,4 @@
+import { getScheduledWindowForSlot } from "@callcastlecare/api";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +7,7 @@ import { locationRoutes } from "./locations";
 
 const autocompleteRadarAddresses = vi.hoisted(() => vi.fn());
 const findManyOrders = vi.hoisted(() => vi.fn());
-const lookupPropertyWithZillow = vi.hoisted(() => vi.fn());
+const lookupPropertyWithRentCast = vi.hoisted(() => vi.fn());
 const reverseGeocodeWithRadar = vi.hoisted(() => vi.fn());
 const validateRadarAddress = vi.hoisted(() => vi.fn());
 
@@ -18,7 +19,15 @@ vi.mock("@callcastlecare/db", () => ({
         findMany: findManyOrders,
       },
     },
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    }),
   },
+  eq: vi.fn(),
   gte: vi.fn(),
   inArray: vi.fn(),
   lt: vi.fn(),
@@ -37,8 +46,8 @@ vi.mock("../lib/integrations/radar", () => ({
   validateRadarAddress,
 }));
 
-vi.mock("../lib/integrations/zillow", () => ({
-  lookupPropertyWithZillow,
+vi.mock("../lib/integrations/rentcast", () => ({
+  lookupPropertyWithRentCast,
 }));
 
 const app = new Hono<AppEnv>().route("/locations", locationRoutes);
@@ -83,7 +92,7 @@ describe("location routes", () => {
     expect(autocompleteRadarAddresses).toHaveBeenCalledWith("123 Main");
   });
 
-  it("validates an address and returns property enrichment", async () => {
+  it("validates an address without property enrichment by default", async () => {
     validateRadarAddress.mockResolvedValue({
       city: "Little Rock",
       country: "US",
@@ -100,7 +109,43 @@ describe("location routes", () => {
       },
       zip: "72201",
     });
-    lookupPropertyWithZillow.mockResolvedValue({
+
+    const response = await app.request("/locations/addresses/validate", {
+      body: JSON.stringify({ address: "123 Main St, Little Rock, AR" }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      address: {
+        formattedAddress: "123 Main St, Little Rock, AR 72201, USA",
+      },
+      property: null,
+    });
+    expect(lookupPropertyWithRentCast).not.toHaveBeenCalled();
+  });
+
+  it("validates an address and returns requested property enrichment", async () => {
+    validateRadarAddress.mockResolvedValue({
+      city: "Little Rock",
+      country: "US",
+      formattedAddress: "123 Main St, Little Rock, AR 72201, USA",
+      latitude: 34.7465,
+      longitude: -92.2896,
+      placeId: "place-123",
+      raw: {},
+      state: "AR",
+      street: "123 Main St",
+      verdict: {
+        hasUnconfirmedComponents: false,
+        isComplete: true,
+      },
+      zip: "72201",
+    });
+    lookupPropertyWithRentCast.mockResolvedValue({
       fallbackUsed: false,
       homeSqft: 2200,
       lotSizeSqft: 11_000,
@@ -108,7 +153,10 @@ describe("location routes", () => {
     });
 
     const response = await app.request("/locations/addresses/validate", {
-      body: JSON.stringify({ address: "123 Main St, Little Rock, AR" }),
+      body: JSON.stringify({
+        address: "123 Main St, Little Rock, AR",
+        includeProperty: true,
+      }),
       headers: {
         "Content-Type": "application/json",
       },
@@ -138,7 +186,7 @@ describe("location routes", () => {
 
     expect(response.status).toBe(400);
     expect(validateRadarAddress).not.toHaveBeenCalled();
-    expect(lookupPropertyWithZillow).not.toHaveBeenCalled();
+    expect(lookupPropertyWithRentCast).not.toHaveBeenCalled();
   });
 
   it("reverse geocodes a current location coordinate pair", async () => {
@@ -172,10 +220,27 @@ describe("location routes", () => {
     expect(reverseGeocodeWithRadar).toHaveBeenCalledWith(35.2506, -91.7362);
   });
 
+  it("returns a controlled error when current location cannot be reverse geocoded", async () => {
+    reverseGeocodeWithRadar.mockRejectedValue(new TypeError("fetch failed"));
+
+    const response = await app.request(
+      "/locations/addresses/reverse-geocode?latitude=35.2506&longitude=-91.7362"
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "Current location could not be resolved",
+    });
+  });
+
   it("removes booked launch slots from availability", async () => {
+    const scheduledWindow = getScheduledWindowForSlot(
+      "2026-07-28",
+      "10:00 AM - 12:00 PM"
+    );
     findManyOrders.mockResolvedValue([
       {
-        scheduledStartAt: new Date("2026-07-28T10:00:00.000Z"),
+        scheduledStartAt: new Date(scheduledWindow.scheduledStartAt),
       },
     ]);
 
@@ -193,7 +258,9 @@ describe("location routes", () => {
         "4:00 PM - 6:00 PM",
       ],
       bookedSlots: ["10:00 AM - 12:00 PM"],
+      driveMinutes: 0,
       nextAvailableSlot: "6:00 AM - 8:00 AM",
+      travel: null,
     });
   });
 });

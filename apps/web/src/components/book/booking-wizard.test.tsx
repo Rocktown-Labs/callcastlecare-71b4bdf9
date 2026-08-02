@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +40,45 @@ const clickLastText = (text: string) => {
     throw new Error(`${text} was not rendered.`);
   }
   fireEvent.click(element);
+};
+
+const seedBookingProperty = (lotSizeSqft: number) => {
+  window.localStorage.setItem(
+    "callcastlecare.booking-draft.v1",
+    JSON.stringify({
+      address: "123 Main St, Little Rock, AR",
+      contact: {
+        email: "",
+        name: "",
+        phone: "",
+        smsUpdates: false,
+      },
+      date: "2026-08-04",
+      paymentOption: "",
+      products: {},
+      property: {
+        fallbackUsed: false,
+        homeSqft: 2000,
+        lotSizeSqft,
+      },
+      serviceDetails: {
+        laundry: { bedding: "", photoNames: [] },
+        lawncare: { grassHeight: "", photoNames: [] },
+        "window-washing": {
+          cleaningScope: "",
+          finalizeOnSite: false,
+          photoNames: [],
+          screenCount: "",
+          stories: "",
+          washScreens: false,
+          windowEstimate: "",
+        },
+      },
+      services: ["lawncare", "laundry", "window-washing"],
+      subscriptionId: "",
+      timeSlot: "10:00 AM - 12:00 PM",
+    })
+  );
 };
 
 describe("BookingWizard", () => {
@@ -89,6 +129,9 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /no bedding/iu }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /outside \(contactless\)/iu })
+    );
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
@@ -119,7 +162,7 @@ describe("BookingWizard", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          pathname: "/api/checkout/quote-request",
+          pathname: "/api/v1/checkout/quote-request",
         }),
         expect.objectContaining({
           method: "PUT",
@@ -187,13 +230,108 @@ describe("BookingWizard", () => {
     ).toBe("(501)-827-1551");
   });
 
-  it("keeps combo savings in sync with the selected one-time products", async () => {
+  it("shows the weekly plan and a bedding upgrade CTA when bedding is declined", async () => {
     mockFetch();
 
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
         initialDate="2026-08-04"
+        initialServices={["laundry"]}
+      />
+    );
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), {
+      target: { value: "Taylor Customer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "5015550123" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "customer@example.com" },
+    });
+    clickFirstContinue();
+
+    expect(await screen.findByText("Service details")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /no bedding/iu }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /outside \(contactless\)/iu })
+    );
+    clickFirstContinue();
+
+    expect(await screen.findByText("Choose products")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
+    expect(screen.getAllByText("$200.00").length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /add bedding for \$20\.00 more/iu })
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /royal wash \+ bedding/iu })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /add bedding for/iu })
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
+  });
+
+  it("offers the $50 quote deposit for an on-site visit without property data", async () => {
+    mockFetch();
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-08-04"
+        initialServices={["lawncare"]}
+      />
+    );
+
+    clickFirstContinue();
+
+    expect(await screen.findByText("Contact information")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), {
+      target: { value: "Taylor Customer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("(501) 555-0123"), {
+      target: { value: "5015550123" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "customer@example.com" },
+    });
+    clickFirstContinue();
+
+    expect(await screen.findByText("Service details")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /low/iu }));
+    fireEvent.click(screen.getByRole("button", { name: /no pets/iu }));
+    clickFirstContinue();
+
+    expect(await screen.findByText("Choose products")).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /groundskeeper custom quote deposit/iu,
+      })
+    ).toBeTruthy();
+    expect(screen.getAllByText("$50.00").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper small lot/iu })
+    ).toBeNull();
+  });
+
+  it("filters product choices and explains monthly trio service units", async () => {
+    mockFetch();
+    seedBookingProperty(25_000);
+
+    render(
+      <BookingWizard
+        initialAddress="123 Main St, Little Rock, AR"
+        initialDate="2026-08-04"
+        initialResumeDraft
         initialServices={["lawncare", "laundry", "window-washing"]}
       />
     );
@@ -214,7 +352,11 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Service details")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /low/iu }));
+    fireEvent.click(screen.getByRole("button", { name: /no pets/iu }));
     clickLastText("Include bedding");
+    fireEvent.click(
+      screen.getByRole("button", { name: /outside \(contactless\)/iu })
+    );
     fireEvent.click(screen.getByRole("button", { name: /inside and out/iu }));
     fireEvent.click(screen.getByRole("button", { name: /^1$/u }));
     fireEvent.change(screen.getByPlaceholderText("Around 20"), {
@@ -224,24 +366,38 @@ describe("BookingWizard", () => {
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
     fireEvent.click(
-      screen.getByRole("button", { name: /groundskeeper small lot/iu })
+      screen.getByRole("button", { name: /groundskeeper medium lot/iu })
     );
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper small lot/iu })
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: /royal wash \+ bedding/iu })
     );
+    expect(
+      screen.queryByText("Wash and fold pickup for standard weekly laundry.")
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: /royal pane detail/iu })
     );
+    expect(
+      screen.queryByRole("button", { name: /royal pane shine/iu })
+    ).toBeNull();
 
     expect(await screen.findByText("Subscription options")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: /crown estate trio/iu })
-    );
+    const trioButton = screen
+      .getAllByRole("button", { name: /crown estate trio/iu })
+      .find((btn) => !btn.textContent?.includes("Deluxe"));
+    if (!trioButton) {
+      throw new Error("Crown Estate Trio button not found.");
+    }
+    fireEvent.click(trioButton);
     clickFirstContinue();
 
     expect(await screen.findByText("Review and reserve")).toBeTruthy();
-    expect(screen.getByText("One-time service estimate")).toBeTruthy();
-    expect(screen.getAllByText("$335.00").length).toBeGreaterThan(0);
-    expect(screen.getByText("-$35.00")).toBeTruthy();
+    expect(screen.getAllByText("$525.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("2x Wash & Fold")).toBeTruthy();
+    expect(screen.getByText("1x Window Wash")).toBeTruthy();
+    expect(screen.queryByText("Estimated plan savings")).toBeNull();
   });
 });
