@@ -103,19 +103,11 @@ const availabilityDays = [
 const planOptions = [
   {
     description:
-      "Join the provider queue, track your review status, and continue setup from the dashboard.",
-    id: "free",
-    label: "Standard Provider",
-    price: "Free",
-    split: "60 / 40",
-  },
-  {
-    description:
-      "One-time provider setup upgrade for priority review, Pro status, and a stronger starting split.",
+      "Express same-day background and MVR screening with priority route access. Starts at 60/40 payout split on day one, unlocking 70/30 (Gold) and 80/20 (Elite) as you complete jobs and maintain 5-star reviews.",
     id: "pro",
-    label: "CastleCare Pro",
+    label: "CastleCare Pro Express Onboarding",
     price: "$50",
-    split: "70 / 30",
+    split: "60 / 40 ➔ 80 / 20",
   },
 ] as const;
 
@@ -174,7 +166,7 @@ const initialDraft: ProviderApplicationDraft = {
   licensePlate: "",
   password: "",
   phone: "",
-  plan: "free",
+  plan: "pro",
   serviceNotes: "",
   serviceRadiusMiles: "20",
   services: [],

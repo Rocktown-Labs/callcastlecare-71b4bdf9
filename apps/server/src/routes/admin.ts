@@ -401,14 +401,16 @@ export const adminRoutes = new Hono<AppEnv>()
           limit: 100,
           orderBy: desc(orders.createdAt),
         }),
-        db.query.supportRequests.findMany({
-          columns: {
-            id: true,
-            status: true,
-          },
-          limit: 100,
-          orderBy: desc(supportRequests.createdAt),
-        }),
+        db.query.supportRequests
+          .findMany({
+            columns: {
+              id: true,
+              status: true,
+            },
+            limit: 100,
+            orderBy: desc(supportRequests.createdAt),
+          })
+          .catch(() => []),
         db.query.workers.findMany({
           columns: {
             id: true,
@@ -636,10 +638,12 @@ export const adminRoutes = new Hono<AppEnv>()
       return adminError;
     }
 
-    const requests = await db.query.supportRequests.findMany({
-      limit: 50,
-      orderBy: desc(supportRequests.createdAt),
-    });
+    const requests = await db.query.supportRequests
+      .findMany({
+        limit: 50,
+        orderBy: desc(supportRequests.createdAt),
+      })
+      .catch(() => []);
 
     return c.json({ requests }, 200);
   })

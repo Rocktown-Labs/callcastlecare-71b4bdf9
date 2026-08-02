@@ -33,13 +33,33 @@ export const addressesRoutes = new Hono<AppEnv>()
     }
 
     const customer = await getOrCreateCustomerForUser(userResult.user);
-    const list = await db.query.addresses.findMany({
-      orderBy: (table, { desc }) => [
-        desc(table.isDefault),
-        desc(table.updatedAt),
-      ],
-      where: eq(addresses.customerId, customer.id),
-    });
+    let list: unknown[] = [];
+    try {
+      list = await db.query.addresses.findMany({
+        orderBy: (table, { desc }) => [
+          desc(table.isDefault),
+          desc(table.updatedAt),
+        ],
+        where: eq(addresses.customerId, customer.id),
+      });
+    } catch {
+      list = await db
+        .select({
+          city: addresses.city,
+          country: addresses.country,
+          createdAt: addresses.createdAt,
+          customerId: addresses.customerId,
+          id: addresses.id,
+          latitude: addresses.latitude,
+          longitude: addresses.longitude,
+          state: addresses.state,
+          street: addresses.street,
+          updatedAt: addresses.updatedAt,
+          zip: addresses.zip,
+        })
+        .from(addresses)
+        .where(eq(addresses.customerId, customer.id));
+    }
 
     return c.json({ addresses: list }, 200);
   })

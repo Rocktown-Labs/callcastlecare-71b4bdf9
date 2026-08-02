@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import EarnBenefits from "@/components/earn/earn-benefits";
 import EarnCoverage from "@/components/earn/earn-coverage";
 import EarnHero from "@/components/earn/earn-hero";
+import EarnHowItWorks from "@/components/earn/earn-how-it-works";
 import EarnOnboarding from "@/components/earn/earn-onboarding";
 import EarnServices from "@/components/earn/earn-services";
 import EarnTiers from "@/components/earn/earn-tiers";
@@ -18,6 +19,7 @@ const earnImage = `${siteUrl}/callcastlecare/media/earn-og.png`;
 const EarnRoute = () => (
   <MarketingLayout>
     <EarnHero />
+    <EarnHowItWorks />
     <EarnBenefits />
     <EarnServices />
     <EarnCoverage />
