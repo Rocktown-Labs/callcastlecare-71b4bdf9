@@ -3,11 +3,15 @@ import { cn } from "@callcastlecare/ui/lib/utils";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   CalendarPlus,
+  Bell,
   Headphones,
   LayoutDashboard,
   LogOut,
   ReceiptText,
+  Settings,
+  ShoppingBag,
   ShieldCheck,
+  UsersRound,
   UserRound,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -48,6 +52,16 @@ const getNavigation = (variant: AppShellVariant, isAdmin: boolean) => {
       icon: Headphones,
       label: "Help",
     },
+    {
+      href: "/dashboard/notifications",
+      icon: Bell,
+      label: "Notifications",
+    },
+    {
+      href: "/dashboard/settings",
+      icon: Settings,
+      label: "Settings",
+    },
   ];
 
   if (variant === "customer") {
@@ -68,11 +82,37 @@ const getNavigation = (variant: AppShellVariant, isAdmin: boolean) => {
       href: "/admin",
       icon: LayoutDashboard,
       label: "Operations",
+      matchExact: true,
     },
     {
-      href: "/admin",
+      href: "/admin/orders",
       icon: ReceiptText,
+      label: "Orders",
+    },
+    {
+      href: "/admin/catalog",
+      icon: ShoppingBag,
       label: "Catalog",
+    },
+    {
+      href: "/admin/support",
+      icon: Headphones,
+      label: "Support",
+    },
+    {
+      href: "/admin/staff",
+      icon: UsersRound,
+      label: "Staff",
+    },
+    {
+      href: "/admin/notifications",
+      icon: Bell,
+      label: "Notifications",
+    },
+    {
+      href: "/admin/settings",
+      icon: Settings,
+      label: "Settings",
     },
     {
       href: "/dashboard",
@@ -92,7 +132,7 @@ const isNavigationItemActive = (
   }
 
   if (href === "/dashboard") {
-    return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+    return pathname === "/dashboard";
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -106,6 +146,7 @@ export const AppShell = ({
 }: AppShellProps) => {
   const navigate = useNavigate();
   const [resolvedIsAdmin, setResolvedIsAdmin] = useState(isAdmin);
+  const [routeBadges, setRouteBadges] = useState<Record<string, number>>({});
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -138,6 +179,53 @@ export const AppShell = ({
     };
   }, [isAdmin, variant]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadBadges = async () => {
+      const endpoint =
+        variant === "admin"
+          ? "/api/v1/admin/summary"
+          : "/api/v1/notifications/summary";
+      const response = await fetch(new URL(endpoint, getServerUrl()), {
+        credentials: "include",
+      });
+      if (!(active && response.ok)) {
+        return;
+      }
+
+      const payload = (await response.json().catch(() => null)) as {
+        activeOrders?: number;
+        openSupport?: number;
+        pendingWorkers?: number;
+        unreadNotifications?: number;
+      } | null;
+
+      if (!payload) {
+        return;
+      }
+
+      setRouteBadges(
+        variant === "admin"
+          ? {
+              "/admin/notifications": payload.unreadNotifications ?? 0,
+              "/admin/orders": payload.activeOrders ?? 0,
+              "/admin/staff": payload.pendingWorkers ?? 0,
+              "/admin/support": payload.openSupport ?? 0,
+            }
+          : {
+              "/dashboard/notifications": payload.unreadNotifications ?? 0,
+            }
+      );
+    };
+
+    void loadBadges();
+
+    return () => {
+      active = false;
+    };
+  }, [variant]);
+
   const signOut = async () => {
     await authClient.signOut();
     await navigate({ to: "/sign-in" });
@@ -167,6 +255,7 @@ export const AppShell = ({
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navigation.map(({ href, icon: Icon, label, matchExact }) => {
             const isActive = isNavigationItemActive(pathname, href, matchExact);
+            const badgeCount = routeBadges[href] ?? 0;
 
             return (
               <Link
@@ -180,7 +269,12 @@ export const AppShell = ({
                 to={href}
               >
                 <Icon className="size-4" />
-                {label}
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {badgeCount > 0 ? (
+                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[11px] leading-5 text-white">
+                    {badgeCount > 99 ? "99+" : badgeCount}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

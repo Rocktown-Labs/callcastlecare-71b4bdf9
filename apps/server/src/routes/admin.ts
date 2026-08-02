@@ -12,10 +12,12 @@ import {
   orderMediaLinks,
   orders,
   orderStatusHistory,
+  notifications,
   stripeCatalogItems,
   stripeCoupons,
   stripeSyncRuns,
   supportRequests,
+  workers,
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import type { Context } from "hono";
@@ -96,6 +98,16 @@ const normalizeCouponRow = (row: typeof stripeCoupons.$inferSelect) => ({
   percentOff: row.percentOff,
   stripeCouponId: row.stripeCouponId,
 });
+
+const activeOrderStatuses = [
+  "pending_payment",
+  "paid",
+  "dispatching",
+  "assigned",
+  "en_route",
+  "arrived",
+  "in_progress",
+] as const;
 
 const serviceLabels = {
   laundry: "Laundry",
@@ -373,6 +385,68 @@ const seedCatalogIfEmpty = async () => {
 };
 
 export const adminRoutes = new Hono<AppEnv>()
+  .get("/summary", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const [orderRows, supportRows, workerRows, notificationRows] =
+      await Promise.all([
+        db.query.orders.findMany({
+          columns: {
+            id: true,
+            status: true,
+          },
+          limit: 100,
+          orderBy: desc(orders.createdAt),
+        }),
+        db.query.supportRequests.findMany({
+          columns: {
+            id: true,
+            status: true,
+          },
+          limit: 100,
+          orderBy: desc(supportRequests.createdAt),
+        }),
+        db.query.workers.findMany({
+          columns: {
+            id: true,
+            onboardingStatus: true,
+          },
+          limit: 100,
+          orderBy: desc(workers.createdAt),
+        }),
+        db.query.notifications.findMany({
+          columns: {
+            id: true,
+            readAt: true,
+          },
+          limit: 100,
+          orderBy: desc(notifications.createdAt),
+        }),
+      ]);
+
+    return c.json(
+      {
+        activeOrders: orderRows.filter((order) =>
+          activeOrderStatuses.includes(
+            order.status as (typeof activeOrderStatuses)[number]
+          )
+        ).length,
+        openSupport: supportRows.filter(
+          (request) => request.status !== "closed"
+        ).length,
+        pendingWorkers: workerRows.filter(
+          (worker) => worker.onboardingStatus === "pending"
+        ).length,
+        unreadNotifications: notificationRows.filter(
+          (notification) => !notification.readAt
+        ).length,
+      },
+      200
+    );
+  })
   .get("/orders", async (c) => {
     const adminError = requireAdmin(c);
     if (adminError) {
@@ -409,6 +483,19 @@ export const adminRoutes = new Hono<AppEnv>()
       },
       200
     );
+  })
+  .get("/workers", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const list = await db.query.workers.findMany({
+      limit: 100,
+      orderBy: desc(workers.createdAt),
+    });
+
+    return c.json({ workers: list }, 200);
   })
   .get("/orders/:orderId", async (c) => {
     const adminError = requireAdmin(c);

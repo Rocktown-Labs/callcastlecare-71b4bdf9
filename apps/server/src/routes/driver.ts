@@ -19,7 +19,10 @@ import { setOrderStatus } from "../lib/orders";
 import { publishOutboxEvent } from "../lib/outbox";
 import { createCompletionPayoutRecords } from "../lib/payouts";
 import type { AppEnv } from "../types";
-import { driverLocationHeartbeatSchema } from "./schemas";
+import {
+  driverLocationHeartbeatSchema,
+  providerProfileRequestSchema,
+} from "./schemas";
 
 const parsePositiveId = (value: string) => {
   const parsed = Number(value);
@@ -33,6 +36,7 @@ class DriverRouteError extends Error {
 
   constructor(message: string, statusCode: 404 | 409) {
     super(message);
+    this.name = "DriverRouteError";
     this.statusCode = statusCode;
   }
 }
@@ -175,6 +179,54 @@ const withDriverOrder = async (input: {
 };
 
 export const driverRoutes = new Hono<AppEnv>()
+  .post("/profile", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
+    const body = await c.req.json();
+    const parsed = providerProfileRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const payload = parsed.data;
+    const rows = await db
+      .insert(workers)
+      .values({
+        applicationFormData: payload.applicationFormData ?? null,
+        email: payload.email.trim().toLowerCase(),
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        phone: payload.phone,
+        serviceRadiusMiles: payload.serviceRadiusMiles,
+        servicesOffered: payload.servicesOffered,
+        updatedAt: new Date(),
+        userId: userResult.user.id,
+      })
+      .onConflictDoUpdate({
+        set: {
+          applicationFormData: payload.applicationFormData ?? null,
+          email: payload.email.trim().toLowerCase(),
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          phone: payload.phone,
+          serviceRadiusMiles: payload.serviceRadiusMiles,
+          servicesOffered: payload.servicesOffered,
+          updatedAt: new Date(),
+        },
+        target: workers.userId,
+      })
+      .returning();
+
+    const [worker] = rows;
+    if (!worker) {
+      return c.json({ error: "Failed to save provider profile" }, 500);
+    }
+
+    return c.json({ worker }, 200);
+  })
   .post("/location", async (c) => {
     const workerResult = await requireWorker(c);
     if (workerResult.error) {

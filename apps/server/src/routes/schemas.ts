@@ -199,6 +199,18 @@ export const driverLocationHeartbeatSchema = z.object({
   speedMps: z.number().finite().optional().nullable(),
 });
 
+export const providerProfileRequestSchema = z.object({
+  applicationFormData: z.record(z.string(), z.unknown()).optional(),
+  email: z.email(),
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  phone: phoneSchema,
+  serviceRadiusMiles: z.number().int().positive().max(100).default(20),
+  servicesOffered: z
+    .array(z.enum(["lawncare", "laundry", "window-washing"]))
+    .min(1),
+});
+
 export const homeQuoteRequestSchema = z.object({
   address: z.string().min(5),
 });

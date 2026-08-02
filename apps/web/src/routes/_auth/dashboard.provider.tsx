@@ -10,7 +10,11 @@ import {
   MapPin,
   ShieldCheck,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
+
+import { getServerUrl } from "@/lib/server-url";
 
 const storageKey = "callcastlecare.provider-application.v1";
 
@@ -41,6 +45,8 @@ interface StoredProviderApplication {
   firstName?: string;
   lastName?: string;
   plan?: "free" | "pro";
+  phone?: string;
+  serviceRadiusMiles?: string;
   services?: string[];
   state?: string;
   streetAddress?: string;
@@ -68,7 +74,48 @@ const getStoredApplication = () => {
 // eslint-disable-next-line complexity
 const ProviderStatusRoute = () => {
   const { plan } = useSearch({ from: "/_auth/dashboard/provider" });
-  const application = getStoredApplication();
+  const application = useMemo(() => getStoredApplication(), []);
+  const [isProfileSaved, setIsProfileSaved] = useState(false);
+
+  useEffect(() => {
+    if (
+      !(application?.email && application.firstName && application.lastName)
+    ) {
+      return;
+    }
+
+    const saveProviderProfile = async () => {
+      const parsedRadius = Number(application.serviceRadiusMiles ?? 20);
+      const response = await fetch(
+        new URL("/api/v1/driver/profile", getServerUrl()),
+        {
+          body: JSON.stringify({
+            applicationFormData: application,
+            email: application.email,
+            firstName: application.firstName,
+            lastName: application.lastName,
+            phone: application.phone ?? "",
+            serviceRadiusMiles: Number.isFinite(parsedRadius)
+              ? parsedRadius
+              : 20,
+            servicesOffered: application.services ?? [],
+          }),
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        toast.error("Provider profile could not be saved for admin review.");
+        return;
+      }
+
+      setIsProfileSaved(true);
+    };
+
+    void saveProviderProfile();
+  }, [application]);
 
   const selectedPlan = application?.plan ?? plan;
   const applicantName =
@@ -136,7 +183,10 @@ const ProviderStatusRoute = () => {
 
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               {[
-                { label: "Application", value: "Received" },
+                {
+                  label: "Application",
+                  value: isProfileSaved ? "Saved" : "Received",
+                },
                 { label: "Dispatch access", value: "Pending" },
                 { label: "Payments", value: "Not started" },
               ].map((item) => (

@@ -10,6 +10,7 @@ import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
 import { disputeRoutes } from "./routes/disputes";
+import { driverRoutes } from "./routes/driver";
 import { laundryBagRoutes } from "./routes/laundry-bags";
 import { locationRoutes } from "./routes/locations";
 import { marketRoutes } from "./routes/markets";
@@ -146,6 +147,7 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/markets", marketRoutes)
   .route("/laundry-bags", laundryBagRoutes)
   .route("/disputes", disputeRoutes)
+  .route("/driver", driverRoutes)
   .route("/media", mediaRoutes)
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)

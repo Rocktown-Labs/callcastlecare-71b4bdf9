@@ -126,8 +126,22 @@ const DashboardOrdersRoute = () => {
             </div>
           ) : null}
           {!isLoading && orders.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-              No service history yet.
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center">
+              <ReceiptText className="mx-auto size-8 text-lime-600" />
+              <h2 className="mt-3 text-xl font-black">No orders yet</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                Your bookings, invoices, and visit status will appear here after
+                checkout.
+              </p>
+              <Link to="/dashboard/book">
+                <Button
+                  className="mt-5 rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
+                  type="button"
+                >
+                  Book service
+                  <ArrowRight className="size-4" />
+                </Button>
+              </Link>
             </div>
           ) : null}
           {orders.map((order) => (
