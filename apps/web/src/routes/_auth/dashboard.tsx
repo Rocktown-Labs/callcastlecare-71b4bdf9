@@ -1,23 +1,7 @@
-import {
-  Outlet,
-  createFileRoute,
-  useRouteContext,
-} from "@tanstack/react-router";
-
-import { AppShell } from "@/components/dashboard/app-shell";
+import { Outlet, createFileRoute } from "@tanstack/react-router";
 
 const DashboardLayout = () => {
-  const { session } = useRouteContext({ from: "/_auth/dashboard" });
-
-  return (
-    <AppShell
-      isAdmin={false}
-      userEmail={session.data?.user.email ?? ""}
-      variant="customer"
-    >
-      <Outlet />
-    </AppShell>
-  );
+  return <Outlet />;
 };
 
 export const Route = createFileRoute("/_auth/dashboard")({
