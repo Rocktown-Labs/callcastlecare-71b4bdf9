@@ -55,6 +55,9 @@ export const checkoutSessions = pgTable(
     index("idx_checkout_sessions_payment_intent").on(
       table.stripePaymentIntentId
     ),
+    index("idx_checkout_sessions_stripe_session").on(
+      table.stripeCheckoutSessionId
+    ),
   ]
 );
 

@@ -47,6 +47,13 @@ export const checkoutPreviewItemSchema = z
 
     const start = new Date(value.scheduledStartAt);
     const end = new Date(value.scheduledEndAt);
+    if (start.getTime() <= Date.now()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Scheduled services must start in the future.",
+        path: ["scheduledStartAt"],
+      });
+    }
     const durationMs = end.getTime() - start.getTime();
     const twoHoursMs = 2 * 60 * 60 * 1000;
     if (durationMs !== twoHoursMs) {
@@ -63,6 +70,10 @@ export const checkoutPreviewRequestSchema = z
     address: z.string().min(5).optional(),
     addressId: z.number().int().positive().optional(),
     items: z.array(checkoutPreviewItemSchema).min(1),
+    tipAmountCents: z.number().int().nonnegative().optional(),
+    travelDistanceMiles: z.number().nonnegative().optional(),
+    travelFeeCents: z.number().int().nonnegative().optional(),
+    travelStateCode: z.string().trim().length(2).optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.address && !value.addressId) {
@@ -196,6 +207,8 @@ export const mediaUploadUrlRequestSchema = z.object({
   contentType: z.string().min(1),
   legId: z.number().int().positive().optional(),
   mediaType: z.enum([
+    "service_before",
+    "service_after",
     "lawncare_before",
     "lawncare_after",
     "laundry_pickup",
@@ -209,6 +222,8 @@ export const mediaUploadUrlRequestSchema = z.object({
 export const mediaAttachRequestSchema = z.object({
   legId: z.number().int().positive().optional(),
   mediaType: z.enum([
+    "service_before",
+    "service_after",
     "lawncare_before",
     "lawncare_after",
     "laundry_pickup",
@@ -220,4 +235,13 @@ export const mediaAttachRequestSchema = z.object({
   orderId: z.number().int().positive().optional(),
   requiredForTransition: z.string().optional(),
   storagePath: z.string().min(1),
+});
+
+export const adminOrderActionRequestSchema = z.object({
+  action: z.enum(["confirm", "arrived", "start", "complete", "cancel", "fail"]),
+  note: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+export const adminOrderNoteRequestSchema = z.object({
+  note: z.string().trim().min(1).max(1000),
 });

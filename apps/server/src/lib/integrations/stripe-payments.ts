@@ -27,7 +27,7 @@ const createStripeClient = () => {
   }
 
   return new Stripe(env.STRIPE_SECRET_KEY, {
-    apiVersion: "2026-06-24.dahlia" as Stripe.StripeConfig["apiVersion"],
+    apiVersion: "2026-06-24.dahlia",
   });
 };
 
@@ -92,12 +92,6 @@ export const createStripePaymentIntent = async (input: {
   }
 };
 
-const randomLetters = (length: number) => {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz";
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return [...bytes].map((byte) => alphabet[byte % alphabet.length]).join("");
-};
-
 export const createStripeCheckoutSession = async (input: {
   amountDueCents: number;
   cancelUrl: string;
@@ -120,10 +114,9 @@ export const createStripeCheckoutSession = async (input: {
     throw new Error("Stripe client is unavailable.");
   }
 
-  const checkoutParams = {
+  const checkoutParams: Stripe.Checkout.SessionCreateParams = {
     cancel_url: input.cancelUrl,
     customer_email: input.customerEmail,
-    integration_identifier: `castlecare_hosted_${randomLetters(8)}`,
     line_items: [
       {
         price_data: {
@@ -143,8 +136,6 @@ export const createStripeCheckoutSession = async (input: {
       metadata: input.metadata,
     },
     success_url: input.successUrl,
-  } satisfies Stripe.Checkout.SessionCreateParams & {
-    integration_identifier: string;
   };
 
   const session = await stripeClient.checkout.sessions.create(checkoutParams);
@@ -171,7 +162,7 @@ export const parseStripeWebhookEvent = (input: {
     }
   }
 
-  if (!input.signatureHeader) {
+  if (!(input.signatureHeader && env.STRIPE_WEBHOOK_SECRET)) {
     return null;
   }
 
@@ -184,7 +175,7 @@ export const parseStripeWebhookEvent = (input: {
     const event = stripeClient.webhooks.constructEvent(
       input.rawBody,
       input.signatureHeader,
-      env.STRIPE_WEBHOOK_SECRET ?? ""
+      env.STRIPE_WEBHOOK_SECRET
     );
 
     return event as unknown as StripeWebhookEvent;

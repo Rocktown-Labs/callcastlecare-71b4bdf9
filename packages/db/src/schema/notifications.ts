@@ -30,6 +30,8 @@ export const notifications = pgTable(
     workerId: integer("worker_id").references(() => workers.id),
   },
   (table) => [
+    index("idx_notifications_customer_id").on(table.customerId),
+    index("idx_notifications_order_id").on(table.orderId),
     index("idx_notifications_status_schedule").on(
       table.status,
       table.scheduledAt

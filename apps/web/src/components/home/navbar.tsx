@@ -1,6 +1,7 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { Link, useLocation } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { ChevronDown, Menu, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -55,10 +56,11 @@ export default function Navbar() {
             className="flex items-center"
             to="/"
           >
-            <img
+            <Image
               alt="CallCastleCare"
               className="h-11 w-auto sm:h-12"
               height={100}
+              priority
               src="/callcastlecare/brand/castlecare-250-100-trans.png"
               width={250}
             />

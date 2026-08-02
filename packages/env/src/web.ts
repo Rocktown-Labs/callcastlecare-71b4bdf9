@@ -5,7 +5,7 @@ const serverUrlSchema = z.union([
   z.url(),
   z
     .string()
-    .regex(/^\/(?!\/)/, "Use an absolute URL or a same-origin path like /api"),
+    .regex(/^\/(?!\/)/u, "Use an absolute URL or a same-origin path like /api"),
 ]);
 
 export const env = createEnv({
@@ -14,6 +14,8 @@ export const env = createEnv({
   },
   clientPrefix: "VITE_",
   emptyStringAsUndefined: true,
-  runtimeEnv: (import.meta as any).env,
+  runtimeEnv: (
+    import.meta as unknown as { env: Record<string, string | undefined> }
+  ).env,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
 });

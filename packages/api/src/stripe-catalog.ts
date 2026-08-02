@@ -4,6 +4,7 @@ import {
   COMBO_SUBSCRIPTION_PRICES,
   LAUNDRY_PLAN_PRICES,
   LAWNCARE_PLAN_PRICES,
+  TECHNOLOGY_FEE_CENTS,
   TRAVEL_FEE_CONFIG,
   WINDOW_WASHING_SUBSCRIPTION_PRICES,
 } from "./pricing";
@@ -64,6 +65,48 @@ export type StripeCouponInput = z.infer<typeof stripeCouponSchema>;
 export type StripeCatalogSyncRequest = z.infer<
   typeof stripeCatalogSyncRequestSchema
 >;
+
+const productGroupLabels: Record<string, string> = {
+  "bi-weekly-royal-duo": "Bi-Weekly Royal Duo",
+  "crown-estate-trio": "Crown Estate Trio",
+  "crown-estate-trio-deluxe": "Crown Estate Trio Deluxe",
+  "groundskeeper-bi-weekly": "Groundskeeper Bi-Weekly",
+  "groundskeeper-monthly": "Groundskeeper Monthly",
+  "groundskeeper-one-time": "Groundskeeper One-Time",
+  "monthly-castle-care": "Monthly CastleCare",
+  "royal-pane": "Royal Pane",
+  "royal-wash": "Royal Wash",
+  "travel-fee": "Travel Fee",
+};
+
+export const getStripeCatalogProductKey = (
+  item: Pick<StripeCatalogItemInput, "slug">
+) => {
+  const { slug } = item;
+
+  for (const prefix of [
+    "crown-estate-trio-deluxe",
+    "crown-estate-trio",
+    "bi-weekly-royal-duo",
+    "monthly-castle-care",
+    "groundskeeper-bi-weekly",
+    "groundskeeper-monthly",
+    "groundskeeper-one-time",
+    "royal-pane",
+    "royal-wash",
+    "travel-fee",
+  ]) {
+    if (slug === prefix || slug.startsWith(`${prefix}-`)) {
+      return prefix;
+    }
+  }
+
+  return slug;
+};
+
+export const getStripeCatalogProductName = (
+  item: Pick<StripeCatalogItemInput, "name" | "slug">
+) => productGroupLabels[getStripeCatalogProductKey(item)] ?? item.name;
 
 export const defaultStripeCatalogItems = [
   {
@@ -242,9 +285,9 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: WINDOW_WASHING_SUBSCRIPTION_PRICES["royal-pane-bi-annual"],
     currency: "usd",
-    description: "Two exterior window washing visits per year.",
+    description: "Two inside-and-out window washing visits per year.",
     interval: "year",
-    name: "Royal Pane Bi-Annual",
+    name: "Royal Pane Bi-Annual Detail",
     serviceType: "window_washing",
     slug: "royal-pane-bi-annual",
   },
@@ -252,7 +295,7 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["bi-weekly-royal-duo-small"],
     currency: "usd",
-    description: "Bi-weekly small-lot lawn care plus Royal Wash Supreme.",
+    description: "2 small-lot lawn care visits plus 2 wash and fold pickups.",
     interval: "month",
     name: "Bi-Weekly Royal Duo Small",
     serviceType: "combo",
@@ -262,7 +305,7 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["bi-weekly-royal-duo-medium"],
     currency: "usd",
-    description: "Bi-weekly medium-lot lawn care plus Royal Wash Supreme.",
+    description: "2 medium-lot lawn care visits plus 2 wash and fold pickups.",
     interval: "month",
     name: "Bi-Weekly Royal Duo Medium",
     serviceType: "combo",
@@ -272,7 +315,7 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["bi-weekly-royal-duo-large"],
     currency: "usd",
-    description: "Bi-weekly large-lot lawn care plus Royal Wash Supreme.",
+    description: "2 large-lot lawn care visits plus 2 wash and fold pickups.",
     interval: "month",
     name: "Bi-Weekly Royal Duo Large",
     serviceType: "combo",
@@ -282,9 +325,9 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["monthly-castle-care-small"],
     currency: "usd",
-    description: "Monthly small-lot lawn care plus Royal Pane Monthly.",
+    description: "1 small-lot lawn care visit plus 1 exterior window cleaning.",
     interval: "month",
-    name: "Monthly Castle Care Small",
+    name: "Monthly CastleCare Small",
     serviceType: "combo",
     slug: "monthly-castle-care-small",
   },
@@ -292,9 +335,10 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["monthly-castle-care-medium"],
     currency: "usd",
-    description: "Monthly medium-lot lawn care plus Royal Pane Monthly.",
+    description:
+      "1 medium-lot lawn care visit plus 1 exterior window cleaning.",
     interval: "month",
-    name: "Monthly Castle Care Medium",
+    name: "Monthly CastleCare Medium",
     serviceType: "combo",
     slug: "monthly-castle-care-medium",
   },
@@ -302,9 +346,9 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["monthly-castle-care-large"],
     currency: "usd",
-    description: "Monthly large-lot lawn care plus Royal Pane Monthly.",
+    description: "1 large-lot lawn care visit plus 1 exterior window cleaning.",
     interval: "month",
-    name: "Monthly Castle Care Large",
+    name: "Monthly CastleCare Large",
     serviceType: "combo",
     slug: "monthly-castle-care-large",
   },
@@ -312,7 +356,8 @@ export const defaultStripeCatalogItems = [
     active: true,
     amountCents: COMBO_SUBSCRIPTION_PRICES["royal-linen-panes-duo"],
     currency: "usd",
-    description: "Royal Wash Supreme plus Royal Pane Monthly.",
+    description:
+      "4 wash and fold pickups plus 1 exterior window cleaning each month.",
     interval: "month",
     name: "Royal Linen & Panes Duo",
     serviceType: "combo",
@@ -323,7 +368,7 @@ export const defaultStripeCatalogItems = [
     amountCents: COMBO_SUBSCRIPTION_PRICES["crown-estate-trio-small"],
     currency: "usd",
     description:
-      "Small-lot bi-weekly lawn care, Royal Wash Supreme, and Royal Pane Monthly.",
+      "Bi-weekly mow, bi-weekly wash and fold, and 1 monthly exterior window cleaning for small lots.",
     interval: "month",
     name: "Crown Estate Trio Small",
     serviceType: "combo",
@@ -334,7 +379,7 @@ export const defaultStripeCatalogItems = [
     amountCents: COMBO_SUBSCRIPTION_PRICES["crown-estate-trio-medium"],
     currency: "usd",
     description:
-      "Medium-lot bi-weekly lawn care, Royal Wash Supreme, and Royal Pane Monthly.",
+      "Bi-weekly mow, bi-weekly wash and fold, and 1 monthly exterior window cleaning for medium lots.",
     interval: "month",
     name: "Crown Estate Trio Medium",
     serviceType: "combo",
@@ -345,7 +390,7 @@ export const defaultStripeCatalogItems = [
     amountCents: COMBO_SUBSCRIPTION_PRICES["crown-estate-trio-large"],
     currency: "usd",
     description:
-      "Large-lot bi-weekly lawn care, Royal Wash Supreme, and Royal Pane Monthly.",
+      "Bi-weekly mow, bi-weekly wash and fold, and 1 monthly exterior window cleaning for large lots.",
     interval: "month",
     name: "Crown Estate Trio Large",
     serviceType: "combo",
@@ -353,13 +398,76 @@ export const defaultStripeCatalogItems = [
   },
   {
     active: true,
-    amountCents: TRAVEL_FEE_CONFIG.pricePerExtraMileCents,
+    amountCents: COMBO_SUBSCRIPTION_PRICES["crown-estate-trio-deluxe-small"],
     currency: "usd",
-    description: `Travel fee per mile after ${TRAVEL_FEE_CONFIG.includedMiles} miles from ${TRAVEL_FEE_CONFIG.originLabel}.`,
+    description:
+      "Crown Estate Trio plus inside-and-out windows and bedding on laundry visits for small lots.",
+    interval: "month",
+    name: "Crown Estate Trio Deluxe Small",
+    serviceType: "combo",
+    slug: "crown-estate-trio-deluxe-small",
+  },
+  {
+    active: true,
+    amountCents: COMBO_SUBSCRIPTION_PRICES["crown-estate-trio-deluxe-medium"],
+    currency: "usd",
+    description:
+      "Crown Estate Trio plus inside-and-out windows and bedding on laundry visits for medium lots.",
+    interval: "month",
+    name: "Crown Estate Trio Deluxe Medium",
+    serviceType: "combo",
+    slug: "crown-estate-trio-deluxe-medium",
+  },
+  {
+    active: true,
+    amountCents: COMBO_SUBSCRIPTION_PRICES["crown-estate-trio-deluxe-large"],
+    currency: "usd",
+    description:
+      "Crown Estate Trio plus inside-and-out windows and bedding on laundry visits for large lots.",
+    interval: "month",
+    name: "Crown Estate Trio Deluxe Large",
+    serviceType: "combo",
+    slug: "crown-estate-trio-deluxe-large",
+  },
+  {
+    active: true,
+    amountCents: TRAVEL_FEE_CONFIG.flatInStateCents,
+    currency: "usd",
+    description: `Flat travel fee for Arkansas jobs beyond ${TRAVEL_FEE_CONFIG.includedMiles} miles from HQ.`,
     interval: "one_time",
-    name: "Travel Fee - Extra Mile",
+    name: "Travel Fee - In State",
     serviceType: "fee",
-    slug: "travel-fee-extra-mile",
+    slug: "travel-fee-in-state",
+  },
+  {
+    active: true,
+    amountCents: TRAVEL_FEE_CONFIG.flatOutOfStateCents,
+    currency: "usd",
+    description: "Flat travel fee for out-of-state jobs.",
+    interval: "one_time",
+    name: "Travel Fee - Out of State",
+    serviceType: "fee",
+    slug: "travel-fee-out-of-state",
+  },
+  {
+    active: true,
+    amountCents: TECHNOLOGY_FEE_CENTS,
+    currency: "usd",
+    description: "Standard technology and dispatch fee per order.",
+    interval: "one_time",
+    name: "Technology Fee",
+    serviceType: "fee",
+    slug: "technology-fee",
+  },
+  {
+    active: true,
+    amountCents: TRAVEL_FEE_CONFIG.flatOutOfStateCents,
+    currency: "usd",
+    description: `Flat travel fee for out-of-state jobs beyond ${TRAVEL_FEE_CONFIG.includedMiles} miles from HQ.`,
+    interval: "one_time",
+    name: "Travel Fee - Out Of State",
+    serviceType: "fee",
+    slug: "travel-fee-out-of-state",
   },
 ] as const satisfies StripeCatalogItemInput[];
 

@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { Camera, MessageCircle, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -15,9 +16,9 @@ const footerLinks = {
     { href: "/cookies", label: "Cookies" },
   ],
   services: [
-    { href: "/services/lawncare", label: "Lawn care" },
+    { href: "/services/lawncare", label: "Lawn Care" },
     { href: "/services/laundry", label: "Laundry" },
-    { href: "/services/window-washing", label: "Window washing" },
+    { href: "/services/window-washing", label: "Window Washing" },
     { href: "/earn", label: "Drive for us" },
   ],
   support: [
@@ -57,7 +58,7 @@ export default function Footer() {
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
             <Link aria-label="CallCastleCare home" to="/">
-              <img
+              <Image
                 alt="CallCastleCare"
                 className="h-14 w-auto"
                 height={100}
@@ -66,8 +67,8 @@ export default function Footer() {
               />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/45">
-              Premium home services on demand. Lawn care, laundry, and window
-              washing for busy Arkansas households.
+              Premium home services on demand. Lawn Care, laundry, and Window
+              Washing for busy Arkansas households.
             </p>
             <div className="mt-6 flex gap-2">
               {socialLinks.map(({ icon: Icon, label }) => (

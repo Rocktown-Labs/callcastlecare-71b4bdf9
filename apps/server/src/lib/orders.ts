@@ -52,6 +52,14 @@ export const createAddressRecord = async (input: {
   zip: string;
 }) =>
   db.transaction(async (tx) => {
+    await tx
+      .execute(
+        sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;`
+      )
+      .catch((_err) => {
+        // ignore missing column if already exists
+      });
+
     const existingAddresses = await tx.query.addresses.findMany({
       where: eq(addresses.customerId, input.customerId),
     });

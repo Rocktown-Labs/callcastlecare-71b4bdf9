@@ -1,5 +1,6 @@
-import { db, eq } from "@callcastlecare/db";
+import { db, eq, inArray } from "@callcastlecare/db";
 import {
+  customers,
   legMediaLinks,
   mediaAssets,
   orderMediaLinks,
@@ -13,6 +14,7 @@ import { requireUser, requireWorkerForUser } from "../lib/auth";
 import {
   createMediaStoragePath,
   getMediaUploadUrl,
+  getPrivateBlob,
   handleBlobClientUpload,
 } from "../lib/integrations/blob";
 import type { AppEnv } from "../types";
@@ -34,7 +36,128 @@ const extensionFromContentType = (contentType: string) => {
   return "jpg";
 };
 
+const orderTransitionMediaStatuses = [
+  "arrived",
+  "in_progress",
+  "completed",
+] as const;
+
+const legTransitionMediaStatuses = [
+  "arrived",
+  "started",
+  "stopped",
+  "completed",
+] as const;
+
+const toOrderRequiredTransition = (value?: string) =>
+  orderTransitionMediaStatuses.find((status) => status === value) ?? null;
+
+const toLegRequiredTransition = (value?: string) =>
+  legTransitionMediaStatuses.find((status) => status === value) ?? null;
+
+const canReadPrivateMedia = async (input: {
+  pathname: string;
+  user: NonNullable<ReturnType<typeof requireUser>["user"]>;
+}) => {
+  const isAdmin =
+    input.user.role === "admin" ||
+    input.user.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
+
+  const asset = await db.query.mediaAssets.findFirst({
+    where: eq(mediaAssets.storagePath, input.pathname),
+  });
+
+  if (!asset) {
+    return { allowed: false, found: false };
+  }
+
+  if (isAdmin) {
+    return { allowed: true, found: true };
+  }
+
+  const [customer, worker, orderLinks, legLinks] = await Promise.all([
+    db.query.customers.findFirst({
+      where: eq(customers.userId, input.user.id),
+    }),
+    requireWorkerForUser(input.user),
+    db.query.orderMediaLinks.findMany({
+      where: eq(orderMediaLinks.mediaAssetId, asset.id),
+    }),
+    db.query.legMediaLinks.findMany({
+      where: eq(legMediaLinks.mediaAssetId, asset.id),
+    }),
+  ]);
+
+  const linkedLegIds = legLinks.map((link) => link.legId);
+  const linkedLegs =
+    linkedLegIds.length === 0
+      ? []
+      : await db.query.serviceLegs.findMany({
+          where: inArray(serviceLegs.id, linkedLegIds),
+        });
+  const linkedOrderIds = new Set([
+    ...orderLinks.map((link) => link.orderId),
+    ...linkedLegs.map((leg) => leg.orderId),
+  ]);
+
+  if (linkedOrderIds.size === 0) {
+    return { allowed: false, found: true };
+  }
+
+  const linkedOrders = await db.query.orders.findMany({
+    where: inArray(orders.id, [...linkedOrderIds]),
+  });
+  const canReadAsCustomer =
+    customer && linkedOrders.some((order) => order.customerId === customer.id);
+  const canReadAsWorker =
+    worker &&
+    (linkedOrders.some((order) => order.assignedWorkerId === worker.id) ||
+      linkedLegs.some((leg) => leg.workerId === worker.id));
+
+  return {
+    allowed: Boolean(canReadAsCustomer || canReadAsWorker),
+    found: true,
+  };
+};
+
 export const mediaRoutes = new Hono<AppEnv>()
+  .get("/private", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
+    const pathname = c.req.query("pathname");
+    if (!pathname) {
+      return c.json({ error: "Missing pathname" }, 400);
+    }
+
+    const access = await canReadPrivateMedia({
+      pathname,
+      user: userResult.user,
+    });
+    if (!access.found) {
+      return c.text("Not found", 404);
+    }
+    if (!access.allowed) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const result = await getPrivateBlob(pathname);
+    if (!result) {
+      return c.text("Not found", 404);
+    }
+
+    if (result.statusCode === 304) {
+      return c.body(null, 304);
+    }
+
+    return c.body(result.stream, 200, {
+      "Cache-Control": "private, no-cache",
+      "Content-Type": result.blob.contentType,
+      "X-Content-Type-Options": "nosniff",
+    });
+  })
   .post("/upload-url", async (c) => {
     const userResult = requireUser(c);
     if (userResult.error) {
@@ -64,6 +187,7 @@ export const mediaRoutes = new Hono<AppEnv>()
 
     return c.json(
       {
+        access: "private",
         storagePath,
         uploadUrl: getMediaUploadUrl(origin),
       },
@@ -122,7 +246,7 @@ export const mediaRoutes = new Hono<AppEnv>()
       })
       .returning();
 
-    const asset = insertedAssets[0];
+    const [asset] = insertedAssets;
     if (!asset) {
       return c.json({ error: "Failed to register uploaded media" }, 500);
     }
@@ -131,15 +255,9 @@ export const mediaRoutes = new Hono<AppEnv>()
       await db.insert(orderMediaLinks).values({
         mediaAssetId: asset.id,
         orderId: parsed.data.orderId,
-        requiredForTransition:
-          parsed.data.requiredForTransition === "arrived" ||
-          parsed.data.requiredForTransition === "in_progress" ||
-          parsed.data.requiredForTransition === "completed"
-            ? (parsed.data.requiredForTransition as
-                | "arrived"
-                | "in_progress"
-                | "completed")
-            : null,
+        requiredForTransition: toOrderRequiredTransition(
+          parsed.data.requiredForTransition
+        ),
       });
     }
 
@@ -147,17 +265,9 @@ export const mediaRoutes = new Hono<AppEnv>()
       await db.insert(legMediaLinks).values({
         legId: parsed.data.legId,
         mediaAssetId: asset.id,
-        requiredForTransition:
-          parsed.data.requiredForTransition === "arrived" ||
-          parsed.data.requiredForTransition === "started" ||
-          parsed.data.requiredForTransition === "stopped" ||
-          parsed.data.requiredForTransition === "completed"
-            ? (parsed.data.requiredForTransition as
-                | "arrived"
-                | "started"
-                | "stopped"
-                | "completed")
-            : null,
+        requiredForTransition: toLegRequiredTransition(
+          parsed.data.requiredForTransition
+        ),
       });
     }
 

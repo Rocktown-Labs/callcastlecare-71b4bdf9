@@ -30,9 +30,25 @@ describe("pricing", () => {
   });
 
   it("charges travel only after the included service radius", () => {
-    expect(calculateTravelFeeCents(55)).toBe(0);
-    expect(calculateTravelFeeCents(55.1)).toBe(200);
-    expect(calculateTravelFeeCents(60)).toBe(1000);
+    expect(calculateTravelFeeCents({ distanceMiles: 55 })).toEqual({
+      feeCents: 0,
+      feeKind: "free",
+      inState: false,
+    });
+    expect(
+      calculateTravelFeeCents({ distanceMiles: 75, stateCode: "AR" })
+    ).toEqual({
+      feeCents: 5000,
+      feeKind: "in_state",
+      inState: true,
+    });
+    expect(
+      calculateTravelFeeCents({ distanceMiles: 75, stateCode: "TX" })
+    ).toEqual({
+      feeCents: 10_000,
+      feeKind: "out_of_state",
+      inState: false,
+    });
   });
 
   it("uses the launch window washing rates and default pane estimate", () => {

@@ -1,4 +1,7 @@
+import { SERVICE_HQ } from "@callcastlecare/api";
 import { env } from "@callcastlecare/env/server";
+
+import { logger } from "../logger";
 
 export interface RadarAddressSuggestion {
   formattedAddress: string;
@@ -63,22 +66,66 @@ const getRadarHeaders = () => ({
   Authorization: env.RADAR_API_KEY ?? "",
 });
 
-const radarGet = async (path: string, searchParams: URLSearchParams) => {
+const RADAR_API_BASE_URL = "https://api.radar.io";
+const MIN_AUTOCOMPLETE_CHARACTERS = 5;
+const DEFAULT_NEAR = `${SERVICE_HQ.latitude},${SERVICE_HQ.longitude}`;
+
+interface RadarGetOptions {
+  returnNullOnFailure?: boolean;
+}
+
+const radarGet = async (
+  path: string,
+  searchParams: URLSearchParams,
+  options: RadarGetOptions = {}
+) => {
   if (!env.RADAR_API_KEY) {
     return null;
   }
 
-  const url = new URL(path, "https://api.radar.com");
+  const url = new URL(path, RADAR_API_BASE_URL);
   for (const [key, value] of searchParams) {
     url.searchParams.set(key, value);
   }
 
-  const response = await fetch(url, {
-    headers: getRadarHeaders(),
-    method: "GET",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: getRadarHeaders(),
+      method: "GET",
+    });
+  } catch (error) {
+    logger.error(
+      {
+        err: error,
+        path,
+        vendor: "radar",
+      },
+      "radar:request_failed"
+    );
+
+    if (options.returnNullOnFailure) {
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!response.ok) {
+    logger.warn(
+      {
+        path,
+        status: response.status,
+        statusText: response.statusText,
+        vendor: "radar",
+      },
+      "radar:request_unsuccessful"
+    );
+
+    if (!options.returnNullOnFailure) {
+      throw new Error(`Radar request failed with status ${response.status}`);
+    }
+
     return null;
   }
 
@@ -90,19 +137,46 @@ const getAddressList = (payload: Record<string, unknown> | null) =>
     ? (payload.addresses as Record<string, unknown>[])
     : [];
 
-const getAddressLabel = (address: Record<string, unknown>) =>
-  toStringOrNull(address.formattedAddress) ??
-  toStringOrNull(address.addressLabel) ??
-  toStringOrNull(address.fullAddress) ??
-  [
-    toStringOrNull(address.number),
-    toStringOrNull(address.street),
-    toStringOrNull(address.city),
-    toStringOrNull(address.stateCode),
-    toStringOrNull(address.postalCode),
-  ]
-    .filter(Boolean)
-    .join(", ");
+const getAddressLabel = (address: Record<string, unknown>) => {
+  const formatted =
+    toStringOrNull(address.formattedAddress) ??
+    toStringOrNull(address.fullAddress);
+  if (formatted && formatted.includes(",")) {
+    return formatted;
+  }
+
+  const street =
+    toStringOrNull(address.addressLabel) ??
+    [toStringOrNull(address.number), toStringOrNull(address.street)]
+      .filter(Boolean)
+      .join(" ");
+
+  const city = toStringOrNull(address.city);
+  const state =
+    toStringOrNull(address.stateCode) ?? toStringOrNull(address.state);
+  const zip = toStringOrNull(address.postalCode) ?? toStringOrNull(address.zip);
+
+  const stateZip = [state, zip].filter(Boolean).join(" ");
+  const cityStateZip = [city, stateZip].filter(Boolean).join(", ");
+
+  if (street && cityStateZip) {
+    return `${street}, ${cityStateZip}`;
+  }
+
+  return (
+    formatted ??
+    toStringOrNull(address.addressLabel) ??
+    [
+      toStringOrNull(address.number),
+      toStringOrNull(address.street),
+      city,
+      state,
+      zip,
+    ]
+      .filter(Boolean)
+      .join(", ")
+  );
+};
 
 const toSuggestion = (
   address: Record<string, unknown>
@@ -168,17 +242,20 @@ export const autocompleteRadarAddresses = async (
   input: string
 ): Promise<RadarAddressSuggestion[]> => {
   const trimmed = input.trim();
-  if (trimmed.length < 3) {
+  if (trimmed.length < MIN_AUTOCOMPLETE_CHARACTERS) {
     return [];
   }
 
   const payload = await radarGet(
     "/v1/search/autocomplete",
     new URLSearchParams({
-      country: "US",
+      countryCode: "US",
+      layers: "address",
       limit: "8",
+      near: DEFAULT_NEAR,
       query: trimmed,
-    })
+    }),
+    { returnNullOnFailure: true }
   );
 
   return getAddressList(payload)
@@ -199,6 +276,10 @@ export const reverseGeocodeWithRadar = async (
     })
   );
 
+  if (!payload) {
+    throw new Error("Radar reverse geocode returned no address");
+  }
+
   return toVerifiedAddress(`${latitude}, ${longitude}`, payload);
 };
 
@@ -210,37 +291,6 @@ const forwardGeocodeWithRadar = (input: string) =>
     })
   );
 
-const validateStructuredAddress = (
-  address: Record<string, unknown>,
-  fallbackInput: string
-) => {
-  const params = new URLSearchParams({
-    country: toStringOrNull(address.countryCode) ?? "US",
-  });
-  const mappedFields = [
-    ["city", toStringOrNull(address.city)],
-    ["number", toStringOrNull(address.number)],
-    ["postalCode", toStringOrNull(address.postalCode)],
-    ["state", toStringOrNull(address.stateCode)],
-    ["street", toStringOrNull(address.street)],
-  ] as const;
-
-  for (const [key, value] of mappedFields) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-
-  const hasEnoughStructuredData = params.has("street") && params.has("city");
-  if (!hasEnoughStructuredData) {
-    return null;
-  }
-
-  return radarGet("/v1/addresses/validate", params).then((payload) =>
-    payload ? toVerifiedAddress(fallbackInput, payload) : null
-  );
-};
-
 export const validateRadarAddress = async (
   input: string
 ): Promise<VerifiedAddress> => {
@@ -249,31 +299,55 @@ export const validateRadarAddress = async (
     return parseAddressFromInput(input);
   }
 
-  const coordinateMatch = trimmed.match(
-    /^\s*(?<latitude>-?\d+(?:\.\d+)?)\s*,\s*(?<longitude>-?\d+(?:\.\d+)?)\s*$/u
-  );
-  if (coordinateMatch) {
-    const { latitude, longitude } = coordinateMatch.groups ?? {};
-    return reverseGeocodeWithRadar(Number(latitude), Number(longitude));
-  }
+  try {
+    const coordinateMatch = trimmed.match(
+      /^\s*(?<latitude>-?\d+(?:\.\d+)?)\s*,\s*(?<longitude>-?\d+(?:\.\d+)?)\s*$/u
+    );
+    if (coordinateMatch) {
+      const { latitude, longitude } = coordinateMatch.groups ?? {};
+      return await reverseGeocodeWithRadar(Number(latitude), Number(longitude));
+    }
 
-  const forwardPayload = await forwardGeocodeWithRadar(trimmed);
-  const [first] = getAddressList(forwardPayload);
-  if (!first) {
+    const autocompletePayload = await radarGet(
+      "/v1/search/autocomplete",
+      new URLSearchParams({
+        countryCode: "US",
+        layers: "address",
+        limit: "1",
+        near: DEFAULT_NEAR,
+        query: trimmed,
+      }),
+      { returnNullOnFailure: true }
+    );
+
+    const payload =
+      getAddressList(autocompletePayload).length > 0
+        ? autocompletePayload
+        : await forwardGeocodeWithRadar(trimmed);
+
+    const [first] = getAddressList(payload);
+    if (!first) {
+      return parseAddressFromInput(input);
+    }
+
+    const verified = toVerifiedAddress(trimmed, payload);
+    return {
+      ...verified,
+      raw: {
+        search: payload,
+      },
+    };
+  } catch (error) {
+    logger.warn(
+      {
+        err: error,
+        input,
+        vendor: "radar",
+      },
+      "radar:validate_address_fallback"
+    );
     return parseAddressFromInput(input);
   }
-
-  const validated =
-    (await validateStructuredAddress(first, trimmed)) ??
-    toVerifiedAddress(trimmed, forwardPayload);
-
-  return {
-    ...validated,
-    raw: {
-      forward: forwardPayload,
-      validate: validated.raw,
-    },
-  };
 };
 
 export const verifyAddressWithRadar = validateRadarAddress;

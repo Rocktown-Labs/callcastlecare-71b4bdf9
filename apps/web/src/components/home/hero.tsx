@@ -2,6 +2,7 @@ import { Button } from "@callcastlecare/ui/components/button";
 import { Label } from "@callcastlecare/ui/components/label";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import { Calendar, ChevronDown, Clock } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
@@ -143,10 +144,12 @@ export default function HeroSection() {
   return (
     <section className="relative min-h-screen overflow-hidden bg-[#080c16] pt-20">
       <div className="absolute inset-x-0 bottom-0 top-20 hidden sm:block">
-        <img
+        <Image
           alt=""
           aria-hidden="true"
           className="size-full object-cover object-center opacity-90"
+          layout="fullWidth"
+          priority
           src="/callcastlecare/media/hero-workers-bg.jpg"
         />
         <div className="absolute inset-0 bg-slate-950/35" />

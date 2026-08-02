@@ -4,7 +4,7 @@ import { z } from "zod";
 import BookingWizard from "@/components/book/booking-wizard";
 import MarketingLayout from "@/components/home/marketing-layout";
 import { bookingTimeSlots } from "@/lib/scheduling";
-import { serviceIdSchema } from "@/lib/service-catalog";
+import { serviceIdSchema, sortServiceIds } from "@/lib/service-catalog";
 import type { ServiceId } from "@/lib/service-catalog";
 
 const siteUrl = "https://callcastlecare.com";
@@ -59,7 +59,7 @@ const parseServices = (services?: string, service?: ServiceId) => {
     }
   }
 
-  return [...serviceIds];
+  return sortServiceIds([...serviceIds]);
 };
 
 const BookPage = () => {

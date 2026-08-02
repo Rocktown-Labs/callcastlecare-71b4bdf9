@@ -6,6 +6,7 @@ import {
   notFound,
   useParams,
 } from "@tanstack/react-router";
+import { Image } from "@unpic/react";
 import {
   ArrowRight,
   CalendarCheck,
@@ -49,9 +50,11 @@ const ServiceDetailPage = () => {
       <article className="bg-slate-50 text-slate-950">
         <section className="relative overflow-hidden bg-[#070b14] pt-24 text-white">
           <div className="absolute inset-0">
-            <img
+            <Image
               alt={page.heroAlt}
               className="size-full object-cover opacity-30"
+              layout="fullWidth"
+              priority
               src={service.image}
             />
             <div className="absolute inset-0 bg-[linear-gradient(90deg,#070b14_0%,rgba(7,11,20,0.94)_44%,rgba(7,11,20,0.55)_100%)]" />
@@ -223,7 +226,7 @@ const ServiceDetailPage = () => {
                 <p className="mt-3 text-sm leading-6 text-slate-600">
                   {service.id === "laundry"
                     ? "Laundry-only orders collect full payment up front."
-                    : "Lawn care and window washing reserve the appointment with a $50 deposit."}
+                    : "Lawn Care and Window Washing reserve the appointment with a $50 deposit."}
                 </p>
               </div>
               <div className="rounded-3xl border border-slate-200 bg-white p-6">

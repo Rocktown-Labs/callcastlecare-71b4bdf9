@@ -2,11 +2,35 @@
 import { useAuth } from "@better-auth-ui/react";
 import { useCallback } from "react";
 
+import { getServerUrl } from "../server-url";
 import {
   isTwoFactorRedirect,
   storeTwoFactorMethods,
   TWO_FACTOR_PLUGIN_ID,
 } from "./two-factor-methods";
+
+export const getPostAuthRedirectTo = async (redirectTo: string) => {
+  const canUseRoleDefault =
+    redirectTo === "/" || redirectTo === "" || redirectTo === "/dashboard";
+
+  if (!canUseRoleDefault) {
+    return redirectTo;
+  }
+
+  const response = await fetch(new URL("/api/v1/me", getServerUrl()), {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    return redirectTo || "/dashboard";
+  }
+
+  const payload = (await response.json().catch(() => null)) as {
+    isAdmin?: boolean;
+  } | null;
+
+  return payload?.isAdmin ? "/admin" : redirectTo || "/dashboard";
+};
 
 /**
  * Resolve what happens after a sign-in request succeeds.
@@ -35,7 +59,7 @@ export function useSignInContinuation() {
   )?.viewPaths?.auth?.twoFactor;
 
   return useCallback(
-    (data: unknown) => {
+    async (data: unknown) => {
       if (twoFactorPath && isTwoFactorRedirect(data)) {
         storeTwoFactorMethods(data.twoFactorMethods);
 
@@ -45,7 +69,7 @@ export function useSignInContinuation() {
         return;
       }
 
-      navigate({ to: redirectTo });
+      navigate({ to: await getPostAuthRedirectTo(redirectTo) });
     },
     [basePaths.auth, navigate, redirectTo, twoFactorPath]
   );

@@ -39,6 +39,8 @@ import { useState } from "react";
 import type { SyntheticEvent } from "react";
 import { toast } from "sonner";
 
+import { getPostAuthRedirectTo } from "@/lib/auth/use-sign-in-continuation";
+
 import { AdditionalField } from "./additional-field";
 import { ProviderButtons } from "./provider-buttons";
 import type { SocialLayout } from "./provider-buttons";
@@ -103,7 +105,7 @@ export function SignUp({
         setConfirmPassword("");
         resetFetchOptions();
       },
-      onSuccess: (_data, { email }) => {
+      onSuccess: async (_data, { email }) => {
         if (emailAndPassword?.requireEmailVerification) {
           sessionStorage.setItem("better-auth-ui.verify-email", email);
           navigate({
@@ -112,7 +114,7 @@ export function SignUp({
         } else if (onSignUpSuccess) {
           onSignUpSuccess();
         } else {
-          navigate({ to: redirectTo });
+          navigate({ to: await getPostAuthRedirectTo(redirectTo) });
         }
       },
     }

@@ -77,6 +77,7 @@ export const addresses = pgTable(
     uniqueIndex("idx_addresses_customer_default_unique")
       .on(table.customerId)
       .where(sql`${table.isDefault} = true`),
+    index("idx_addresses_formatted_address").on(table.formattedAddress),
     index("idx_addresses_location").on(table.latitude, table.longitude),
   ]
 );

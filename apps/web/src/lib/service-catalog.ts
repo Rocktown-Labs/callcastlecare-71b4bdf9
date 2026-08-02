@@ -64,7 +64,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
   {
     accentClassName: "border-lime-400/30 bg-lime-400/10 text-lime-300",
     badge: "Groundskeeper",
-    ctaText: "Explore lawncare",
+    ctaText: "Explore Lawn Care",
     description:
       "Eco-minded mowing, edge trimming, and cleanup for standard lots, larger yards, and commercial grounds.",
     detailHeading: "Grounds that look looked after, all season.",
@@ -85,11 +85,11 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     ],
     priceUnit: "service",
     seoDescription:
-      "Book lawncare in Arkansas with CastleCare. Mowing, edging, cleanup, and recurring lawn maintenance plans.",
-    shortName: "Lawn care",
+      "Book Lawn Care in Arkansas with CastleCare. Mowing, edging, cleanup, and recurring lawn maintenance plans.",
+    shortName: "Lawn Care",
     startingPrice: 75,
     subscriptionInfo: "Bi-weekly care plans available",
-    title: "Lawncare",
+    title: "Lawn Care",
   },
   {
     accentClassName: "border-sky-400/30 bg-sky-400/10 text-sky-300",
@@ -124,7 +124,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
   {
     accentClassName: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
     badge: "Royal Pane",
-    ctaText: "Explore window washing",
+    ctaText: "Explore Window Washing",
     description:
       "Crystal-clear glass care with estimates based on pane count, stories, screens, and finish level.",
     detailHeading: "Clear panes, clean tracks, brighter rooms.",
@@ -146,7 +146,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
     priceUnit: "pane",
     seoDescription:
       "Book window washing in Arkansas with CastleCare. Exterior panes, inside-and-out cleaning, screens, and recurring glass care.",
-    shortName: "Window washing",
+    shortName: "Window Washing",
     startingPrice: 5,
     subscriptionInfo: "Monthly and bi-annual plans available",
     title: "Window Washing",
@@ -158,6 +158,11 @@ export const serviceOptions = serviceCatalog.map(({ icon, id, shortName }) => ({
   id,
   name: shortName,
 }));
+
+const serviceOrder = serviceCatalog.map(({ id }) => id);
+
+export const sortServiceIds = (serviceIds: readonly ServiceId[]) =>
+  serviceOrder.filter((serviceId) => serviceIds.includes(serviceId));
 
 export const servicePageContent: Record<ServiceId, ServicePageContent> = {
   laundry: {
@@ -255,7 +260,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       },
       {
         answer:
-          "Lawn care reservations use a $50 deposit to hold the appointment window, with the remaining balance handled through the checkout choice shown in booking.",
+          "Lawn Care reservations use a $50 deposit to hold the appointment window, with the remaining balance handled through the checkout choice shown in booking.",
         question: "How much is due today for lawn care?",
       },
     ],
@@ -325,7 +330,7 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
       },
       {
         answer:
-          "Window washing reservations use a $50 deposit to hold your appointment window. You can choose deposit plus invoice later, pay in full today, or deposit plus cash later.",
+          "Window Washing reservations use a $50 deposit to hold your appointment window. You can choose deposit plus invoice later, pay in full today, or deposit plus cash later.",
         question: "How does window washing checkout work?",
       },
     ],
@@ -374,9 +379,8 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
 
 export const comboSubscriptions = [
   {
-    description:
-      "Bi-weekly Groundskeeper service plus Royal Wash Supreme weekly pickup.",
-    discountLabel: "From $260/month",
+    description: "2 Lawn Care visits plus 2 wash and fold pickups each month.",
+    discountLabel: "From $250/month",
     frequency: "Monthly billing",
     id: "bi_weekly_royal_duo",
     name: "Bi-Weekly Royal Duo",
@@ -384,8 +388,8 @@ export const comboSubscriptions = [
   },
   {
     description:
-      "Royal Wash Supreme weekly pickup plus Royal Pane Monthly window care.",
-    discountLabel: "$240/month",
+      "4 wash and fold pickups plus 1 exterior Window Washing visit each month.",
+    discountLabel: "$280/month",
     frequency: "Monthly billing",
     id: "royal_linen_panes_duo",
     name: "Royal Linen & Panes Duo",
@@ -393,20 +397,28 @@ export const comboSubscriptions = [
   },
   {
     description:
-      "Monthly Groundskeeper service plus Royal Pane Monthly window care.",
-    discountLabel: "From $180/month",
+      "1 Lawn Care visit plus 1 exterior Window Washing visit each month.",
+    discountLabel: "From $200/month",
     frequency: "Monthly billing",
     id: "monthly_castle_care",
-    name: "Monthly Castle Care",
+    name: "Monthly CastleCare",
     requiredServices: ["lawncare", "window-washing"],
   },
   {
-    description:
-      "Bi-weekly Groundskeeper service, Royal Wash Supreme, and Royal Pane Monthly.",
+    description: "Bi-weekly mow, wash and fold, and 1 monthly window washing.",
     discountLabel: "From $300/month",
     frequency: "Monthly billing",
     id: "crown_estate_trio",
     name: "Crown Estate Trio",
+    requiredServices: ["lawncare", "laundry", "window-washing"],
+  },
+  {
+    description:
+      "Crown Estate Trio plus inside-and-out windows and bedding on laundry visits.",
+    discountLabel: "From $360/month",
+    frequency: "Monthly billing",
+    id: "crown_estate_trio_deluxe",
+    name: "Crown Estate Trio Deluxe",
     requiredServices: ["lawncare", "laundry", "window-washing"],
   },
 ] as const;

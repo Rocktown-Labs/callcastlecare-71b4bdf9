@@ -1,14 +1,23 @@
 export type CastleCareEmailKey =
   | "account-finalization"
+  | "admin-booking-alert"
   | "appointment-reminder"
+  | "balance-invoice"
   | "booking-received"
   | "email-verification"
+  | "email-otp"
   | "password-reset"
   | "payment-receipt"
-  | "service-status-update";
+  | "provider-application-received"
+  | "quote-review-needed"
+  | "quote-saved"
+  | "service-completed"
+  | "service-status-update"
+  | "subscription-started"
+  | "tip-request";
 
 export interface EmailCatalogEntry {
-  audience: "customer" | "admin";
+  audience: "admin" | "customer" | "provider";
   key: CastleCareEmailKey;
   purpose: string;
   subject: string;
@@ -18,7 +27,7 @@ export interface EmailCatalogEntry {
 
 export const emailCatalog = [
   {
-    audience: "customer",
+    audience: "provider",
     key: "booking-received",
     purpose:
       "Confirm that CastleCare received the booking or quote request and set expectations for review, payment, and scheduling.",
@@ -28,12 +37,59 @@ export const emailCatalog = [
   },
   {
     audience: "customer",
+    key: "quote-saved",
+    purpose:
+      "Bring a contact-captured quote request back to checkout without making the customer restart.",
+    subject: "Your CastleCare quote is saved",
+    transactional: true,
+    trigger:
+      "Quote request reaches contact capture but checkout is not complete",
+  },
+  {
+    audience: "customer",
+    key: "quote-review-needed",
+    purpose:
+      "Set expectations when a lawn, window, or combo quote needs manual review before payment or confirmation.",
+    subject: "We are checking your CastleCare quote",
+    transactional: true,
+    trigger:
+      "Property, photo, lot size, or service details require admin review",
+  },
+  {
+    audience: "admin",
+    key: "admin-booking-alert",
+    purpose:
+      "Notify the operator that a new checkout or quote needs review, confirmation, or follow-up.",
+    subject: "New CastleCare booking to review",
+    transactional: true,
+    trigger: "Checkout starts, checkout succeeds, or quote review is requested",
+  },
+  {
+    audience: "customer",
     key: "payment-receipt",
     purpose:
       "Record the deposit or full payment and clarify any remaining balance.",
     subject: "Your CastleCare payment receipt",
     transactional: true,
     trigger: "Checkout payment succeeds",
+  },
+  {
+    audience: "customer",
+    key: "balance-invoice",
+    purpose:
+      "Send the remaining service balance after completion or admin confirmation when the customer chose invoice later.",
+    subject: "Your CastleCare balance is ready",
+    transactional: true,
+    trigger: "Admin creates a balance invoice or Stripe invoice is finalized",
+  },
+  {
+    audience: "customer",
+    key: "subscription-started",
+    purpose:
+      "Confirm a recurring CastleCare plan and show what services and schedule are included.",
+    subject: "Your CastleCare plan is active",
+    transactional: true,
+    trigger: "Subscription checkout succeeds or recurring plan is activated",
   },
   {
     audience: "customer",
@@ -55,6 +111,33 @@ export const emailCatalog = [
   },
   {
     audience: "customer",
+    key: "service-completed",
+    purpose:
+      "Close the loop after service with notes, customer-facing photos, and the next best action.",
+    subject: "Your CastleCare service is complete",
+    transactional: true,
+    trigger: "Admin or provider marks the order complete",
+  },
+  {
+    audience: "customer",
+    key: "tip-request",
+    purpose:
+      "Ask the customer to choose None, a tip percentage, or a custom tip after the job is complete.",
+    subject: "Add a tip for your CastleCare visit?",
+    transactional: true,
+    trigger: "Order completed when tip action is still needed",
+  },
+  {
+    audience: "customer",
+    key: "provider-application-received",
+    purpose:
+      "Confirm that a provider application was received and explain review status and next steps.",
+    subject: "Your CastleCare application is in",
+    transactional: true,
+    trigger: "Earn/provider onboarding application is submitted",
+  },
+  {
+    audience: "customer",
     key: "account-finalization",
     purpose:
       "Invite a booking customer to finish account setup after checkout so they can track status and future bookings.",
@@ -69,6 +152,15 @@ export const emailCatalog = [
     subject: "Verify your CastleCare email",
     transactional: true,
     trigger: "Better Auth verification event",
+  },
+  {
+    audience: "customer",
+    key: "email-otp",
+    purpose:
+      "Send one-time codes for passwordless sign-in, email verification, and password reset.",
+    subject: "Your CastleCare code",
+    transactional: true,
+    trigger: "Better Auth email OTP event",
   },
   {
     audience: "customer",

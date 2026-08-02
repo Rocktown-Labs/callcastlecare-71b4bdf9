@@ -1,6 +1,8 @@
 import {
   defaultStripeCatalogItems,
   defaultStripeCoupons,
+  getStripeCatalogProductKey,
+  getStripeCatalogProductName,
 } from "@callcastlecare/api";
 import type {
   StripeCatalogItemInput,
@@ -22,7 +24,7 @@ export const createStripeClientOrThrow = () => {
   }
 
   return new Stripe(env.STRIPE_SECRET_KEY, {
-    apiVersion: "2026-02-25.clover",
+    apiVersion: "2026-06-24.dahlia",
   });
 };
 
@@ -64,25 +66,27 @@ export const syncStripeCatalogItem = async (
   stripe: Stripe,
   input: StripeCatalogItemInput
 ) => {
-  const existingProduct = await findProductBySlug(stripe, input.slug);
+  const productKey = getStripeCatalogProductKey(input);
+  const productName = getStripeCatalogProductName(input);
+  const existingProduct = await findProductBySlug(stripe, productKey);
   const product = existingProduct
     ? await stripe.products.update(existingProduct.id, {
         active: input.active,
         description: input.description,
         metadata: {
-          [stripeMetadataKey]: input.slug,
+          [stripeMetadataKey]: productKey,
           serviceType: input.serviceType,
         },
-        name: input.name,
+        name: productName,
       })
     : await stripe.products.create({
         active: input.active,
         description: input.description,
         metadata: {
-          [stripeMetadataKey]: input.slug,
+          [stripeMetadataKey]: productKey,
           serviceType: input.serviceType,
         },
-        name: input.name,
+        name: productName,
       });
 
   const existingPrice = await findPriceForItem(stripe, input, product.id);
@@ -93,6 +97,7 @@ export const syncStripeCatalogItem = async (
       currency: input.currency,
       metadata: {
         [stripeMetadataKey]: input.slug,
+        castlecare_product_key: productKey,
         serviceType: input.serviceType,
       },
       product: product.id,
@@ -117,7 +122,7 @@ export const syncStripeCoupon = async (
   stripe: Stripe,
   input: StripeCouponInput
 ) => {
-  const requestedId = input.code.toLowerCase().replaceAll(/[^a-z0-9_-]/g, "-");
+  const requestedId = input.code.toLowerCase().replaceAll(/[^a-z0-9_-]/gu, "-");
   const existing = await stripe.coupons.retrieve(requestedId).catch(() => null);
 
   if (existing && !existing.deleted) {

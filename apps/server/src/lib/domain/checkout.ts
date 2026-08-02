@@ -6,11 +6,15 @@ import type {
   TimingType,
 } from "@callcastlecare/api";
 import {
+  COMBO_SUBSCRIPTION_PRICES,
   HOME_PREORDER_DEPOSIT_CENTS,
   LAUNDRY_PLAN_LABELS,
   LAUNDRY_PLAN_PRICES,
   LAWNCARE_PLAN_LABELS,
   LAWNCARE_PLAN_PRICES,
+  TECHNOLOGY_FEE_CENTS,
+  WINDOW_WASHING_SUBSCRIPTION_PRICES,
+  calculateTravelFeeCents,
   calculateWindowWashingQuote,
   getLawncarePricingTier,
 } from "@callcastlecare/api";
@@ -23,10 +27,49 @@ const parsePlanPrice = (
   basePriceCents: number;
   label: string;
   pricingTier?: PricingTier;
-  serviceType?: "lawncare" | "laundry" | "window_washing";
+  serviceType?: "combo" | "lawncare" | "laundry" | "window_washing";
   windowWashingQuote?: ReturnType<typeof calculateWindowWashingQuote>;
 } => {
+  if (item.planId && item.planId in COMBO_SUBSCRIPTION_PRICES) {
+    const planId = item.planId as keyof typeof COMBO_SUBSCRIPTION_PRICES;
+    const comboLabels = {
+      "bi-weekly-royal-duo-large": "Bi-Weekly Royal Duo Large",
+      "bi-weekly-royal-duo-medium": "Bi-Weekly Royal Duo Medium",
+      "bi-weekly-royal-duo-small": "Bi-Weekly Royal Duo Small",
+      "crown-estate-trio-deluxe-large": "Crown Estate Trio Deluxe Large",
+      "crown-estate-trio-deluxe-medium": "Crown Estate Trio Deluxe Medium",
+      "crown-estate-trio-deluxe-small": "Crown Estate Trio Deluxe Small",
+      "crown-estate-trio-large": "Crown Estate Trio Large",
+      "crown-estate-trio-medium": "Crown Estate Trio Medium",
+      "crown-estate-trio-small": "Crown Estate Trio Small",
+      "monthly-castle-care-large": "Monthly CastleCare Large",
+      "monthly-castle-care-medium": "Monthly CastleCare Medium",
+      "monthly-castle-care-small": "Monthly CastleCare Small",
+      "royal-linen-panes-duo": "Royal Linen & Panes Duo",
+    } as const satisfies Record<keyof typeof COMBO_SUBSCRIPTION_PRICES, string>;
+
+    return {
+      basePriceCents: COMBO_SUBSCRIPTION_PRICES[planId],
+      label: comboLabels[planId],
+      serviceType: "combo",
+    };
+  }
+
   if (item.itemKind === "window_washing") {
+    if (
+      item.planId === "royal-pane-monthly" ||
+      item.planId === "royal-pane-bi-annual"
+    ) {
+      return {
+        basePriceCents: WINDOW_WASHING_SUBSCRIPTION_PRICES[item.planId],
+        label:
+          item.planId === "royal-pane-bi-annual"
+            ? "Royal Pane Bi-Annual Detail"
+            : "Royal Pane Monthly",
+        serviceType: "window_washing",
+      };
+    }
+
     const quote = calculateWindowWashingQuote({
       cleanScreens: item.cleanScreens ?? false,
       livingArea: item.livingArea ?? 1400,
@@ -105,7 +148,10 @@ const normalizeTiming = (
 export interface ComputedCheckout {
   lineItems: CheckoutPreviewLineItem[];
   subtotalCents: number;
+  technologyFeeCents: number;
+  tipAmountCents: number;
   totalCents: number;
+  travelFeeCents: number;
 }
 
 export const computeCheckoutPreview = (
@@ -143,14 +189,88 @@ export const computeCheckoutPreview = (
     (sum, item) => sum + item.basePriceCents * item.quantity,
     0
   );
-  const totalCents = lineItems.reduce(
-    (sum, item) => sum + item.totalPriceCents,
-    0
+
+  const technologyFeeCents = TECHNOLOGY_FEE_CENTS;
+  lineItems.push({
+    basePriceCents: technologyFeeCents,
+    itemKind: "lawncare",
+    label: "Technology fee",
+    metadata: { serviceType: "fee" },
+    planId: "technology-fee",
+    quantity: 1,
+    tipAmountCents: 0,
+    totalPriceCents: technologyFeeCents,
+  });
+
+  const resolvedTravel =
+    typeof input.travelFeeCents === "number"
+      ? {
+          feeCents: Math.max(0, input.travelFeeCents),
+          feeKind:
+            input.travelFeeCents > 0
+              ? input.travelStateCode &&
+                input.travelStateCode.toUpperCase() !== "AR"
+                ? ("out_of_state" as const)
+                : ("in_state" as const)
+              : ("free" as const),
+        }
+      : calculateTravelFeeCents({
+          distanceMiles: input.travelDistanceMiles,
+          stateCode: input.travelStateCode,
+        });
+
+  const travelFeeCents = resolvedTravel.feeCents;
+  if (travelFeeCents > 0) {
+    lineItems.push({
+      basePriceCents: travelFeeCents,
+      itemKind: "lawncare",
+      label:
+        resolvedTravel.feeKind === "out_of_state"
+          ? "Travel fee (out of state)"
+          : "Travel fee (in state)",
+      metadata: {
+        distanceMiles: input.travelDistanceMiles ?? null,
+        feeKind: resolvedTravel.feeKind,
+        serviceType: "fee",
+      },
+      planId:
+        resolvedTravel.feeKind === "out_of_state"
+          ? "travel-fee-out-of-state"
+          : "travel-fee-in-state",
+      quantity: 1,
+      tipAmountCents: 0,
+      totalPriceCents: travelFeeCents,
+    });
+  }
+
+  const tipAmountCents = Math.max(
+    0,
+    input.tipAmountCents ??
+      lineItems.reduce((sum, item) => sum + item.tipAmountCents, 0)
   );
+
+  if (tipAmountCents > 0 && !input.items.some((item) => item.tipAmountCents)) {
+    lineItems.push({
+      basePriceCents: 0,
+      itemKind: "lawncare",
+      label: "Tip",
+      metadata: { serviceType: "tip" },
+      planId: "tip",
+      quantity: 1,
+      tipAmountCents,
+      totalPriceCents: tipAmountCents,
+    });
+  }
+
+  const totalCents =
+    subtotalCents + technologyFeeCents + travelFeeCents + tipAmountCents;
 
   return {
     lineItems,
     subtotalCents,
+    technologyFeeCents,
+    tipAmountCents,
     totalCents,
+    travelFeeCents,
   };
 };

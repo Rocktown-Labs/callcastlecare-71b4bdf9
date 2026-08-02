@@ -1,6 +1,7 @@
 /* @jsxImportSource react */
 import { Section, Text } from "@react-email/components";
 
+import { castleCareUrl } from "../theme";
 import { EmailShell, InfoRow, PrimaryButton } from "./components";
 
 export interface ServiceStatusUpdateEmailProps {
@@ -17,7 +18,7 @@ export const ServiceStatusUpdateEmail = Object.assign(
     customerName,
     orderLabel,
     statusLabel,
-    statusUrl,
+    statusUrl = castleCareUrl("/dashboard"),
   }: ServiceStatusUpdateEmailProps) => {
     const greeting = customerName ? `Hi ${customerName},` : "Hi,";
 
@@ -39,7 +40,7 @@ export const ServiceStatusUpdateEmail = Object.assign(
           </Section>
           {statusUrl ? (
             <Section className="pt-6">
-              <PrimaryButton href={statusUrl}>Open dashboard</PrimaryButton>
+              <PrimaryButton href={statusUrl}>View order details</PrimaryButton>
             </Section>
           ) : null}
         </Section>
@@ -52,7 +53,7 @@ export const ServiceStatusUpdateEmail = Object.assign(
       customerName: "Jordan",
       orderLabel: "Order #1042",
       statusLabel: "Provider arrived",
-      statusUrl: "https://callcastlecare.com/dashboard",
+      statusUrl: castleCareUrl("/dashboard/orders/1042"),
     } satisfies ServiceStatusUpdateEmailProps,
   }
 );
