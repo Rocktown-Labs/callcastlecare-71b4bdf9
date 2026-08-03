@@ -90,7 +90,15 @@ export const EmailShell = ({ children, preview, title }: EmailShellProps) => (
               <Text className="m-0 mt-4 text-[13px] leading-[1.6] text-footerText">
                 CastleCare provides reliable home care from Central Arkansas,
                 with service built to expand wherever customers need a better
-                way to book the work. Questions? Reply to this email or write{" "}
+                way to book the work. Questions or need help with a booking?
+                Visit our{" "}
+                <Link
+                  className="font-semibold text-accent underline"
+                  href={emailTheme.supportUrl}
+                >
+                  Help & Support Center
+                </Link>{" "}
+                or write{" "}
                 <Link
                   className="font-semibold text-accent"
                   href={`mailto:${emailTheme.supportEmail}`}
