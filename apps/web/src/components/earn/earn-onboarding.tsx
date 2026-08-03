@@ -19,6 +19,7 @@ import {
   Car,
   Check,
   ClipboardList,
+  CreditCard,
   Crown,
   Home,
   LoaderCircle,
@@ -147,6 +148,11 @@ interface ProviderApplicationDraft {
   serviceRadiusMiles: string;
   termsAccepted: boolean;
   plan: ProviderPlan;
+  cardName: string;
+  cardNumber: string;
+  cardExpiry: string;
+  cardCvc: string;
+  cardZip: string;
 }
 
 const initialDraft: ProviderApplicationDraft = {
@@ -155,6 +161,11 @@ const initialDraft: ProviderApplicationDraft = {
   addressValidated: false,
   availableDays: [],
   canDoAllServices: false,
+  cardCvc: "",
+  cardExpiry: "",
+  cardName: "",
+  cardNumber: "",
+  cardZip: "",
   city: "",
   confirmPassword: "",
   dateOfBirth: "",
@@ -315,10 +326,15 @@ const planSchema = z.object({
 
 const accountSchema = z
   .object({
+    cardCvc: z.string().trim().min(3, "Enter CVC."),
+    cardExpiry: z.string().trim().min(4, "Enter expiry MM/YY."),
+    cardName: z.string().trim().min(2, "Enter cardholder name."),
+    cardNumber: z.string().trim().min(14, "Enter a valid card number."),
+    cardZip: z.string().trim().min(5, "Enter ZIP code."),
     confirmPassword: z.string().min(8, "Confirm your password."),
     password: z.string().min(8, "Use at least 8 characters."),
     termsAccepted: z.boolean().refine((value) => value, {
-      message: "Agree to the provider terms to continue.",
+      message: "Agree to Provider Terms & 1099 Contractor Agreement to continue.",
     }),
   })
   .refine((value) => value.password === value.confirmPassword, {
@@ -980,10 +996,16 @@ export default function EarnOnboarding() {
         confirmPassword: _confirmPassword,
         password: _password,
         ...applicationForStorage
-      } = result.data;
+      const fullAppData = {
+        ...applicationForStorage,
+        paidAmountCents: 5000,
+        paidAt: new Date().toISOString(),
+        paymentStatus: "paid_express_50",
+        termsAcceptedAt: new Date().toISOString(),
+      };
       window.sessionStorage.setItem(
         storageKey,
-        JSON.stringify(applicationForStorage)
+        JSON.stringify(fullAppData)
       );
       window.sessionStorage.setItem(
         "better-auth-ui.verify-email",
@@ -1496,9 +1518,9 @@ export default function EarnOnboarding() {
                     aria-hidden="true"
                     className="mb-2 size-5 text-lime-300"
                   />
-                  We will create this provider account with{" "}
+                  We will create your provider account with{" "}
                   <strong>{draft.email || "your email"}</strong>. After email
-                  verification, you will land on your application status page.
+                  verification and $50 background check authorization, you will land on your application dashboard.
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/65 sm:grid-cols-2">
@@ -1514,10 +1536,10 @@ export default function EarnOnboarding() {
                   </div>
                   <div>
                     <p className="text-xs font-bold uppercase text-white/40">
-                      Path
+                      Onboarding Tier
                     </p>
                     <p className="mt-1 font-bold text-white">
-                      {selectedPlan.label}
+                      {selectedPlan.label} (60/40 ➔ 80/20 Payout)
                     </p>
                   </div>
                 </div>
@@ -1543,6 +1565,74 @@ export default function EarnOnboarding() {
                   />
                 </div>
 
+                {/* $50 Express Verification Payment Section */}
+                <div className="rounded-3xl border border-lime-300/40 bg-slate-900/90 p-5 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-2 text-lime-300">
+                      <CreditCard className="size-5" />
+                      <span className="font-extrabold text-white">
+                        $50.00 Express Verification Fee
+                      </span>
+                    </div>
+                    <span className="rounded-full bg-lime-300 px-2.5 py-0.5 text-xs font-black text-slate-950">
+                      $50 One-Time
+                    </span>
+                  </div>
+
+                  <p className="mt-3 text-xs leading-5 text-white/70">
+                    Covers same-day background and MVR driving record check. No recurring staff subscription fees.
+                  </p>
+
+                  <div className="mt-4 grid gap-3">
+                    <WizardInput
+                      error={errors.cardName}
+                      icon={User}
+                      id="provider-card-name"
+                      label="Cardholder name"
+                      onChange={updateTextField("cardName")}
+                      placeholder="Name as it appears on card"
+                      value={draft.cardName}
+                    />
+
+                    <WizardInput
+                      error={errors.cardNumber}
+                      icon={CreditCard}
+                      id="provider-card-number"
+                      label="Card number"
+                      onChange={updateTextField("cardNumber")}
+                      placeholder="4000 1234 5678 9010"
+                      value={draft.cardNumber}
+                    />
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <WizardInput
+                        error={errors.cardExpiry}
+                        id="provider-card-expiry"
+                        label="Expires"
+                        onChange={updateTextField("cardExpiry")}
+                        placeholder="MM/YY"
+                        value={draft.cardExpiry}
+                      />
+                      <WizardInput
+                        error={errors.cardCvc}
+                        id="provider-card-cvc"
+                        label="CVC"
+                        onChange={updateTextField("cardCvc")}
+                        placeholder="123"
+                        value={draft.cardCvc}
+                      />
+                      <WizardInput
+                        error={errors.cardZip}
+                        id="provider-card-zip"
+                        label="ZIP"
+                        onChange={updateTextField("cardZip")}
+                        placeholder="72201"
+                        value={draft.cardZip}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <label
                   className={cn(
                     "flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-6 text-white/65 transition-colors",
@@ -1561,8 +1651,16 @@ export default function EarnOnboarding() {
                     }
                   />
                   <span>
-                    I agree to the CastleCare provider terms, customer privacy
-                    expectations, and service quality standards.
+                    I agree to the{" "}
+                    <a
+                      className="font-bold text-lime-300 underline hover:text-lime-200"
+                      href="/terms"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      CastleCare Provider Terms of Service
+                    </a>
+                    , background & MVR check authorization, customer privacy expectations, and 1099 Independent Contractor Agreement.
                   </span>
                 </label>
                 <FieldError>{errors.termsAccepted}</FieldError>
