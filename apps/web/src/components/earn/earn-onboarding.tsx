@@ -334,7 +334,8 @@ const accountSchema = z
     confirmPassword: z.string().min(8, "Confirm your password."),
     password: z.string().min(8, "Use at least 8 characters."),
     termsAccepted: z.boolean().refine((value) => value, {
-      message: "Agree to Provider Terms & 1099 Contractor Agreement to continue.",
+      message:
+        "Agree to Provider Terms & 1099 Contractor Agreement to continue.",
     }),
   })
   .refine((value) => value.password === value.confirmPassword, {
@@ -1004,10 +1005,7 @@ export default function EarnOnboarding() {
         paymentStatus: "paid_express_50",
         termsAcceptedAt: new Date().toISOString(),
       };
-      window.sessionStorage.setItem(
-        storageKey,
-        JSON.stringify(fullAppData)
-      );
+      window.sessionStorage.setItem(storageKey, JSON.stringify(fullAppData));
       window.sessionStorage.setItem(
         "better-auth-ui.verify-email",
         result.data.email
@@ -1521,7 +1519,8 @@ export default function EarnOnboarding() {
                   />
                   We will create your provider account with{" "}
                   <strong>{draft.email || "your email"}</strong>. After email
-                  verification and $50 background check authorization, you will land on your application dashboard.
+                  verification and $50 background check authorization, you will
+                  land on your application dashboard.
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/65 sm:grid-cols-2">
@@ -1581,7 +1580,8 @@ export default function EarnOnboarding() {
                   </div>
 
                   <p className="mt-3 text-xs leading-5 text-white/70">
-                    Covers same-day background and MVR driving record check. No recurring staff subscription fees.
+                    Covers same-day background and MVR driving record check. No
+                    recurring staff subscription fees.
                   </p>
 
                   <div className="mt-4 grid gap-3">
@@ -1661,7 +1661,8 @@ export default function EarnOnboarding() {
                     >
                       CastleCare Provider Terms of Service
                     </a>
-                    , background & MVR check authorization, customer privacy expectations, and 1099 Independent Contractor Agreement.
+                    , background & MVR check authorization, customer privacy
+                    expectations, and 1099 Independent Contractor Agreement.
                   </span>
                 </label>
                 <FieldError>{errors.termsAccepted}</FieldError>
