@@ -1182,7 +1182,7 @@ export default function EarnOnboarding() {
                   inputMode="tel"
                   label="Phone"
                   onChange={updatePhone}
-                  placeholder="(501)-827-1551"
+                  placeholder="(123) 456-7890"
                   value={draft.phone}
                 />
               </div>
@@ -1391,9 +1391,12 @@ export default function EarnOnboarding() {
                     <Sparkles className="size-3.5" />
                     CastleCare Pro Membership
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-white/70">
-                    One-time $50 express setup includes background and MVR
-                    screening. Starts at 60/40 payout split on day one with
+                  <h3 className="mt-3 text-2xl font-extrabold text-white">
+                    Express Onboarding & Guaranteed Route Blocks
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-white/70">
+                    One-time $50 express setup includes same-day background and
+                    MVR screening. Starts at 60/40 payout split on day one with
                     performance progression up to 80/20.
                   </p>
                 </div>
@@ -1444,6 +1447,44 @@ export default function EarnOnboarding() {
                     );
                   })}
                 </div>
+
+                {/* Explanatory Workflow Box right below the card */}
+                <div className="mx-auto w-full max-w-xl rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md">
+                  <h4 className="text-base font-bold text-white">
+                    How CastleCare Pro Dispatch Works:
+                  </h4>
+                  <ul className="mt-3 grid gap-3 text-xs leading-5 text-white/70 sm:grid-cols-2">
+                    <li className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
+                      <span>
+                        <strong>Guaranteed Zip Code Routes:</strong> Orders in
+                        your area are clustered into 2-hr arrival blocks.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
+                      <span>
+                        <strong>Performance Unlocks:</strong> Earn 70/30 (Gold)
+                        at 25 jobs and 80/20 (Elite) at 75 jobs.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
+                      <span>
+                        <strong>Photo & Video Proof:</strong> Quick in-app
+                        before/after photos document 5-star quality work.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
+                      <span>
+                        <strong>Instant Direct Deposit:</strong> Automated
+                        payout release upon customer/AI verification.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
                 <FieldError>{errors.plan}</FieldError>
               </div>
             ) : null}

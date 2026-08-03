@@ -113,7 +113,7 @@ const AdminNotificationsRoute = () => {
     <AppShell isAdmin userEmail={session.user?.email ?? ""} variant="admin">
       <main className="px-4 py-6 text-slate-950 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6">
-          <section className="grid gap-3 border-slate-200 border-b bg-white px-1 pb-6">
+          <section className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
               <Bell className="size-4" />
               Admin notifications

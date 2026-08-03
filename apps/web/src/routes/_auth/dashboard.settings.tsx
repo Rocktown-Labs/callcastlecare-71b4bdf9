@@ -50,6 +50,7 @@ const emptyAddressForm = {
   formattedAddress: "",
   instructions: "",
   isDefault: false,
+  isValidated: false,
   label: "Home",
   state: "AR",
   street: "",
@@ -146,7 +147,7 @@ const DashboardSettingsRoute = () => {
     field: keyof typeof addressForm,
     value: string
   ) => {
-    setAddressForm((current) => ({ ...current, [field]: value }));
+    setAddressForm((current) => ({ ...current, [field]: value as never }));
     setIsDirty(true);
   };
 
@@ -159,6 +160,7 @@ const DashboardSettingsRoute = () => {
       addressText: addressStr,
       city: String(raw?.city ?? raw?.town ?? current.city ?? ""),
       formattedAddress: addressStr,
+      isValidated: true,
       state: String(raw?.stateCode ?? raw?.state ?? current.state ?? "AR"),
       street: String(
         raw?.addressLine1 ?? raw?.street ?? addressStr.split(",")[0] ?? ""
@@ -166,7 +168,7 @@ const DashboardSettingsRoute = () => {
       zip: String(raw?.postalCode ?? current.zip ?? ""),
     }));
     setIsDirty(true);
-    toast.success("Address filled from suggestion");
+    toast.success("Address verified by Radar!");
   };
 
   const primaryAddress = useMemo(
@@ -178,13 +180,6 @@ const DashboardSettingsRoute = () => {
     () => addresses.filter((addr) => addr.id !== primaryAddress?.id),
     [addresses, primaryAddress]
   );
-
-  const needsOnboarding = useMemo(() => {
-    if (!profile) {
-      return false;
-    }
-    return !profile.phone || addresses.length === 0;
-  }, [profile, addresses]);
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -243,9 +238,7 @@ const DashboardSettingsRoute = () => {
     setIsSaving(false);
 
     if (!response.ok) {
-      toast.error(
-        "Address could not be saved. Please check the address fields."
-      );
+      toast.error("Address could not be saved. Please verify address fields.");
       return;
     }
 
@@ -277,7 +270,7 @@ const DashboardSettingsRoute = () => {
         isDefault: address.id === addressId,
       }))
     );
-    toast.success("Primary address updated.");
+    toast.success("Primary location updated.");
   };
 
   const deleteAddress = async (addressId: number) => {
@@ -307,45 +300,33 @@ const DashboardSettingsRoute = () => {
         <section className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
             <Settings className="size-4" />
-            Customer settings
+            Customer Account Settings
           </div>
           <h1 className="text-3xl font-black tracking-tight md:text-5xl">
-            Account & Service Addresses
+            Profile & Saved Locations
           </h1>
           <p className="max-w-2xl text-base leading-7 text-slate-600">
-            Manage your contact details and saved home service locations for
-            instant 1-click booking.
+            Manage your account contact profile and saved service locations for
+            1-click arrival window bookings.
           </p>
         </section>
 
-        {needsOnboarding && !isLoading ? (
-          <section className="rounded-3xl border border-lime-300 bg-lime-50 p-5">
-            <Badge className="bg-lime-300 text-slate-950">Setup needed</Badge>
-            <h2 className="mt-3 text-xl font-black">
-              Complete your account profile
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Add your phone number and at least one primary service address so
-              orders can be dispatched to your location.
-            </p>
-          </section>
-        ) : null}
-
         {blocker.status === "blocked" ? (
-          <section className="rounded-3xl border border-slate-300 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-black">Unsaved changes</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Save your settings before leaving, or discard the edits and
-              continue.
+          <section className="rounded-3xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+            <h2 className="text-lg font-black text-amber-950">
+              Unsaved changes
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-amber-800">
+              Please save your profile changes before navigating away.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Button
-                className="rounded-full border-slate-200"
+                className="rounded-full border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
                 onClick={() => blocker.reset()}
                 type="button"
                 variant="outline"
               >
-                Stay here
+                Stay on settings
               </Button>
               <Button
                 className="rounded-full bg-slate-950 text-white hover:bg-slate-800"
@@ -363,22 +344,32 @@ const DashboardSettingsRoute = () => {
 
         {isLoading ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center font-bold text-slate-500">
-            Loading settings...
+            Loading customer settings...
           </div>
         ) : (
           <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-            {/* Contact Form */}
+            {/* Profile Form */}
             <form
               className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
               onSubmit={(event) => void saveProfile(event)}
             >
-              <h2 className="text-xl font-black">Contact Profile</h2>
-              <p className="mt-1 text-sm text-slate-500">{profile?.email}</p>
+              <h2 className="text-xl font-black text-slate-900">
+                Contact Details
+              </h2>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {profile?.email}
+              </p>
+
               <div className="mt-5 grid gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="firstName">First name</Label>
+                  <Label
+                    className="font-bold text-slate-700"
+                    htmlFor="firstName"
+                  >
+                    First name
+                  </Label>
                   <Input
-                    className="rounded-xl border-slate-200 text-slate-900 focus-visible:ring-2 focus-visible:ring-lime-400"
+                    className="rounded-xl border-slate-300 bg-white text-slate-900 focus-visible:ring-2 focus-visible:ring-lime-400"
                     id="firstName"
                     onChange={(event) =>
                       updateProfileField("firstName", event.target.value)
@@ -387,9 +378,14 @@ const DashboardSettingsRoute = () => {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="lastName">Last name</Label>
+                  <Label
+                    className="font-bold text-slate-700"
+                    htmlFor="lastName"
+                  >
+                    Last name
+                  </Label>
                   <Input
-                    className="rounded-xl border-slate-200 text-slate-900 focus-visible:ring-2 focus-visible:ring-lime-400"
+                    className="rounded-xl border-slate-300 bg-white text-slate-900 focus-visible:ring-2 focus-visible:ring-lime-400"
                     id="lastName"
                     onChange={(event) =>
                       updateProfileField("lastName", event.target.value)
@@ -398,9 +394,11 @@ const DashboardSettingsRoute = () => {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="phone">Phone number</Label>
+                  <Label className="font-bold text-slate-700" htmlFor="phone">
+                    Phone number
+                  </Label>
                   <Input
-                    className="rounded-xl border-slate-200 text-slate-900 focus-visible:ring-2 focus-visible:ring-lime-400"
+                    className="rounded-xl border-slate-300 bg-white text-slate-900 focus-visible:ring-2 focus-visible:ring-lime-400"
                     id="phone"
                     onChange={(event) =>
                       updateProfileField("phone", event.target.value)
@@ -416,11 +414,11 @@ const DashboardSettingsRoute = () => {
                 type="submit"
               >
                 <Save className="size-4" />
-                Save contact details
+                Save Profile
               </Button>
             </form>
 
-            {/* Saved Addresses Section */}
+            {/* Saved Locations Section */}
             <section className="grid gap-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-xl font-black text-slate-950">
@@ -439,31 +437,35 @@ const DashboardSettingsRoute = () => {
                   ) : (
                     <>
                       <Plus className="size-4" />
-                      Add New Address
+                      Add Location
                     </>
                   )}
                 </Button>
               </div>
 
-              {/* Inline Add Address Modal/Collapsible Card */}
+              {/* Add Address Experience */}
               {showAddForm ? (
                 <form
-                  className="rounded-3xl border border-lime-300/80 bg-lime-50/50 p-6 shadow-md"
+                  className="rounded-3xl border-2 border-lime-400 bg-slate-900 p-6 text-white shadow-xl"
                   onSubmit={(event) => void addAddress(event)}
                 >
-                  <div className="flex items-center justify-between border-b border-lime-200/60 pb-3">
-                    <h3 className="text-lg font-black text-slate-900">
-                      Add Service Location
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <h3 className="text-lg font-black text-white">
+                      Add New Address
                     </h3>
-                    <Badge className="bg-lime-300 text-slate-950">
-                      Radar Verified
+                    <Badge className="bg-lime-300 font-bold text-slate-950">
+                      Radar Autocomplete
                     </Badge>
                   </div>
 
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label htmlFor="addressSearch">
-                        Search Address (Autocomplete after 7 chars)
+                  <div className="mt-4 grid gap-4">
+                    {/* Search Input ONLY initially */}
+                    <div className="grid gap-2">
+                      <Label
+                        className="font-bold text-slate-200"
+                        htmlFor="addressSearch"
+                      >
+                        Enter Address (Search & Select)
                       </Label>
                       <RadarAddressInput
                         onChange={(val) => updateAddressField("street", val)}
@@ -472,96 +474,122 @@ const DashboardSettingsRoute = () => {
                         value={addressForm.street}
                       />
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="label">Location Label</Label>
-                      <Input
-                        className="rounded-xl bg-white text-slate-900"
-                        id="label"
-                        onChange={(event) =>
-                          updateAddressField("label", event.target.value)
-                        }
-                        placeholder="Home, Work, Vacation..."
-                        value={addressForm.label}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input
-                        className="rounded-xl bg-white text-slate-900"
-                        id="city"
-                        onChange={(event) =>
-                          updateAddressField("city", event.target.value)
-                        }
-                        value={addressForm.city}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="state">State</Label>
-                      <Input
-                        className="rounded-xl bg-white text-slate-900"
-                        id="state"
-                        onChange={(event) =>
-                          updateAddressField("state", event.target.value)
-                        }
-                        value={addressForm.state}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="zip">ZIP Code</Label>
-                      <Input
-                        className="rounded-xl bg-white text-slate-900"
-                        id="zip"
-                        onChange={(event) =>
-                          updateAddressField("zip", event.target.value)
-                        }
-                        value={addressForm.zip}
-                      />
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label htmlFor="instructions">
-                        Access Notes / Gate Code (Optional)
-                      </Label>
-                      <Textarea
-                        className="rounded-xl bg-white text-slate-900"
-                        id="instructions"
-                        onChange={(event) =>
-                          updateAddressField("instructions", event.target.value)
-                        }
-                        placeholder="Side gate code is 1234, watch for dog..."
-                        value={addressForm.instructions}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="mt-5 flex gap-3">
-                    <Button
-                      className="h-11 flex-1 rounded-full bg-slate-950 font-bold text-white hover:bg-slate-800"
-                      disabled={isSaving}
-                      type="submit"
-                    >
-                      <Save className="size-4" />
-                      Save Address
-                    </Button>
-                    <Button
-                      className="h-11 rounded-full border-slate-300"
-                      onClick={() => setShowAddForm(false)}
-                      type="button"
-                      variant="outline"
-                    >
-                      Cancel
-                    </Button>
+                    {/* Validated Address Fields appear after selection or typing */}
+                    {addressForm.isValidated ||
+                    addressForm.street.length > 5 ? (
+                      <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <Label
+                              className="text-xs text-white/70"
+                              htmlFor="label"
+                            >
+                              Location Name
+                            </Label>
+                            <Input
+                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white placeholder:text-white/40"
+                              id="label"
+                              onChange={(e) =>
+                                updateAddressField("label", e.target.value)
+                              }
+                              placeholder="Home, Work, Rental..."
+                              value={addressForm.label}
+                            />
+                          </div>
+                          <div>
+                            <Label
+                              className="text-xs text-white/70"
+                              htmlFor="city"
+                            >
+                              City
+                            </Label>
+                            <Input
+                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white"
+                              id="city"
+                              onChange={(e) =>
+                                updateAddressField("city", e.target.value)
+                              }
+                              value={addressForm.city}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <Label
+                              className="text-xs text-white/70"
+                              htmlFor="state"
+                            >
+                              State
+                            </Label>
+                            <Input
+                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white"
+                              id="state"
+                              onChange={(e) =>
+                                updateAddressField("state", e.target.value)
+                              }
+                              value={addressForm.state}
+                            />
+                          </div>
+                          <div>
+                            <Label
+                              className="text-xs text-white/70"
+                              htmlFor="zip"
+                            >
+                              ZIP Code
+                            </Label>
+                            <Input
+                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white"
+                              id="zip"
+                              onChange={(e) =>
+                                updateAddressField("zip", e.target.value)
+                              }
+                              value={addressForm.zip}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label
+                            className="text-xs text-white/70"
+                            htmlFor="instructions"
+                          >
+                            Gate Code / Access Notes (Optional)
+                          </Label>
+                          <Textarea
+                            className="mt-1 rounded-xl border-white/20 bg-white/10 text-white placeholder:text-white/40"
+                            id="instructions"
+                            onChange={(e) =>
+                              updateAddressField("instructions", e.target.value)
+                            }
+                            placeholder="Gate code 4321..."
+                            value={addressForm.instructions}
+                          />
+                        </div>
+
+                        <Button
+                          className="mt-2 h-11 w-full rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
+                          disabled={isSaving}
+                          type="submit"
+                        >
+                          <Save className="size-4" />
+                          Save Location to List
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 </form>
               ) : null}
 
-              {/* Primary Address */}
+              {/* Primary Address Display */}
               {primaryAddress ? (
                 <article className="rounded-3xl border-2 border-lime-400 bg-white p-5 shadow-sm">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Home className="size-5 text-lime-600" />
-                        <h3 className="text-lg font-black">
+                        <h3 className="text-lg font-black text-slate-950">
                           {primaryAddress.label}
                         </h3>
                         <Badge className="bg-lime-300 font-bold text-slate-950">
@@ -583,7 +611,7 @@ const DashboardSettingsRoute = () => {
                 </article>
               ) : null}
 
-              {/* Secondary Addresses List */}
+              {/* Secondary Address List */}
               <div className="grid gap-3">
                 {secondaryAddresses.map((address) => (
                   <article
@@ -602,11 +630,6 @@ const DashboardSettingsRoute = () => {
                           {address.formattedAddress ??
                             `${address.street}, ${address.city}, ${address.state} ${address.zip}`}
                         </p>
-                        {address.instructions ? (
-                          <p className="mt-1 text-xs text-slate-400">
-                            Notes: {address.instructions}
-                          </p>
-                        ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -632,18 +655,6 @@ const DashboardSettingsRoute = () => {
                   </article>
                 ))}
               </div>
-
-              {addresses.length === 0 && !showAddForm ? (
-                <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center">
-                  <MapPin className="mx-auto size-8 text-slate-400" />
-                  <p className="mt-2 text-sm font-bold text-slate-600">
-                    No service locations saved yet
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Add an address above to start booking service.
-                  </p>
-                </div>
-              ) : null}
             </section>
           </div>
         )}

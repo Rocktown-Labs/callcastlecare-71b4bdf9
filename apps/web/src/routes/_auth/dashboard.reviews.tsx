@@ -2,7 +2,14 @@ import { Badge } from "@callcastlecare/ui/components/badge";
 import { Button } from "@callcastlecare/ui/components/button";
 import { Textarea } from "@callcastlecare/ui/components/textarea";
 import { createFileRoute } from "@tanstack/react-router";
-import { Camera, CheckCircle2, Star, UserCheck } from "lucide-react";
+import {
+  Camera,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Star,
+  UserCheck,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +35,17 @@ const mockCompletedOrders: CompletedOrder[] = [
     providerName: "Marcus Vance (CastleCare Pro)",
     serviceSummary: "Bi-Weekly Lawn Care + Window Washing",
   },
+  {
+    afterPhotos: ["/callcastlecare/media/laundry-after.jpg"],
+    beforePhotos: ["/callcastlecare/media/laundry-before.jpg"],
+    completedAt: "2026-07-25T11:15:00Z",
+    id: "ord_098",
+    providerName: "Sarah Jenkins (CastleCare Pro)",
+    reviewComment:
+      "Super fast turnaround on wash and fold! Everything neatly folded.",
+    reviewRating: 5,
+    serviceSummary: "Wash & Fold Laundry Pickup",
+  },
 ];
 
 const DashboardReviewsRoute = () => {
@@ -35,6 +53,9 @@ const DashboardReviewsRoute = () => {
     useState<CompletedOrder[]>(mockCompletedOrders);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
+  const [expandedPhotos, setExpandedPhotos] = useState<Record<string, boolean>>(
+    {}
+  );
   const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -68,6 +89,10 @@ const DashboardReviewsRoute = () => {
     setComments((prev) => ({ ...prev, [orderId]: text }));
   };
 
+  const togglePhotos = (orderId: string) => {
+    setExpandedPhotos((prev) => ({ ...prev, [orderId]: !prev[orderId] }));
+  };
+
   const submitReview = async (orderId: string) => {
     const rating = ratings[orderId] ?? 5;
     const comment = comments[orderId] ?? "";
@@ -98,152 +123,172 @@ const DashboardReviewsRoute = () => {
           : order
       )
     );
-    toast.success("Thank you for your 5-star review! Pro payout updated.");
+    toast.success(`Thank you for your ${rating}-star review!`);
   };
 
   return (
     <main className="px-4 py-6 text-slate-950 sm:py-10">
-      <div className="mx-auto grid max-w-4xl gap-6">
+      <div className="mx-auto grid max-w-6xl gap-6">
         <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
           <div className="inline-flex items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
             <Star className="size-4" />
             Service Quality Reviews
           </div>
           <h1 className="mt-3 text-3xl font-black md:text-5xl">
-            Completed Services & Ratings
+            Ratings & Photo Proof
           </h1>
           <p className="mt-2 text-slate-600">
-            Review before-and-after photo verification from your CastleCare Pro
-            and leave 5-star feedback to help top providers earn higher payout
-            splits!
+            Review completed services, check before & after photo verification,
+            and leave rating feedback to support top CastleCare Pros.
           </p>
         </section>
 
-        <div className="grid gap-6">
+        <div className="grid gap-4">
           {completedOrders.map((order) => {
             const currentRating = ratings[order.id] ?? order.reviewRating ?? 5;
             const currentComment =
               comments[order.id] ?? order.reviewComment ?? "";
             const hasReviewed = Boolean(order.reviewRating);
+            const isPhotosOpen = expandedPhotos[order.id] ?? false;
 
             return (
               <article
-                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+                className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-slate-300"
                 key={order.id}
               >
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
                   <div>
-                    <h2 className="text-xl font-black">
-                      {order.serviceSummary}
-                    </h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-black text-slate-950">
+                        {order.serviceSummary}
+                      </h2>
+                      <Badge className="bg-lime-100 text-lime-800 text-xs">
+                        <CheckCircle2 className="mr-1 size-3" />
+                        Completed
+                      </Badge>
+                    </div>
                     <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                       <UserCheck className="size-3.5 text-lime-600" />
                       Pro: {order.providerName ?? "CastleCare Pro"}
                     </p>
                   </div>
-                  <Badge className="bg-lime-100 text-lime-800">
-                    <CheckCircle2 className="mr-1 size-3" />
-                    Completed & Verified
-                  </Badge>
+
+                  <Button
+                    className="h-9 rounded-full border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                    onClick={() => togglePhotos(order.id)}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Camera className="size-3.5" />
+                    Photo Proof
+                    {isPhotosOpen ? (
+                      <ChevronUp className="size-3.5" />
+                    ) : (
+                      <ChevronDown className="size-3.5" />
+                    )}
+                  </Button>
                 </div>
 
-                {/* Photo Proof */}
-                <div className="mt-5">
-                  <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
-                    <Camera className="size-4 text-slate-500" />
-                    Before & After Photo Proof
-                  </h3>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Before Service
-                      </span>
-                      <div className="mt-2 flex h-32 items-center justify-center rounded-xl bg-slate-200 font-bold text-slate-400">
-                        {order.beforePhotos?.[0] ? (
-                          <img
-                            alt="Before"
-                            className="size-full rounded-xl object-cover"
-                            src={order.beforePhotos[0]}
-                          />
-                        ) : (
-                          "Before Photo Verified"
-                        )}
+                {/* Collapsible Photo Proof Drawer */}
+                {isPhotosOpen ? (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Before & After Verification Photos
+                    </h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+                        <span className="text-xs font-bold text-slate-600">
+                          Before Work
+                        </span>
+                        <div className="mt-2 flex h-28 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-400">
+                          {order.beforePhotos?.[0] ? (
+                            <img
+                              alt="Before service"
+                              className="size-full rounded-lg object-cover"
+                              src={order.beforePhotos[0]}
+                            />
+                          ) : (
+                            "Photo Verified"
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        After Service
-                      </span>
-                      <div className="mt-2 flex h-32 items-center justify-center rounded-xl bg-slate-200 font-bold text-slate-400">
-                        {order.afterPhotos?.[0] ? (
-                          <img
-                            alt="After"
-                            className="size-full rounded-xl object-cover"
-                            src={order.afterPhotos[0]}
-                          />
-                        ) : (
-                          "After Photo Verified"
-                        )}
+                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+                        <span className="text-xs font-bold text-slate-600">
+                          After Work
+                        </span>
+                        <div className="mt-2 flex h-28 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-400">
+                          {order.afterPhotos?.[0] ? (
+                            <img
+                              alt="After service"
+                              className="size-full rounded-lg object-cover"
+                              src={order.afterPhotos[0]}
+                            />
+                          ) : (
+                            "Photo Verified"
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : null}
 
-                {/* Review Form */}
-                <div className="mt-6 border-t border-slate-100 pt-5">
-                  <h3 className="text-sm font-bold text-slate-900">
-                    {hasReviewed
-                      ? "Your Submitted Rating"
-                      : "Rate Your CastleCare Pro"}
-                  </h3>
-                  <div className="mt-3 flex items-center gap-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        className="transition-transform hover:scale-110"
-                        disabled={hasReviewed}
-                        key={star}
-                        onClick={() => handleRating(order.id, star)}
-                        type="button"
-                      >
-                        <Star
-                          className={`size-7 ${
-                            star <= currentRating
-                              ? "fill-amber-400 text-amber-400"
-                              : "text-slate-300"
-                          }`}
-                        />
-                      </button>
-                    ))}
-                    <span className="ml-2 font-black text-slate-900">
-                      {currentRating} / 5 Stars
-                    </span>
-                  </div>
-
-                  {hasReviewed ? (
-                    <div className="mt-3 rounded-2xl bg-lime-50 p-4 text-sm text-slate-800">
-                      <p className="font-bold">Your Review:</p>
-                      <p className="mt-1 text-slate-600">
-                        {currentComment || "5-star rating submitted!"}
-                      </p>
+                {/* Interactive Star Rating Form */}
+                <div className="mt-4 pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          className="transition-transform hover:scale-110"
+                          disabled={hasReviewed}
+                          key={star}
+                          onClick={() => handleRating(order.id, star)}
+                          type="button"
+                        >
+                          <Star
+                            className={`size-6 ${
+                              star <= currentRating
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-slate-300"
+                            }`}
+                          />
+                        </button>
+                      ))}
+                      <span className="ml-2 text-sm font-black text-slate-900">
+                        {currentRating} / 5 Stars
+                      </span>
                     </div>
-                  ) : (
-                    <div className="mt-4 grid gap-3">
-                      <Textarea
-                        className="rounded-2xl border-slate-200 text-slate-900"
-                        onChange={(e) =>
-                          handleComment(order.id, e.target.value)
-                        }
-                        placeholder="Write your review for the provider (optional)..."
-                        value={currentComment}
-                      />
+
+                    {hasReviewed ? (
+                      <Badge className="bg-lime-100 text-lime-800">
+                        Review Submitted
+                      </Badge>
+                    ) : (
                       <Button
-                        className="h-11 rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
+                        className="h-10 rounded-full bg-lime-300 px-5 font-bold text-slate-950 hover:bg-lime-200"
                         disabled={isSubmitting[order.id]}
                         onClick={() => void submitReview(order.id)}
                         type="button"
                       >
-                        Submit 5-Star Rating & Review
+                        Submit {currentRating}-Star Review
                       </Button>
+                    )}
+                  </div>
+
+                  {hasReviewed ? (
+                    <div className="mt-3 rounded-xl bg-lime-50/60 p-3 text-xs text-slate-700">
+                      <span className="font-bold">Your Feedback: </span>
+                      {currentComment || "5-star rating submitted!"}
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <Textarea
+                        className="rounded-xl border-slate-200 text-xs text-slate-900 placeholder:text-slate-400"
+                        onChange={(e) =>
+                          handleComment(order.id, e.target.value)
+                        }
+                        placeholder="Write comments for your CastleCare Pro (optional)..."
+                        value={currentComment}
+                      />
                     </div>
                   )}
                 </div>

@@ -2,7 +2,6 @@ import { Button } from "@callcastlecare/ui/components/button";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  CalendarPlus,
   Bell,
   Headphones,
   LayoutDashboard,
@@ -42,11 +41,6 @@ const getNavigation = (variant: AppShellVariant, isAdmin: boolean) => {
       href: "/dashboard/orders",
       icon: ReceiptText,
       label: "Orders",
-    },
-    {
-      href: "/dashboard/orders/new",
-      icon: CalendarPlus,
-      label: "Book service",
     },
     {
       href: "/dashboard/reviews",

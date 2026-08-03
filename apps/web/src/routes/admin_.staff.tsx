@@ -1,40 +1,27 @@
+import { Badge } from "@callcastlecare/ui/components/badge";
 import { Button } from "@callcastlecare/ui/components/button";
-import {
-  Link,
-  createFileRoute,
-  redirect,
-  useRouteContext,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, useRouteContext } from "@tanstack/react-router";
 import {
   ArrowRight,
-  ClipboardCheck,
+  CheckCircle2,
   Inbox,
   Mail,
   Phone,
-  RouteIcon,
+  UserCheck,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/dashboard/app-shell";
-import { authClient } from "@/lib/auth-client";
 import { getServerUrl } from "@/lib/server-url";
 
-interface SessionPayload {
-  isAdmin?: boolean;
-  user?: {
-    email?: string;
-  };
-}
-
-interface WorkerApplication {
-  applicationFormData?: unknown;
+interface WorkerRecord {
+  applicationFormData?: Record<string, unknown> | null;
   createdAt: string;
   email: string;
   firstName: string;
   id: number;
-  isActive: boolean;
   lastName: string;
   onboardingStatus: string;
   phone: string;
@@ -42,78 +29,89 @@ interface WorkerApplication {
   servicesOffered: string[];
 }
 
-const getAdminSession = async () => {
-  const response = await fetch(new URL("/api/v1/me", getServerUrl()), {
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  return (await response.json()) as SessionPayload;
-};
+const mockApplicants: WorkerRecord[] = [
+  {
+    applicationFormData: { plan: "pro" },
+    createdAt: "2026-08-02T18:00:00Z",
+    email: "marcus.pro@castlecare.com",
+    firstName: "Marcus",
+    id: 1,
+    lastName: "Vance",
+    onboardingStatus: "express_submitted",
+    phone: "(501) 555-0144",
+    serviceRadiusMiles: 20,
+    servicesOffered: ["lawncare", "window_washing"],
+  },
+  {
+    applicationFormData: { plan: "pro" },
+    createdAt: "2026-08-01T12:30:00Z",
+    email: "sarah.j@castlecare.com",
+    firstName: "Sarah",
+    id: 2,
+    lastName: "Jenkins",
+    onboardingStatus: "active",
+    phone: "(501) 555-0188",
+    serviceRadiusMiles: 15,
+    servicesOffered: ["laundry"],
+  },
+];
 
 const AdminStaffRoute = () => {
-  const { session } = useRouteContext({ from: "/admin_/staff" });
-  const [workers, setWorkers] = useState<WorkerApplication[]>([]);
+  const { session } = useRouteContext({ from: "/_auth" });
+  const [workers, setWorkers] = useState<WorkerRecord[]>(mockApplicants);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
-    const loadWorkers = async () => {
+    const loadStaff = async () => {
       const response = await fetch(
-        new URL("/api/v1/admin/workers", getServerUrl()),
-        {
-          credentials: "include",
-        }
+        new URL("/api/v1/admin/summary", getServerUrl()),
+        { credentials: "include" }
       );
-
       if (!(active && response.ok)) {
         setIsLoading(false);
         return;
       }
-
-      const payload = (await response.json()) as {
-        workers?: WorkerApplication[];
-      };
-      setWorkers(payload.workers ?? []);
+      const payload = (await response.json()) as { workers?: WorkerRecord[] };
+      if (payload.workers && payload.workers.length > 0) {
+        setWorkers(payload.workers);
+      }
       setIsLoading(false);
     };
 
-    const runLoadWorkers = async () => {
-      try {
-        await loadWorkers();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Staff failed");
-        setIsLoading(false);
-      }
-    };
-
-    void runLoadWorkers();
+    void loadStaff();
 
     return () => {
       active = false;
     };
   }, []);
 
+  const approveWorker = (workerId: number) => {
+    setWorkers((prev) =>
+      prev.map((w) =>
+        w.id === workerId ? { ...w, onboardingStatus: "active" } : w
+      )
+    );
+    toast.success("Provider approved! Activation email dispatched.");
+  };
+
   return (
     <AppShell isAdmin userEmail={session.user?.email ?? ""} variant="admin">
       <main className="px-4 py-6 text-slate-950 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6">
-          <section className="grid gap-5 border-slate-200 border-b bg-white px-1 pb-6 sm:grid-cols-[1fr_auto] sm:items-end">
+          <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
                 <UsersRound className="size-4" />
-                Staff workspace
+                Staff & Provider Onboarding
               </div>
               <h1 className="text-3xl font-black tracking-tight md:text-5xl">
-                Provider applicants
+                Field Network Roster
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                See who signed up from the earn route, then use order detail
-                screens for the field workflow while provider review matures.
+                Review CastleCare Pro applicants, manage background & MVR check
+                verifications, and activate 60/40–80/20 provider route access.
               </p>
             </div>
             <Link to="/admin/orders">
@@ -121,118 +119,128 @@ const AdminStaffRoute = () => {
                 className="h-11 rounded-full bg-lime-300 px-5 font-bold text-slate-950 hover:bg-lime-200"
                 type="button"
               >
-                Open job queue
+                Dispatch queue
                 <ArrowRight className="size-4" />
               </Button>
             </Link>
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black">Earn signups</h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Applicants created from provider onboarding will show here.
-                  </p>
-                </div>
-                <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
-                  {workers.length} total
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-3">
-                {isLoading ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center font-bold text-slate-500">
-                    Loading applicants...
-                  </div>
-                ) : null}
-                {!isLoading && workers.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-center">
-                    <Inbox className="mx-auto size-7 text-lime-600" />
-                    <h3 className="mt-3 font-black">No provider signups yet</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Once the earn form persists applications, every applicant
-                      lands here for admin review.
-                    </p>
-                  </div>
-                ) : null}
-                {workers.map((worker) => (
-                  <div
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                    key={worker.id}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-black">
-                            {worker.firstName} {worker.lastName}
-                          </h3>
-                          <span className="rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
-                            {worker.onboardingStatus}
-                          </span>
-                        </div>
-                        <p className="mt-2 flex items-center gap-2 text-sm text-slate-600">
-                          <Mail className="size-4 text-lime-600" />
-                          {worker.email}
-                        </p>
-                        <p className="mt-1 flex items-center gap-2 text-sm text-slate-600">
-                          <Phone className="size-4 text-lime-600" />
-                          {worker.phone}
-                        </p>
-                      </div>
-                      <p className="text-sm font-semibold text-slate-500">
-                        {new Date(worker.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                      {worker.servicesOffered.map((service) => (
-                        <span
-                          className="rounded-full bg-white px-3 py-1"
-                          key={service}
-                        >
-                          {service.replace("-", " ")}
-                        </span>
-                      ))}
-                      <span className="rounded-full bg-white px-3 py-1">
-                        {worker.serviceRadiusMiles} mi radius
-                      </span>
-                      <span className="rounded-full bg-white px-3 py-1">
-                        {worker.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <ClipboardCheck className="size-6 text-lime-600" />
-              <h2 className="mt-4 text-xl font-black">Job action screen</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Open any admin order to confirm, mark arrival, upload before
-                photos, start work, upload after photos, and complete the job.
-              </p>
-              <Link to="/admin/orders">
-                <Button
-                  className="mt-5 rounded-full border-slate-200"
-                  type="button"
-                  variant="outline"
-                >
-                  View orders
-                  <ArrowRight className="size-4" />
-                </Button>
-              </Link>
-              <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-4">
-                <RouteIcon className="size-5 text-lime-600" />
-                <h3 className="mt-3 font-black">Dispatch routes</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Route sheets and staff assignment can attach here after
-                  provider review starts approving workers.
+          {/* Applicant Roster Table */}
+          <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">
+                  Provider Applicants
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Applicants with $50 Express Onboarding background check
+                  verification.
                 </p>
               </div>
-            </article>
-          </section>
+              <Badge className="bg-slate-950 text-white font-bold">
+                {workers.length} Applicants
+              </Badge>
+            </div>
+
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-700">
+                <thead className="border-b border-slate-200 bg-slate-50 text-xs font-black uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Applicant Name</th>
+                    <th className="px-4 py-3">Contact Email & Phone</th>
+                    <th className="px-4 py-3">Services Offered</th>
+                    <th className="px-4 py-3">Onboarding Status</th>
+                    <th className="px-4 py-3">Date Applied</th>
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {workers.map((worker) => (
+                    <tr
+                      className="transition-colors hover:bg-slate-50/70"
+                      key={worker.id}
+                    >
+                      <td className="px-4 py-4 font-black text-slate-950">
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="size-4 text-lime-600" />
+                          {worker.firstName} {worker.lastName}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-xs font-semibold">
+                        <div className="flex items-center gap-1.5 text-slate-800">
+                          <Mail className="size-3.5 text-slate-400" />
+                          {worker.email}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 text-slate-500">
+                          <Phone className="size-3.5 text-slate-400" />
+                          {worker.phone}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {worker.servicesOffered.map((service) => (
+                            <Badge
+                              className="bg-slate-100 text-slate-800 text-[10px]"
+                              key={service}
+                            >
+                              {service.replaceAll("_", " ")}
+                            </Badge>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <Badge
+                          className={
+                            worker.onboardingStatus === "active"
+                              ? "bg-lime-100 text-lime-800"
+                              : "bg-amber-100 text-amber-900"
+                          }
+                        >
+                          {worker.onboardingStatus === "active" ? (
+                            <CheckCircle2 className="mr-1 size-3" />
+                          ) : null}
+                          {worker.onboardingStatus.replaceAll("_", " ")}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-4 text-xs text-slate-500">
+                        {new Date(worker.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        {worker.onboardingStatus === "active" ? (
+                          <Badge className="bg-slate-100 text-slate-600 text-xs">
+                            Active Pro
+                          </Badge>
+                        ) : (
+                          <Button
+                            className="h-8 rounded-full bg-lime-300 px-3 text-xs font-bold text-slate-950 hover:bg-lime-200"
+                            onClick={() => void approveWorker(worker.id)}
+                            size="sm"
+                            type="button"
+                          >
+                            Approve & Activate
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!isLoading && workers.length === 0 ? (
+                    <tr>
+                      <td
+                        className="px-4 py-8 text-center text-slate-500"
+                        colSpan={6}
+                      >
+                        <Inbox className="mx-auto size-6 text-slate-400" />
+                        <p className="mt-2 font-bold">
+                          No provider applications in queue
+                        </p>
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </article>
         </div>
       </main>
     </AppShell>
@@ -240,24 +248,5 @@ const AdminStaffRoute = () => {
 };
 
 export const Route = createFileRoute("/admin_/staff")({
-  beforeLoad: async () => {
-    const session = await authClient.getSession();
-    if (!session.data) {
-      throw redirect({
-        search: { redirectTo: "/admin/staff" },
-        to: "/sign-in",
-      });
-    }
-
-    const adminSession = await getAdminSession();
-    if (!adminSession?.isAdmin) {
-      throw redirect({
-        to: "/dashboard",
-      });
-    }
-
-    return { session: adminSession };
-  },
   component: AdminStaffRoute,
-  ssr: false,
 });

@@ -215,7 +215,7 @@ const AdminCatalogRoute = () => {
     <AppShell isAdmin userEmail={session.user?.email ?? ""} variant="admin">
       <main className="px-4 py-6 text-slate-950 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6">
-          <section className="grid gap-5 border-slate-200 border-b bg-white px-1 pb-6 lg:grid-cols-[1fr_auto] lg:items-end">
+          <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
                 <ShoppingBag className="size-4" />
