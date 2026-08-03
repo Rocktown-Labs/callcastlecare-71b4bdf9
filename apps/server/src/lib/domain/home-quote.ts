@@ -23,9 +23,9 @@ export const computeHomeQuotePricing = (
   const tier: HomePricingTier =
     normalizedLotSizeSqft > 20_000 || normalizedHomeSqft > 3500
       ? "large"
-      : normalizedLotSizeSqft > 10_000 || normalizedHomeSqft > 2200
+      : (normalizedLotSizeSqft > 10_000 || normalizedHomeSqft > 2200
         ? "medium"
-        : "small";
+        : "small");
 
   const confidenceScore = fallbackUsed ? 0.45 : 0.92;
 

@@ -996,6 +996,7 @@ export default function EarnOnboarding() {
         confirmPassword: _confirmPassword,
         password: _password,
         ...applicationForStorage
+      } = result.data;
       const fullAppData = {
         ...applicationForStorage,
         paidAmountCents: 5000,
