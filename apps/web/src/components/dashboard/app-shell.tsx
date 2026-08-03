@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { getServerUrl } from "@/lib/server-url";
 
-type AppShellVariant = "admin" | "customer";
+type AppShellVariant = "admin" | "customer" | "provider";
 
 interface AppShellProps {
   children: ReactNode;
@@ -30,6 +30,27 @@ interface AppShellProps {
 }
 
 const getNavigation = (variant: AppShellVariant, isAdmin: boolean) => {
+  if (variant === "provider") {
+    return [
+      {
+        href: "/dashboard/provider",
+        icon: LayoutDashboard,
+        label: "Provider Hub",
+        matchExact: true,
+      },
+      {
+        href: "/dashboard/help",
+        icon: Headphones,
+        label: "Support",
+      },
+      {
+        href: "/dashboard/settings",
+        icon: Settings,
+        label: "Settings",
+      },
+    ];
+  }
+
   const customerNavigation = [
     {
       href: "/dashboard",
