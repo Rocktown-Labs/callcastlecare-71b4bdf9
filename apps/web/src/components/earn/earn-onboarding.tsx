@@ -326,11 +326,6 @@ const planSchema = z.object({
 
 const accountSchema = z
   .object({
-    cardCvc: z.string().trim().min(3, "Enter CVC."),
-    cardExpiry: z.string().trim().min(4, "Enter expiry MM/YY."),
-    cardName: z.string().trim().min(2, "Enter cardholder name."),
-    cardNumber: z.string().trim().min(14, "Enter a valid card number."),
-    cardZip: z.string().trim().min(5, "Enter ZIP code."),
     confirmPassword: z.string().min(8, "Confirm your password."),
     password: z.string().min(8, "Use at least 8 characters."),
     termsAccepted: z.boolean().refine((value) => value, {
@@ -1565,7 +1560,7 @@ export default function EarnOnboarding() {
                   />
                 </div>
 
-                {/* $50 Express Verification Payment Section */}
+                {/* $50 Express Verification Payment Summary */}
                 <div className="rounded-3xl border border-lime-300/40 bg-slate-900/90 p-5 shadow-xl">
                   <div className="flex items-center justify-between border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2 text-lime-300">
@@ -1575,63 +1570,17 @@ export default function EarnOnboarding() {
                       </span>
                     </div>
                     <span className="rounded-full bg-lime-300 px-2.5 py-0.5 text-xs font-black text-slate-950">
-                      $50 One-Time
+                      Stripe Checkout
                     </span>
                   </div>
 
-                  <p className="mt-3 text-xs leading-5 text-white/70">
-                    Covers same-day background and MVR driving record check. No
-                    recurring staff subscription fees.
+                  <p className="mt-3 text-xs leading-5 text-white/80">
+                    Covers same-day background and MVR driving record check.
+                    Submitting this step will redirect you to secure{" "}
+                    <strong>Stripe Checkout</strong> to authorize the $50 fee
+                    before placing your application in the CastleCare
+                    verification holding queue.
                   </p>
-
-                  <div className="mt-4 grid gap-3">
-                    <WizardInput
-                      error={errors.cardName}
-                      icon={User}
-                      id="provider-card-name"
-                      label="Cardholder name"
-                      onChange={updateTextField("cardName")}
-                      placeholder="Name as it appears on card"
-                      value={draft.cardName}
-                    />
-
-                    <WizardInput
-                      error={errors.cardNumber}
-                      icon={CreditCard}
-                      id="provider-card-number"
-                      label="Card number"
-                      onChange={updateTextField("cardNumber")}
-                      placeholder="4000 1234 5678 9010"
-                      value={draft.cardNumber}
-                    />
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <WizardInput
-                        error={errors.cardExpiry}
-                        id="provider-card-expiry"
-                        label="Expires"
-                        onChange={updateTextField("cardExpiry")}
-                        placeholder="MM/YY"
-                        value={draft.cardExpiry}
-                      />
-                      <WizardInput
-                        error={errors.cardCvc}
-                        id="provider-card-cvc"
-                        label="CVC"
-                        onChange={updateTextField("cardCvc")}
-                        placeholder="123"
-                        value={draft.cardCvc}
-                      />
-                      <WizardInput
-                        error={errors.cardZip}
-                        id="provider-card-zip"
-                        label="ZIP"
-                        onChange={updateTextField("cardZip")}
-                        placeholder="72201"
-                        value={draft.cardZip}
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <label
