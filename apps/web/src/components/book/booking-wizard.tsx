@@ -3604,7 +3604,7 @@ const BookingWizard = (props: BookingWizardProps) => {
               </div>
             ) : null}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2">
               {shownCombos.map((combo) => {
                 const comboPriceCents =
                   getComboPriceCents(draft, combo.id) ?? 0;
@@ -3619,7 +3619,7 @@ const BookingWizard = (props: BookingWizardProps) => {
                     aria-label={`${combo.name} plan - ${formatCents(comboPriceCents)} per month`}
                     aria-pressed={isSelected}
                     className={cn(
-                      "flex flex-col justify-between rounded-3xl border p-5 text-left transition-all shadow-sm hover:shadow-md",
+                      "flex flex-col justify-between rounded-3xl border p-5 sm:p-6 text-left transition-all shadow-sm hover:shadow-md",
                       isSelected
                         ? "border-lime-500 bg-lime-50/70 ring-2 ring-lime-400"
                         : "border-slate-200 bg-white hover:border-slate-300"
@@ -3636,14 +3636,14 @@ const BookingWizard = (props: BookingWizardProps) => {
                     type="button"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Crown className="size-4 text-lime-700 shrink-0" />
-                          <p className="font-bold text-slate-950 text-base">
+                      <div className="flex flex-wrap items-start justify-between gap-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Crown className="size-4 text-lime-700 shrink-0 mt-0.5" />
+                          <p className="font-extrabold text-slate-950 text-base sm:text-lg leading-tight">
                             {combo.name}
                           </p>
                         </div>
-                        <span className="rounded-full bg-lime-300 px-2.5 py-1 text-[10px] font-black uppercase text-slate-950 shadow-sm">
+                        <span className="shrink-0 rounded-full bg-lime-300 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-950 shadow-sm">
                           {comboBadge}
                         </span>
                       </div>

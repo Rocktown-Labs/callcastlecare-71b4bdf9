@@ -1,6 +1,11 @@
 import { Badge } from "@callcastlecare/ui/components/badge";
 import { Button } from "@callcastlecare/ui/components/button";
-import { createFileRoute, Link, useRouteContext } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  redirect,
+  useRouteContext,
+} from "@tanstack/react-router";
 import {
   ArrowRight,
   CheckCircle2,
@@ -14,7 +19,29 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/dashboard/app-shell";
+import { authClient } from "@/lib/auth-client";
 import { getServerUrl } from "@/lib/server-url";
+
+interface SessionPayload {
+  isAdmin: boolean;
+  user: {
+    email: string;
+    id: string;
+    name: string;
+  };
+}
+
+const getAdminSession = async () => {
+  const response = await fetch(new URL("/api/v1/me", getServerUrl()), {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as SessionPayload;
+};
 
 interface WorkerRecord {
   applicationFormData?: Record<string, unknown> | null;
@@ -57,7 +84,7 @@ const mockApplicants: WorkerRecord[] = [
 ];
 
 const AdminStaffRoute = () => {
-  const { session } = useRouteContext({ from: "__root" });
+  const { session } = useRouteContext({ from: "/admin_/staff" });
   const [workers, setWorkers] = useState<WorkerRecord[]>(mockApplicants);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -255,5 +282,24 @@ const AdminStaffRoute = () => {
 };
 
 export const Route = createFileRoute("/admin_/staff")({
+  beforeLoad: async () => {
+    const session = await authClient.getSession();
+    if (!session.data) {
+      throw redirect({
+        search: { redirectTo: "/admin/staff" },
+        to: "/sign-in",
+      });
+    }
+
+    const adminSession = await getAdminSession();
+    if (!adminSession?.isAdmin) {
+      throw redirect({
+        to: "/dashboard",
+      });
+    }
+
+    return { session: adminSession };
+  },
   component: AdminStaffRoute,
+  ssr: false,
 });

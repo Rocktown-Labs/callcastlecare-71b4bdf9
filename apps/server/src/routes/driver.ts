@@ -11,10 +11,12 @@ import {
   serviceLegs,
   workers,
 } from "@callcastlecare/db/schema/index";
+import { renderProviderApplicationReceivedEmail } from "@callcastlecare/email";
 import { Hono } from "hono";
 import type { Context } from "hono";
 
 import { requireUser, requireWorkerForUser } from "../lib/auth";
+import { sendEmail } from "../lib/integrations/email";
 import { setOrderStatus } from "../lib/orders";
 import { publishOutboxEvent } from "../lib/outbox";
 import { createCompletionPayoutRecords } from "../lib/payouts";
@@ -223,6 +225,24 @@ export const driverRoutes = new Hono<AppEnv>()
     const [worker] = rows;
     if (!worker) {
       return c.json({ error: "Failed to save provider profile" }, 500);
+    }
+
+    try {
+      const renderedEmail = await renderProviderApplicationReceivedEmail({
+        applicantName: payload.firstName,
+        planName: "Standard Provider",
+        services: payload.servicesOffered,
+      });
+
+      await sendEmail({
+        html: renderedEmail.html,
+        idempotencyKey: `worker-profile/${worker.id}/application-received`,
+        subject: "Your CastleCare Provider Application is Received",
+        text: renderedEmail.text,
+        to: payload.email,
+      });
+    } catch {
+      // Email failure should not block profile response
     }
 
     return c.json({ worker }, 200);

@@ -19,7 +19,6 @@ import {
   Car,
   Check,
   ClipboardList,
-  CreditCard,
   Crown,
   Home,
   LoaderCircle,
@@ -1462,42 +1461,6 @@ export default function EarnOnboarding() {
                     );
                   })}
                 </div>
-
-                {/* Explanatory Workflow Box right below the card */}
-                <div className="mx-auto w-full max-w-xl rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-md">
-                  <h4 className="text-base font-bold text-white">
-                    How CastleCare Pro Dispatch Works:
-                  </h4>
-                  <ul className="mt-3 grid gap-3 text-xs leading-5 text-white/70 sm:grid-cols-2">
-                    <li className="flex items-start gap-2">
-                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
-                      <span>
-                        <strong>Guaranteed Zip Code Routes:</strong> Orders in
-                        your area are clustered into 2-hr arrival blocks.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
-                      <span>
-                        <strong>Performance Unlocks:</strong> Earn 70/30 (Gold)
-                        at 25 jobs and 80/20 (Elite) at 75 jobs.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
-                      <span>
-                        <strong>Photo & Video Proof:</strong> Quick in-app
-                        before/after photos document 5-star quality work.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
-                      <span>
-                        <strong>Same-Day Payouts:</strong> Direct deposit released upon job completion.
-                      </span>
-                    </li>
-                  </ul>
-                </div>
                 <FieldError>{errors.plan}</FieldError>
               </div>
             ) : null}
@@ -1509,7 +1472,9 @@ export default function EarnOnboarding() {
                     aria-hidden="true"
                     className="mb-2 size-5 text-lime-300"
                   />
-                  Create secure login credentials for your provider account. In the next final step, you will authorize your $50 background check fee to activate status tracking.
+                  Create secure login credentials for your provider account. In
+                  the next final step, you will authorize your $50 background
+                  check fee to activate status tracking.
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/65 sm:grid-cols-2">

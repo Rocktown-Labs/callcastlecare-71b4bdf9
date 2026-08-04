@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unescaped-entities, oxc/no-unescaped-entities */
 import { Input } from "@callcastlecare/ui/components/input";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { Loader2, MapPin } from "lucide-react";
@@ -103,12 +104,12 @@ export const RadarAddressInput = ({
         className={cn(
           "h-11 rounded-2xl pl-10 text-sm focus-visible:border-lime-300/50",
           tone === "dark"
-            ? "border-white/20 bg-slate-900 text-white placeholder:text-white/50 focus-visible:ring-2 focus-visible:ring-lime-300"
+            ? "!border-white/30 !bg-slate-900 !text-white placeholder:!text-white/60 focus-visible:!ring-2 focus-visible:!ring-lime-300"
             : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-lime-400",
           className,
           disabled && "cursor-not-allowed opacity-70",
           isValidated && tone === "light" && "text-lime-700 font-bold",
-          isValidated && tone === "dark" && "text-white font-bold"
+          isValidated && tone === "dark" && "!text-white font-bold"
         )}
         disabled={disabled || isLocating}
         onBlur={() => {
@@ -167,7 +168,7 @@ export const RadarAddressInput = ({
               >
                 {suggestions.length > 0
                   ? suggestion.label
-                  : `Use "${suggestion.label}"`}
+                  : `Use ${suggestion.label}`}
               </button>
             </li>
           ))}

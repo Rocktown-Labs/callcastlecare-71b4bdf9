@@ -7,6 +7,7 @@ import EarnHowItWorks from "@/components/earn/earn-how-it-works";
 import EarnOnboarding from "@/components/earn/earn-onboarding";
 import EarnServices from "@/components/earn/earn-services";
 import EarnTiers from "@/components/earn/earn-tiers";
+import EarnWorkflowSpecs from "@/components/earn/earn-workflow-specs";
 import MarketingLayout from "@/components/home/marketing-layout";
 
 const siteUrl = "https://callcastlecare.com";
@@ -25,6 +26,7 @@ const EarnRoute = () => (
     <EarnCoverage />
     <EarnOnboarding />
     <EarnTiers />
+    <EarnWorkflowSpecs />
   </MarketingLayout>
 );
 
