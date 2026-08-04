@@ -1,12 +1,14 @@
+import { Award, Sparkles, Zap } from "lucide-react";
+
 export const EarnWorkflowSpecs = () => (
-  <section className="relative bg-[#050a30] py-12 text-white">
+  <section className="relative bg-[#080c16] py-12 text-white">
     <div aria-hidden="true" className="relative">
       <img
         alt="CastleCare Pro Field Dispatch Workflow"
         className="h-96 w-full object-cover"
         src="/media/castlecare_pro_dispatch_workflow.jpg"
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#050a30] via-[#050a30]/60 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#080c16] via-[#080c16]/60 to-transparent" />
     </div>
 
     <div className="relative mx-auto -mt-16 max-w-7xl px-4 pb-16 sm:px-6 sm:pb-24 lg:px-8">
@@ -75,6 +77,56 @@ export const EarnWorkflowSpecs = () => (
           </dd>
         </div>
       </dl>
+
+      <div className="mx-auto mt-16 max-w-4xl rounded-3xl border border-lime-300/30 bg-lime-300/10 p-6 lg:p-10">
+        <div className="mx-auto max-w-2xl text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-bold text-lime-200">
+            <Sparkles className="size-4 text-lime-300" />
+            Performance Progression Tiers
+          </span>
+          <div className="mt-5 flex items-baseline justify-center gap-2">
+            <span className="text-4xl font-extrabold text-white sm:text-5xl">
+              70% – 80%
+            </span>
+            <span className="text-white/60">unlocked</span>
+          </div>
+          <p className="mt-3 text-base text-slate-300">
+            Earn 5-star customer ratings to permanently upgrade your payout
+            splits.
+          </p>
+        </div>
+
+        <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-lime-300/30 bg-[#080c16] p-6">
+            <div className="flex items-center gap-1.5 text-sm font-bold text-lime-300">
+              <Award className="size-4" />
+              Gold Pro
+            </div>
+            <div className="mt-2 text-4xl font-extrabold text-white">
+              70
+              <span className="text-2xl font-normal text-white/40"> / 30</span>
+            </div>
+            <div className="mt-1 text-xs text-white/50">25 jobs & 4.7★</div>
+            <p className="mt-4 text-sm leading-6 text-slate-300">
+              Gold Pro (70/30 split): Unlock after 25 jobs & 4.7★ rating.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-lime-300/30 bg-[#080c16] p-6">
+            <div className="flex items-center gap-1.5 text-sm font-bold text-lime-300">
+              <Zap className="size-4" />
+              Elite Pro
+            </div>
+            <div className="mt-2 text-4xl font-extrabold text-white">
+              80
+              <span className="text-2xl font-normal text-white/40"> / 20</span>
+            </div>
+            <div className="mt-1 text-xs text-white/50">75 jobs & 4.9★</div>
+            <p className="mt-4 text-sm leading-6 text-slate-300">
+              Elite Pro (80/20 split): Unlock after 75 jobs & 4.9★ rating.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 );
