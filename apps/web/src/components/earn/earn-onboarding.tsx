@@ -87,8 +87,8 @@ const steps = [
   { icon: User, id: "contact", label: "Contact" },
   { icon: BriefcaseBusiness, id: "services", label: "Jobs" },
   { icon: Car, id: "vehicle", label: "Vehicle" },
-  { icon: Crown, id: "plan", label: "Plan" },
   { icon: Lock, id: "account", label: "Account" },
+  { icon: Crown, id: "plan", label: "Plan & Checkout" },
 ] as const;
 
 const availabilityDays = [
@@ -104,11 +104,10 @@ const availabilityDays = [
 const planOptions = [
   {
     description:
-      "Express same-day background and MVR screening with priority route access. Starts at 60/40 payout split on day one, unlocking 70/30 (Gold) and 80/20 (Elite) as you complete jobs and maintain 5-star reviews.",
+      "Express same-day background and MVR screening with priority route access. No recurring monthly membership fees.",
     id: "pro",
     label: "CastleCare Pro Express Onboarding",
     price: "$50",
-    split: "60 / 40 ➔ 80 / 20",
   },
 ] as const;
 
@@ -1494,13 +1493,11 @@ export default function EarnOnboarding() {
                     <li className="flex items-start gap-2">
                       <Check className="mt-0.5 size-4 shrink-0 text-lime-300" />
                       <span>
-                        <strong>Instant Direct Deposit:</strong> Automated
-                        payout release upon customer/AI verification.
+                        <strong>Same-Day Payouts:</strong> Direct deposit released upon job completion.
                       </span>
                     </li>
                   </ul>
                 </div>
-
                 <FieldError>{errors.plan}</FieldError>
               </div>
             ) : null}
@@ -1508,20 +1505,17 @@ export default function EarnOnboarding() {
             {activeStep === "account" ? (
               <div className="grid gap-5">
                 <div className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm leading-6 text-lime-100">
-                  <ShieldCheck
+                  <Lock
                     aria-hidden="true"
                     className="mb-2 size-5 text-lime-300"
                   />
-                  We will create your provider account with{" "}
-                  <strong>{draft.email || "your email"}</strong>. After email
-                  verification and $50 background check authorization, you will
-                  land on your application dashboard.
+                  Create secure login credentials for your provider account. In the next final step, you will authorize your $50 background check fee to activate status tracking.
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/65 sm:grid-cols-2">
                   <div>
                     <p className="text-xs font-bold uppercase text-white/40">
-                      Applicant
+                      Applicant Name
                     </p>
                     <p className="mt-1 font-bold text-white">
                       {[draft.firstName, draft.lastName]
@@ -1531,10 +1525,10 @@ export default function EarnOnboarding() {
                   </div>
                   <div>
                     <p className="text-xs font-bold uppercase text-white/40">
-                      Onboarding Tier
+                      Email
                     </p>
                     <p className="mt-1 font-bold text-white">
-                      {selectedPlan.label} (60/40 ➔ 80/20 Payout)
+                      {draft.email || "Email pending"}
                     </p>
                   </div>
                 </div>
@@ -1558,29 +1552,6 @@ export default function EarnOnboarding() {
                     type="password"
                     value={draft.confirmPassword}
                   />
-                </div>
-
-                {/* $50 Express Verification Payment Summary */}
-                <div className="rounded-3xl border border-lime-300/40 bg-slate-900/90 p-5 shadow-xl">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                    <div className="flex items-center gap-2 text-lime-300">
-                      <CreditCard className="size-5" />
-                      <span className="font-extrabold text-white">
-                        $50.00 Express Verification Fee
-                      </span>
-                    </div>
-                    <span className="rounded-full bg-lime-300 px-2.5 py-0.5 text-xs font-black text-slate-950">
-                      Stripe Checkout
-                    </span>
-                  </div>
-
-                  <p className="mt-3 text-xs leading-5 text-white/80">
-                    Covers same-day background and MVR driving record check.
-                    Submitting this step will redirect you to secure{" "}
-                    <strong>Stripe Checkout</strong> to authorize the $50 fee
-                    before placing your application in the CastleCare
-                    verification holding queue.
-                  </p>
                 </div>
 
                 <label
@@ -1631,7 +1602,7 @@ export default function EarnOnboarding() {
               Back
             </Button>
 
-            {activeStep === "account" ? (
+            {activeStep === "plan" ? (
               <Button
                 className="h-11 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200"
                 disabled={isSubmitting}
@@ -1643,9 +1614,7 @@ export default function EarnOnboarding() {
                     className="size-4 animate-spin"
                   />
                 ) : null}
-                {draft.plan === "pro"
-                  ? "Create Pro account"
-                  : "Create provider account"}
+                Authorize $50 & Create Account
                 <ArrowRight aria-hidden="true" className="size-4" />
               </Button>
             ) : (

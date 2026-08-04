@@ -468,27 +468,40 @@ const DashboardSettingsRoute = () => {
                         Enter Address (Search & Select)
                       </Label>
                       <RadarAddressInput
-                        onChange={(val) => updateAddressField("street", val)}
+                        onChange={(val) => {
+                          updateAddressField("addressText", val);
+                          updateAddressField("street", val);
+                        }}
                         onSelectSuggestion={handleSelectRadarSuggestion}
-                        tone="light"
-                        value={addressForm.street}
+                        tone="dark"
+                        value={addressForm.addressText || addressForm.street}
                       />
                     </div>
 
-                    {/* Validated Address Fields appear after selection or typing */}
+                    {/* Validated Address Details & Save Action */}
                     {addressForm.isValidated ||
-                    addressForm.street.length > 5 ? (
-                      <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <div className="grid gap-2 sm:grid-cols-2">
+                    addressForm.street.length > 5 ||
+                    addressForm.addressText.length > 5 ? (
+                      <div className="grid gap-3 rounded-2xl border border-lime-300/30 bg-slate-900 p-4">
+                        <div className="flex items-center gap-2 rounded-xl bg-lime-300/10 p-3 text-xs font-bold text-lime-300 border border-lime-300/20">
+                          <Check className="size-4 shrink-0 text-lime-400" />
+                          <span>
+                            {addressForm.addressText ||
+                              addressForm.street ||
+                              "Address Selected"}
+                          </span>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <Label
                               className="text-xs text-white/70"
                               htmlFor="label"
                             >
-                              Location Name
+                              Location Name / Label
                             </Label>
                             <Input
-                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white placeholder:text-white/40"
+                              className="mt-1 rounded-xl border-white/20 bg-slate-900 text-white placeholder:text-white/40 focus-visible:ring-2 focus-visible:ring-lime-300"
                               id="label"
                               onChange={(e) =>
                                 updateAddressField("label", e.target.value)
@@ -500,72 +513,23 @@ const DashboardSettingsRoute = () => {
                           <div>
                             <Label
                               className="text-xs text-white/70"
-                              htmlFor="city"
+                              htmlFor="instructions"
                             >
-                              City
+                              Gate Code / Access Notes (Optional)
                             </Label>
                             <Input
-                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white"
-                              id="city"
+                              className="mt-1 rounded-xl border-white/20 bg-slate-900 text-white placeholder:text-white/40 focus-visible:ring-2 focus-visible:ring-lime-300"
+                              id="instructions"
                               onChange={(e) =>
-                                updateAddressField("city", e.target.value)
+                                updateAddressField(
+                                  "instructions",
+                                  e.target.value
+                                )
                               }
-                              value={addressForm.city}
+                              placeholder="Gate code 4321..."
+                              value={addressForm.instructions}
                             />
                           </div>
-                        </div>
-
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div>
-                            <Label
-                              className="text-xs text-white/70"
-                              htmlFor="state"
-                            >
-                              State
-                            </Label>
-                            <Input
-                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white"
-                              id="state"
-                              onChange={(e) =>
-                                updateAddressField("state", e.target.value)
-                              }
-                              value={addressForm.state}
-                            />
-                          </div>
-                          <div>
-                            <Label
-                              className="text-xs text-white/70"
-                              htmlFor="zip"
-                            >
-                              ZIP Code
-                            </Label>
-                            <Input
-                              className="mt-1 rounded-xl border-white/20 bg-white/10 text-white"
-                              id="zip"
-                              onChange={(e) =>
-                                updateAddressField("zip", e.target.value)
-                              }
-                              value={addressForm.zip}
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label
-                            className="text-xs text-white/70"
-                            htmlFor="instructions"
-                          >
-                            Gate Code / Access Notes (Optional)
-                          </Label>
-                          <Textarea
-                            className="mt-1 rounded-xl border-white/20 bg-white/10 text-white placeholder:text-white/40"
-                            id="instructions"
-                            onChange={(e) =>
-                              updateAddressField("instructions", e.target.value)
-                            }
-                            placeholder="Gate code 4321..."
-                            value={addressForm.instructions}
-                          />
                         </div>
 
                         <Button

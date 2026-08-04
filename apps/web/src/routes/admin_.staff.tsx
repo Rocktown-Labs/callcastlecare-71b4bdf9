@@ -57,7 +57,7 @@ const mockApplicants: WorkerRecord[] = [
 ];
 
 const AdminStaffRoute = () => {
-  const { session } = useRouteContext({ from: "/_auth" });
+  const { session } = useRouteContext({ from: "__root" });
   const [workers, setWorkers] = useState<WorkerRecord[]>(mockApplicants);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -97,7 +97,14 @@ const AdminStaffRoute = () => {
   };
 
   return (
-    <AppShell isAdmin userEmail={session.user?.email ?? ""} variant="admin">
+    <AppShell
+      isAdmin
+      userEmail={
+        (session as { user?: { email?: string } })?.user?.email ??
+        "admin@callcastlecare.com"
+      }
+      variant="admin"
+    >
       <main className="px-4 py-6 text-slate-950 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6">
           <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-[1fr_auto] sm:items-end">
