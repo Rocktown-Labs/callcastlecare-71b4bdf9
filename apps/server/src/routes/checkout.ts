@@ -281,7 +281,43 @@ const upsertPublicQuoteRequest = async (input: PublicQuoteRequestInput) => {
   return { quoteRequest: created, statusCode: 201 as const };
 };
 
+const providerCheckoutSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  plan: z.string().default("standard_provider"),
+});
+
 export const checkoutRoutes = new Hono<AppEnv>()
+  .post("/provider", async (c) => {
+    const body = await c.req.json();
+    const parsed = providerCheckoutSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const { email, firstName, lastName, plan } = parsed.data;
+    const origin = getCheckoutOrigin(c);
+    const successUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&type=provider&plan=${encodeURIComponent(plan)}`;
+    const cancelUrl = `${origin}/earn#apply?checkout=cancelled`;
+
+    const stripeCheckoutSession = await createStripeCheckoutSession({
+      amountDueCents: 5000,
+      cancelUrl,
+      checkoutSessionId: Math.floor(Date.now() / 1000),
+      customerEmail: email,
+      metadata: {
+        email,
+        firstName,
+        lastName,
+        plan,
+        type: "provider_express_onboarding",
+      },
+      successUrl,
+    });
+
+    return c.json({ url: stripeCheckoutSession.url }, 200);
+  })
   .post("/preview", async (c) => {
     const body = await c.req.json();
     const parsed = checkoutPreviewRequestSchema.safeParse(body);

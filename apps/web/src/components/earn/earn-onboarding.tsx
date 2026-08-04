@@ -8,7 +8,6 @@ import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { Textarea } from "@callcastlecare/ui/components/textarea";
 import { cn } from "@callcastlecare/ui/lib/utils";
-import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
@@ -38,7 +37,7 @@ import { z } from "zod";
 import { RadarAddressInput } from "@/components/home/radar-address-input";
 import type { RadarAddressSuggestion } from "@/components/home/use-radar-address-autocomplete";
 import { validateAddress } from "@/components/home/use-radar-address-autocomplete";
-import { authClient } from "@/lib/auth-client";
+import { getServerUrl } from "@/lib/server-url";
 
 const storageKey = "callcastlecare.provider-application.v1";
 const maxVehicleYear = new Date().getFullYear() + 1;
@@ -441,9 +440,6 @@ const getParsedAddressParts = (suggestion: RadarAddressSuggestion) => {
   };
 };
 
-const getProviderDashboardPath = (plan: ProviderPlan) =>
-  `/dashboard/provider?plan=${plan}`;
-
 const getStepErrors = (
   step: StepId,
   draft: ProviderApplicationDraft
@@ -720,7 +716,6 @@ const VehicleLookup = ({
 // and account creation stay in one place while the provider flow is still new.
 // eslint-disable-next-line complexity
 export default function EarnOnboarding() {
-  const navigate = useNavigate({ from: "/earn" });
   const [activeStep, setActiveStep] = useState<StepId>("contact");
   const [draft, setDraft] = useState<ProviderApplicationDraft>(initialDraft);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -1005,29 +1000,35 @@ export default function EarnOnboarding() {
       );
     }
 
-    await authClient.signUp.email(
-      {
-        callbackURL: getProviderDashboardPath(result.data.plan),
-        email: result.data.email,
-        name: `${result.data.firstName} ${result.data.lastName}`.trim(),
-        password: result.data.password,
-      },
-      {
-        onError: (error) => {
-          setIsSubmitting(false);
-          toast.error(error.error.message || "Provider account setup failed.");
-        },
-        onSuccess: () => {
-          void navigate({
-            search: {
-              redirectTo: getProviderDashboardPath(result.data.plan),
-            },
-            to: "/verify-email",
-          });
-          toast.success("Check your email to finish the provider account.");
-        },
+    try {
+      const response = await fetch(
+        new URL("/api/v1/checkout/provider", getServerUrl()),
+        {
+          body: JSON.stringify({
+            email: result.data.email,
+            firstName: result.data.firstName,
+            lastName: result.data.lastName,
+            plan: result.data.plan,
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to initiate Stripe Hosted Checkout session.");
       }
-    );
+
+      const { url } = (await response.json()) as { url: string };
+      window.location.href = url;
+    } catch (error) {
+      setIsSubmitting(false);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to launch Stripe Checkout."
+      );
+    }
   };
 
   const hasVehicleLookupError =
