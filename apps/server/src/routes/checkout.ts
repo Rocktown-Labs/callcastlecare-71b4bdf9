@@ -1,3 +1,4 @@
+import { auth } from "@callcastlecare/auth";
 import { and, db, eq } from "@callcastlecare/db";
 import {
   addresses,
@@ -8,7 +9,10 @@ import {
   homeQuotes,
   orders,
   quoteRequests,
+  user as authUsers,
+  workers,
 } from "@callcastlecare/db/schema/index";
+import { renderProviderApplicationReceivedEmail } from "@callcastlecare/email";
 import { env } from "@callcastlecare/env/server";
 import { Hono } from "hono";
 import type { Context as HonoContext } from "hono";
@@ -20,6 +24,7 @@ import {
   getOrCreateCustomerForUser,
 } from "../lib/auth";
 import { computeCheckoutPreview } from "../lib/domain/checkout";
+import { sendEmail } from "../lib/integrations/email";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
 import {
   createStripeCheckoutSession,
@@ -27,7 +32,11 @@ import {
 } from "../lib/integrations/stripe-payments";
 import type { StripeWebhookEvent } from "../lib/integrations/stripe-payments";
 import { logger } from "../lib/logger";
-import { createAddressRecord, finalizeCheckoutPayment } from "../lib/orders";
+import {
+  createAddressRecord,
+  ensureAddressesSchemaColumns,
+  finalizeCheckoutPayment,
+} from "../lib/orders";
 import type { AppEnv } from "../types";
 import {
   checkoutDraftRequestSchema,
@@ -98,8 +107,155 @@ const finalizeFromMetadata = async (input: {
   return true;
 };
 
+const PROVIDER_TEMP_PASSWORD = "TempPassword123!";
+
+const getProviderPlanLabel = (plan: string) =>
+  plan === "pro" ? "CastleCare Pro" : "Standard Provider";
+
+const getOrCreateProviderUser = async (input: {
+  email: string;
+  firstName: string;
+  lastName: string;
+}) => {
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  const existingUser = await db.query.user.findFirst({
+    where: eq(authUsers.email, normalizedEmail),
+  });
+  if (existingUser) {
+    return existingUser;
+  }
+
+  const signup = await auth.api.signUpEmail({
+    body: {
+      callbackURL: "/dashboard/provider",
+      email: normalizedEmail,
+      name: `${input.firstName} ${input.lastName}`.trim(),
+      password: PROVIDER_TEMP_PASSWORD,
+    },
+  });
+
+  logger.info(
+    {
+      email: normalizedEmail,
+      userId: signup.user.id,
+    },
+    "provider:account_created_from_checkout"
+  );
+
+  return signup.user;
+};
+
+const handleProviderExpressOnboarding = async (input: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  plan: string;
+}) => {
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  const user = await getOrCreateProviderUser({
+    email: normalizedEmail,
+    firstName: input.firstName,
+    lastName: input.lastName,
+  });
+
+  const rows = await db
+    .insert(workers)
+    .values({
+      applicationFormData: {
+        source: "express_onboarding_checkout",
+        ...(input.plan ? { plan: input.plan } : {}),
+      },
+      email: normalizedEmail,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      phone: "",
+      serviceRadiusMiles: 10,
+      servicesOffered: [],
+      userId: user.id,
+    })
+    .onConflictDoUpdate({
+      set: {
+        applicationFormData: {
+          source: "express_onboarding_checkout",
+          ...(input.plan ? { plan: input.plan } : {}),
+        },
+        updatedAt: new Date(),
+      },
+      target: workers.userId,
+    })
+    .returning();
+
+  const [worker] = rows;
+  if (!worker) {
+    logger.error(
+      {
+        email: normalizedEmail,
+        userId: user.id,
+      },
+      "provider:worker_record_create_failed"
+    );
+    return;
+  }
+
+  logger.info(
+    {
+      email: normalizedEmail,
+      plan: input.plan,
+      workerId: worker.id,
+    },
+    "provider:application_recorded_from_checkout"
+  );
+
+  try {
+    const renderedEmail = await renderProviderApplicationReceivedEmail({
+      applicantName: input.firstName,
+      planName: getProviderPlanLabel(input.plan),
+      services: [],
+    });
+
+    await sendEmail({
+      html: renderedEmail.html,
+      idempotencyKey: `provider-checkout/${worker.id}/application-received`,
+      subject: "Your CastleCare Provider Application is Received",
+      text: renderedEmail.text,
+      to: normalizedEmail,
+    });
+  } catch (error) {
+    logger.error(
+      {
+        error,
+        workerId: worker.id,
+      },
+      "provider:application_email_send_failed"
+    );
+  }
+};
+
 const handleCheckoutSessionCompleted = async (event: StripeWebhookEvent) => {
   const checkoutObject = event.data.object;
+  const metadata = getObjectMetadata(checkoutObject);
+
+  if (metadata?.type === "provider_express_onboarding") {
+    const email = typeof metadata.email === "string" ? metadata.email : null;
+    const firstName =
+      typeof metadata.firstName === "string" ? metadata.firstName : "";
+    const lastName =
+      typeof metadata.lastName === "string" ? metadata.lastName : "";
+    const plan = typeof metadata.plan === "string" ? metadata.plan : "free";
+
+    if (email) {
+      await handleProviderExpressOnboarding({
+        email,
+        firstName,
+        lastName,
+        plan,
+      });
+    }
+    return;
+  }
+
   const stripeCheckoutSessionId =
     typeof checkoutObject.id === "string" ? checkoutObject.id : null;
   const stripePaymentIntentId =
@@ -326,6 +482,8 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
+    await ensureAddressesSchemaColumns();
+
     let resolvedAddress: string | null = parsed.data.address ?? null;
     let resolvedAddressId: number | null = parsed.data.addressId ?? null;
 
@@ -467,6 +625,8 @@ export const checkoutRoutes = new Hono<AppEnv>()
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
+
+    await ensureAddressesSchemaColumns();
 
     const user = c.get("user");
     const customer = user

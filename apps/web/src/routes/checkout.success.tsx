@@ -14,12 +14,9 @@ import {
   ShieldCheck,
   UserRoundCheck,
 } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
 import { z } from "zod";
 
 import MarketingLayout from "@/components/home/marketing-layout";
-import { authClient } from "@/lib/auth-client";
 
 const searchSchema = z.object({
   plan: z.string().optional(),
@@ -51,59 +48,19 @@ const steps = [
 const RouteComponent = () => {
   const search = useSearch({ from: "/checkout/success" });
   const navigate = useNavigate();
-  const [isVerifying, setIsVerifying] = useState(false);
 
   const isProviderFlow = search.type === "provider";
 
-  const handleProviderVerification = async () => {
-    setIsVerifying(true);
-    let storedEmail = "";
-
-    if (typeof window !== "undefined") {
-      storedEmail =
-        window.sessionStorage.getItem("better-auth-ui.verify-email") ?? "";
-    }
-
-    if (storedEmail) {
-      await authClient.signUp.email(
-        {
-          callbackURL: "/dashboard/provider",
-          email: storedEmail,
-          name: "CastleCare Provider",
-          password: "TempPassword123!",
-        },
-        {
-          onError: () => {
-            setIsVerifying(false);
-            void navigate({
-              search: { redirectTo: "/dashboard/provider" },
-              to: "/verify-email",
-            });
-            toast.success("Check your email to verify your provider account.");
-          },
-          onSuccess: () => {
-            setIsVerifying(false);
-            void navigate({
-              search: { redirectTo: "/dashboard/provider" },
-              to: "/verify-email",
-            });
-            toast.success("Check your email to verify your provider account.");
-          },
-        }
-      );
-    } else {
-      setIsVerifying(false);
-      void navigate({
-        search: { redirectTo: "/dashboard/provider" },
-        to: "/verify-email",
-      });
-      toast.success("Check your email to verify your provider account.");
-    }
+  const handleProviderVerification = () => {
+    void navigate({
+      search: { redirectTo: "/dashboard/provider" },
+      to: "/verify-email",
+    });
   };
 
   return (
     <MarketingLayout>
-      <section className="bg-slate-950 px-4 py-16 text-white sm:px-6 lg:px-8">
+      <section className="bg-slate-950 px-4 pb-16 pt-28 text-white sm:px-6 sm:pb-24 sm:pt-36 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <div className="rounded-[2rem] border border-white/10 bg-slate-900/90 p-6 shadow-2xl backdrop-blur-xl sm:p-10">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -121,27 +78,18 @@ const RouteComponent = () => {
                 </h1>
                 <p className="mt-4 text-base leading-7 text-slate-300">
                   {isProviderFlow
-                    ? "Your $50 background check and MVR route authorization has been confirmed by Stripe. The final step is verifying your email address."
+                    ? "Your $50 background check and MVR route authorization is confirmed. The last step is verifying your email so we can keep your provider status and next steps in one place."
                     : "We have your checkout details and the next step is making sure your account is easy to access from here on out."}
                 </p>
-                {search.session_id ? (
-                  <p className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-mono text-slate-300">
-                    Stripe Session ID: {search.session_id}
-                  </p>
-                ) : null}
               </div>
 
               {isProviderFlow ? (
-                <button
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-lime-300 px-6 font-extrabold text-slate-950 transition-colors hover:bg-lime-200"
-                  disabled={isVerifying}
-                  onClick={handleProviderVerification}
-                  type="button"
-                >
-                  <Mail className="size-4" />
-                  Verify Email & Continue
-                  <ArrowRight aria-hidden="true" className="size-4" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-2 text-sm text-slate-300">
+                    <Mail className="size-4 text-lime-300" />
+                    We&apos;ll email you a verification link.
+                  </span>
+                </div>
               ) : (
                 <Link
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-lime-300 px-5 font-semibold text-slate-950 transition-colors hover:bg-lime-200"
@@ -217,12 +165,23 @@ const RouteComponent = () => {
             )}
 
             <div className="mt-8 flex flex-wrap gap-3 border-white/10 border-t pt-6">
-              <Link
-                className="inline-flex h-11 items-center justify-center rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-lime-200"
-                to={isProviderFlow ? "/dashboard/provider" : "/dashboard"}
-              >
-                {isProviderFlow ? "Provider Hub" : "Open dashboard"}
-              </Link>
+              {isProviderFlow ? (
+                <button
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-lime-200"
+                  onClick={handleProviderVerification}
+                  type="button"
+                >
+                  <ArrowRight aria-hidden="true" className="size-4" />
+                  Continue to Provider Hub
+                </button>
+              ) : (
+                <Link
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-lime-200"
+                  to="/dashboard"
+                >
+                  Open dashboard
+                </Link>
+              )}
             </div>
           </div>
         </div>

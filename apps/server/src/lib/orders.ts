@@ -1,5 +1,6 @@
 /* eslint-disable complexity, eslint/no-await-in-loop, eslint/prefer-destructuring, eslint/require-await, eslint/require-unicode-regexp, oxc/branches-sharing-code, unicorn/prefer-ternary -- Legacy checkout/order finalization logic predates the current lint profile; keep this waiver narrow to this file until dispatch is redesigned. */
-import { db, and, eq, sql } from "@callcastlecare/db";
+import { db, and, eq, sql } from '@callcastlecare/db';
+import type { SQLWrapper } from '@callcastlecare/db';
 import {
   addresses,
   checkoutItems,
@@ -36,6 +37,31 @@ const buildFormattedAddress = (input: {
 }) =>
   `${input.street}, ${input.city}, ${input.state} ${input.zip}, ${input.country}`;
 
+export const ensureAddressesSchemaColumns = async (tx?: {
+  execute: (query: string | SQLWrapper) => Promise<unknown>;
+}) => {
+  const run = tx ?? db;
+  await Promise.all([
+    run.execute(
+      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;`
+    ),
+    run.execute(
+      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "instructions" text;`
+    ),
+    run.execute(
+      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "is_default" boolean DEFAULT false NOT NULL;`
+    ),
+    run.execute(
+      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "label" text DEFAULT 'Address' NOT NULL;`
+    ),
+    run.execute(
+      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "location" geography(Point,4326);`
+    ),
+  ]).catch((_err) => {
+    // Ignore schema errors; the columns may already exist in newer databases.
+  });
+};
+
 export const createAddressRecord = async (input: {
   city: string;
   country: string;
@@ -52,13 +78,7 @@ export const createAddressRecord = async (input: {
   zip: string;
 }) =>
   db.transaction(async (tx) => {
-    await tx
-      .execute(
-        sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;`
-      )
-      .catch((_err) => {
-        // ignore missing column if already exists
-      });
+    await ensureAddressesSchemaColumns(tx);
 
     const existingAddresses = await tx.query.addresses.findMany({
       where: eq(addresses.customerId, input.customerId),
