@@ -281,7 +281,7 @@ const subscriptionPaymentOption = {
     "Start the recurring plan now. Your first monthly plan charge is due today.",
   id: "pay_full",
   name: "Start subscription today",
-} as const satisfies (typeof paymentOptions)[number];
+} as const;
 
 const tallGrassFeeCents = 5000;
 const screenWashFeePerScreenCents = 250;
@@ -910,6 +910,8 @@ const getDraftTipAmountCents = (draft: BookingDraft, subtotalCents: number) => {
   return Math.round((subtotalCents * draft.tipPercent) / 100);
 };
 
+type TipPercentOption = 0 | 5 | 10 | 15 | 20 | "custom";
+
 const getTipOptionLabel = (option: TipPercentOption) => {
   if (option === 0) {
     return "None";
@@ -1212,7 +1214,7 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
     ];
   }
 
-  return draft.services.flatMap((serviceId) => {
+  return draft.services.flatMap((serviceId): CheckoutPreviewItemInput[] => {
     const selectedProductId = draft.products[serviceId];
     if (!selectedProductId) {
       return [];
@@ -2426,10 +2428,11 @@ const BookingWizard = (props: BookingWizardProps) => {
 
     navigate({
       replace: true,
-      search: (current) => ({
-        ...current,
-        step: stepKeys[step],
-      }),
+      search: (current) =>
+        ({
+          ...current,
+          step: stepKeys[step],
+        }) as { step: WizardStepKey },
       to: "/book",
     });
   };
@@ -2447,9 +2450,7 @@ const BookingWizard = (props: BookingWizardProps) => {
     setActiveStep(0);
     navigate({
       replace: true,
-      search: () => ({
-        step: "schedule",
-      }),
+      search: { step: "schedule" as const } as never,
     });
   };
 
@@ -2464,10 +2465,11 @@ const BookingWizard = (props: BookingWizardProps) => {
     setShouldShowStoredDraft(false);
     navigate({
       replace: true,
-      search: (current) => ({
-        ...current,
-        resume: true,
-      }),
+      search: (current) =>
+        ({
+          ...current,
+          resume: true,
+        }) as never,
     });
   };
 

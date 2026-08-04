@@ -377,7 +377,14 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
   },
 };
 
-export const comboSubscriptions = [
+export const comboSubscriptions: {
+  description: string;
+  discountLabel: string;
+  frequency: string;
+  id: string;
+  name: string;
+  requiredServices: ServiceId[];
+}[] = [
   {
     description: "2 Lawn Care visits plus 2 wash and fold pickups each month.",
     discountLabel: "From $250/month",
@@ -421,7 +428,7 @@ export const comboSubscriptions = [
     name: "Crown Estate Trio Deluxe",
     requiredServices: ["lawncare", "laundry", "window-washing"],
   },
-] as const;
+];
 
 export const serviceQuestionIcons = {
   bedding: Home,

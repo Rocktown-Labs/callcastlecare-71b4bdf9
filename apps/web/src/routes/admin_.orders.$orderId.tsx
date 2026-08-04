@@ -148,7 +148,12 @@ const getPrivateMediaUrl = (storagePath: string) => {
   return url.toString();
 };
 
-const actionConfig = [
+const actionConfig: {
+  action: AdminAction;
+  icon: typeof ClipboardCheck;
+  label: string;
+  statuses: string[];
+}[] = [
   {
     action: "confirm",
     icon: ClipboardCheck,
@@ -201,7 +206,7 @@ const actionConfig = [
       "in_progress",
     ],
   },
-] as const;
+];
 
 const MediaUpload = ({
   detail,
@@ -319,6 +324,7 @@ const MediaUpload = ({
               aspectRatio={1}
               className="aspect-square rounded-2xl border border-slate-200 object-cover"
               key={link.id}
+              layout="fullWidth"
               src={getPrivateMediaUrl(link.asset.storagePath)}
             />
           ) : null

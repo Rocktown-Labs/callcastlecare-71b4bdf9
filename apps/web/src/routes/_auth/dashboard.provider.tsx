@@ -81,6 +81,68 @@ const getStoredApplication = () => {
   }
 };
 
+const PlanBadge = ({ plan }: Readonly<{ plan: "free" | "pro" }>) => {
+  const isPro = plan === "pro";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black",
+        isPro ? "bg-lime-300 text-slate-950" : "bg-slate-950 text-white"
+      )}
+    >
+      {isPro ? <Crown className="size-4" /> : <BadgeCheck className="size-4" />}
+      {isPro ? "CastleCare Pro (60/40 ➔ 80/20)" : "Standard Provider"}
+    </span>
+  );
+};
+
+const ApplicantInfoCard = ({
+  addressParts,
+  application,
+  isProfileSaved,
+  name,
+}: Readonly<{
+  addressParts: (string | null | undefined)[];
+  application: StoredProviderApplication | null;
+  isProfileSaved: boolean;
+  name: string;
+}>) => (
+  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <h2 className="text-xl font-black">{name}</h2>
+      <span className="text-xs font-bold text-slate-500">
+        {isProfileSaved ? "Profile Saved" : "Queue Received"}
+      </span>
+    </div>
+
+    <div className="mt-4 grid gap-3 text-sm text-slate-600">
+      <p className="flex items-start gap-2">
+        <BriefcaseBusiness className="mt-0.5 size-4 shrink-0 text-lime-700" />
+        <span>
+          {(application?.services ?? [])
+            .map((service) => serviceLabels[service] ?? service)
+            .join(", ") || "Services pending"}
+        </span>
+      </p>
+      <p className="flex items-start gap-2">
+        <CalendarDays className="mt-0.5 size-4 shrink-0 text-lime-700" />
+        <span>
+          {(application?.availableDays ?? [])
+            .map((day) => dayLabels[day] ?? day)
+            .join(", ") || "Availability pending"}
+        </span>
+      </p>
+      <p className="flex items-start gap-2">
+        <MapPin className="mt-0.5 size-4 shrink-0 text-lime-700" />
+        <span>
+          {addressParts.join(", ") || "Address pending"} (
+          {application?.serviceRadiusMiles ?? 20} mi radius)
+        </span>
+      </p>
+    </div>
+  </div>
+);
+
 const ProviderStatusRoute = () => {
   const { session } = useRouteContext({ from: "/_auth/dashboard" });
   const { plan } = useSearch({ from: "/_auth/dashboard/provider" });
@@ -145,7 +207,7 @@ const ProviderStatusRoute = () => {
   ].filter(Boolean);
 
   return (
-    <AppShell userEmail={session.user?.email ?? ""} variant="provider">
+    <AppShell userEmail={session.data?.user?.email ?? ""} variant="provider">
       <main className="px-4 py-6 text-slate-950 sm:py-10">
         <div className="mx-auto grid max-w-6xl gap-6">
           {/* Header Banner */}
@@ -166,23 +228,7 @@ const ProviderStatusRoute = () => {
                   compliance team.
                 </p>
               </div>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black",
-                  selectedPlan === "pro"
-                    ? "bg-lime-300 text-slate-950"
-                    : "bg-slate-950 text-white"
-                )}
-              >
-                {selectedPlan === "pro" ? (
-                  <Crown className="size-4" />
-                ) : (
-                  <BadgeCheck className="size-4" />
-                )}
-                {selectedPlan === "pro"
-                  ? "CastleCare Pro (60/40 ➔ 80/20)"
-                  : "Standard Provider"}
-              </span>
+              <PlanBadge plan={selectedPlan} />
             </div>
           </section>
 
@@ -235,40 +281,12 @@ const ProviderStatusRoute = () => {
             </div>
 
             {/* Applicant Info Card */}
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h2 className="text-xl font-black">{applicantName}</h2>
-                <span className="text-xs font-bold text-slate-500">
-                  {isProfileSaved ? "Profile Saved" : "Queue Received"}
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-3 text-sm text-slate-600">
-                <p className="flex items-start gap-2">
-                  <BriefcaseBusiness className="mt-0.5 size-4 shrink-0 text-lime-700" />
-                  <span>
-                    {(application?.services ?? [])
-                      .map((service) => serviceLabels[service] ?? service)
-                      .join(", ") || "Services pending"}
-                  </span>
-                </p>
-                <p className="flex items-start gap-2">
-                  <CalendarDays className="mt-0.5 size-4 shrink-0 text-lime-700" />
-                  <span>
-                    {(application?.availableDays ?? [])
-                      .map((day) => dayLabels[day] ?? day)
-                      .join(", ") || "Availability pending"}
-                  </span>
-                </p>
-                <p className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-lime-700" />
-                  <span>
-                    {addressParts.join(", ") || "Address pending"} (
-                    {application?.serviceRadiusMiles ?? 20} mi radius)
-                  </span>
-                </p>
-              </div>
-            </div>
+            <ApplicantInfoCard
+              addressParts={addressParts}
+              application={application}
+              isProfileSaved={isProfileSaved}
+              name={applicantName}
+            />
           </section>
 
           {/* Stripe Connect Payout Unlocking Banner */}

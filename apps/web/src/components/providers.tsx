@@ -23,12 +23,13 @@ const AuthLink = ({
   href,
   ...props
 }: Readonly<{
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   href: string;
   onClick?: MouseEventHandler<HTMLAnchorElement>;
   tabIndex?: number;
-  "aria-disabled"?: boolean;
+  to?: string;
+  "aria-disabled"?: boolean | "true" | "false";
 }>) => (
   <Link {...props} to={href}>
     {children}

@@ -1,6 +1,6 @@
 /* eslint-disable func-style, complexity, no-nested-ternary, sort-keys, no-use-before-define, no-eq-null, eqeqeq, no-negated-condition, no-await-in-loop, no-empty-function, no-shadow, arrow-body-style, jsdoc/check-tag-names, react-compiler/react-compiler, react/no-unstable-nested-components, jsx-a11y/prefer-tag-over-role, import/consistent-type-specifier-style, unicorn/consistent-function-scoping */
 import { AuthProvider as AuthProviderPrimitive } from "@better-auth-ui/react";
-import type { AuthProviderProps } from "@better-auth-ui/react";
+import type { AuthPlugin, AuthProviderProps } from "@better-auth-ui/react";
 import type {
   ComponentPropsWithoutRef,
   ComponentType,
@@ -24,6 +24,10 @@ declare module "@better-auth-ui/core" {
         >
       >
     >;
+  }
+
+  interface AuthPluginRegister {
+    react: AuthPlugin;
   }
 
   /** Widen `AdditionalField.label` to `ReactNode` in the shadcn package. */

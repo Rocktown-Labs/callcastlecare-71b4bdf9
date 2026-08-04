@@ -106,6 +106,7 @@ const planOptions = [
     id: "pro",
     label: "CastleCare Pro Express Onboarding",
     price: "$50",
+    split: "60/40",
   },
 ] as const;
 
@@ -352,13 +353,16 @@ type FieldErrors = Partial<Record<keyof ProviderApplicationDraft, string>>;
 const getStepIndex = (step: StepId) =>
   steps.findIndex((stepItem) => stepItem.id === step);
 
-const getFlattenedErrors = (result: z.SafeParseReturnType<unknown, unknown>) =>
+const getFlattenedErrors = <Output,>(result: z.ZodSafeParseResult<Output>) =>
   result.success
     ? {}
     : Object.fromEntries(
-        Object.entries(result.error.flatten().fieldErrors).map(
-          ([field, messages]) => [field, messages?.[0] ?? "Check this field."]
-        )
+        Object.entries(
+          result.error.flatten().fieldErrors as Record<string, string[]>
+        ).map(([field, messages]) => [
+          field,
+          messages?.[0] ?? "Check this field.",
+        ])
       );
 
 const getStringField = (source: Record<string, unknown>, key: string) =>

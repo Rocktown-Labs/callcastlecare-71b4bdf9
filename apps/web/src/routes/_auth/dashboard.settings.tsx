@@ -2,7 +2,6 @@ import { Badge } from "@callcastlecare/ui/components/badge";
 import { Button } from "@callcastlecare/ui/components/button";
 import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
-import { Textarea } from "@callcastlecare/ui/components/textarea";
 import { createFileRoute, useBlocker } from "@tanstack/react-router";
 import {
   Check,
