@@ -78,6 +78,20 @@
       "when": 1785550000000,
       "tag": "0010_addresses_formatted_address",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785871591456,
+      "tag": "0011_glossy_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785873782016,
+      "tag": "0012_third_snowbird",
+      "breakpoints": true
     }
   ]
 }

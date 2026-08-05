@@ -24,6 +24,10 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 
 import {
+  getCheckoutSettings,
+  updateCheckoutSettings,
+} from "../lib/checkout-settings";
+import {
   createStripeClientOrThrow,
   ensureStripeWebhookEndpoint,
   syncStripeCatalogItem,
@@ -35,6 +39,7 @@ import type { AppEnv } from "../types";
 import {
   adminOrderActionRequestSchema,
   adminOrderNoteRequestSchema,
+  updateCheckoutSettingsRequestSchema,
 } from "./schemas";
 
 type OrderStatus =
@@ -893,4 +898,40 @@ export const adminRoutes = new Hono<AppEnv>()
 
       return c.json({ error: message }, 500);
     }
+  })
+  .get("/checkout/settings", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const settings = await getCheckoutSettings();
+    return c.json(settings, 200);
+  })
+  .put("/checkout/settings", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const body = await c.req.json();
+    const parsed = updateCheckoutSettingsRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const settings = await updateCheckoutSettings({
+      allowCashCheckout: parsed.data.allowCashCheckout,
+    });
+
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        allowCashCheckout: parsed.data.allowCashCheckout,
+        requestId: c.get("requestId"),
+      },
+      "admin:checkout_settings_updated"
+    );
+
+    return c.json(settings, 200);
   });

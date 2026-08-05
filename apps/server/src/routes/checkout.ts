@@ -23,6 +23,7 @@ import {
   requireUser,
   getOrCreateCustomerForUser,
 } from "../lib/auth";
+import { getCheckoutSettings } from "../lib/checkout-settings";
 import { computeCheckoutPreview } from "../lib/domain/checkout";
 import { sendEmail } from "../lib/integrations/email";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
@@ -446,6 +447,10 @@ const providerCheckoutSchema = z.object({
 });
 
 export const checkoutRoutes = new Hono<AppEnv>()
+  .get("/settings", async (c) => {
+    const settings = await getCheckoutSettings();
+    return c.json(settings, 200);
+  })
   .post("/provider", async (c) => {
     const body = await c.req.json();
     const parsed = providerCheckoutSchema.safeParse(body);
@@ -624,6 +629,16 @@ export const checkoutRoutes = new Hono<AppEnv>()
     const parsed = checkoutConfirmRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    if (parsed.data.paymentOption === "deposit_cash") {
+      const settings = await getCheckoutSettings();
+      if (!settings.allowCashCheckout) {
+        return c.json(
+          { error: "Pay-in-cash checkout is currently disabled." },
+          409
+        );
+      }
     }
 
     await ensureAddressesSchemaColumns();

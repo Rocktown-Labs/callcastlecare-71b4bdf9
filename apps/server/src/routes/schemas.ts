@@ -6,6 +6,10 @@ import { z } from "zod";
 
 export const timingTypeSchema = z.enum(["asap", "scheduled"]);
 
+export const updateCheckoutSettingsRequestSchema = z.object({
+  allowCashCheckout: z.boolean(),
+});
+
 export const checkoutPreviewItemSchema = z
   .object({
     cleanScreens: z.boolean().optional(),

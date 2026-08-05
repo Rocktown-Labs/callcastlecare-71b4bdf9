@@ -47,6 +47,7 @@ import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
+import { authClient } from "@/lib/auth-client";
 import {
   bookingTimeSlots,
   fetchBookingAvailability,
@@ -485,7 +486,7 @@ const emptyDraft = ({
   initialContact,
   initialDate = "",
   initialServices,
-  initialTimeSlot = bookingTimeSlots[2],
+  initialTimeSlot = "",
 }: BookingWizardProps): BookingDraft => ({
   address: initialAddress,
   addressId: initialAddressId,
@@ -538,12 +539,12 @@ const formatCents = (cents: number) =>
 
 const formatLongDate = (value: string) => {
   if (!value) {
-    return "Select date";
+    return "Choose A Date";
   }
 
   const parsed = new Date(`${value}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) {
-    return "Select date";
+    return "Choose A Date";
   }
 
   return new Intl.DateTimeFormat("en-US", {
@@ -993,10 +994,7 @@ const buildInitialDraft = (
     date: props.initialDate || activeStoredDraft?.date || "",
     serviceDetails: normalizeServiceDetails(initialDraft, activeStoredDraft),
     services: sortServiceIds(resolveInitialServices(props, activeStoredDraft)),
-    timeSlot:
-      props.initialTimeSlot ||
-      activeStoredDraft?.timeSlot ||
-      bookingTimeSlots[2],
+    timeSlot: props.initialTimeSlot || activeStoredDraft?.timeSlot || "",
   };
 };
 
@@ -1100,10 +1098,19 @@ const fetchQuoteRequestDraft = async (trackingId: string) => {
   return payload.quoteRequest ?? null;
 };
 
-const getPaymentOptionsForServices = (services: ServiceId[]) =>
-  services.length === 1 && services[0] === "laundry"
-    ? paymentOptions.filter((option) => option.id === "pay_full")
-    : paymentOptions;
+const getPaymentOptionsForServices = (
+  services: ServiceId[],
+  allowCashCheckout = true
+) => {
+  const options =
+    services.length === 1 && services[0] === "laundry"
+      ? paymentOptions.filter((option) => option.id === "pay_full")
+      : paymentOptions;
+
+  return allowCashCheckout
+    ? options
+    : options.filter((option) => option.id !== "deposit_cash");
+};
 
 const hasSubscriptionCheckout = (draft: BookingDraft) =>
   Boolean(draft.subscriptionId && draft.subscriptionId !== "one_time");
@@ -1259,12 +1266,15 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
   });
 };
 
-const getPaymentOptionsForDraft = (draft: BookingDraft) => {
+const getPaymentOptionsForDraft = (
+  draft: BookingDraft,
+  allowCashCheckout = true
+) => {
   if (hasSubscriptionCheckout(draft)) {
     return [subscriptionPaymentOption];
   }
 
-  return getPaymentOptionsForServices(draft.services);
+  return getPaymentOptionsForServices(draft.services, allowCashCheckout);
 };
 
 const isCustomLawncareDraft = (draft: BookingDraft) =>
@@ -1462,7 +1472,11 @@ const getProductSelectionName = (
   return product.name;
 };
 
-const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
+const getStepErrors = (
+  draft: BookingDraft,
+  step: WizardStep,
+  allowCashCheckout = true
+) => {
   const nextErrors: Record<string, string> = {};
 
   if (step === 0) {
@@ -1497,7 +1511,7 @@ const getStepErrors = (draft: BookingDraft, step: WizardStep) => {
 
   if (step === 5) {
     if (
-      !getPaymentOptionsForDraft(draft).some(
+      !getPaymentOptionsForDraft(draft, allowCashCheckout).some(
         (option) => option.id === draft.paymentOption
       )
     ) {
@@ -1920,12 +1934,18 @@ const ScheduleDateTimePicker = ({
                 : ""
             }
           >
-            {availableTimeSlots.map((slot) => (
-              <option key={slot}>{slot}</option>
-            ))}
             {availableTimeSlots.length === 0 ? (
               <option value="">No slots open</option>
-            ) : null}
+            ) : (
+              <>
+                <option disabled value="">
+                  Choose A Time
+                </option>
+                {availableTimeSlots.map((slot) => (
+                  <option key={slot}>{slot}</option>
+                ))}
+              </>
+            )}
           </select>
           <ChevronDown
             aria-hidden="true"
@@ -2234,6 +2254,8 @@ const ProductAccordion = ({
 // eslint-disable-next-line complexity
 const BookingWizard = (props: BookingWizardProps) => {
   const navigate = useNavigate();
+  const { data: session } = authClient.useSession();
+  const isReturningCustomer = Boolean(session?.user);
   const storedDraft = parseStoredDraft();
   const hasStoredDraft =
     Boolean(storedDraft) &&
@@ -2276,10 +2298,68 @@ const BookingWizard = (props: BookingWizardProps) => {
     Boolean(props.initialQuoteRequestId)
   );
   const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
+  const [allowCashCheckout, setAllowCashCheckout] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCheckoutSettings = async () => {
+      try {
+        const response = await fetch(
+          new URL("/api/v1/checkout/settings", getServerUrl())
+        );
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          allowCashCheckout: boolean;
+        };
+        if (active && typeof payload.allowCashCheckout === "boolean") {
+          setAllowCashCheckout(payload.allowCashCheckout);
+          setDraft((current) => ({
+            ...current,
+            paymentOption:
+              payload.allowCashCheckout ||
+              current.paymentOption !== "deposit_cash"
+                ? current.paymentOption
+                : "",
+          }));
+        }
+      } catch {
+        // Keep the cash option available when settings cannot be loaded.
+      }
+    };
+
+    void loadCheckoutSettings();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, JSON.stringify(draft));
   }, [draft]);
+
+  useEffect(() => {
+    if (
+      isReturningCustomer &&
+      draft.serviceDetails.laundry.pickupMode === "knock"
+    ) {
+      // eslint-disable-next-line react/react-compiler -- Reset the stored pickup mode once the session confirms a returning customer.
+      setDraft((current) => ({
+        ...current,
+        serviceDetails: {
+          ...current.serviceDetails,
+          laundry: {
+            ...current.serviceDetails.laundry,
+            pickupMode: "outside",
+          },
+        },
+      }));
+    }
+  }, [draft.serviceDetails.laundry.pickupMode, isReturningCustomer]);
 
   useEffect(() => {
     if (!props.initialQuoteRequestId) {
@@ -2399,7 +2479,10 @@ const BookingWizard = (props: BookingWizardProps) => {
     enrichDraftPropertyIfNeeded,
   ]);
 
-  const paymentOptionsForDraft = getPaymentOptionsForDraft(draft);
+  const paymentOptionsForDraft = getPaymentOptionsForDraft(
+    draft,
+    allowCashCheckout
+  );
 
   const setDraftValue = <Key extends keyof BookingDraft>(
     key: Key,
@@ -2503,7 +2586,7 @@ const BookingWizard = (props: BookingWizardProps) => {
   };
 
   const validateStep = (step: WizardStep) => {
-    const nextErrors = getStepErrors(draft, step);
+    const nextErrors = getStepErrors(draft, step, allowCashCheckout);
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -3174,36 +3257,38 @@ const BookingWizard = (props: BookingWizardProps) => {
                           "We knock and collect the bag from you.",
                         ],
                       ] as const
-                    ).map(([id, name, description]) => (
-                      <button
-                        className={cn(
-                          "rounded-2xl border p-3 text-left transition-colors",
-                          draft.serviceDetails.laundry.pickupMode === id
-                            ? "border-sky-500 bg-sky-50 text-slate-950"
-                            : "border-slate-200 bg-white text-slate-600"
-                        )}
-                        key={id}
-                        onClick={() => {
-                          const nextLaundry = {
-                            ...draft.serviceDetails.laundry,
-                            pickupMode: id,
-                          };
-                          setDraftValue("serviceDetails", {
-                            ...draft.serviceDetails,
-                            laundry: nextLaundry,
-                          });
-                          if (nextLaundry.bedding) {
-                            completeServiceDetails("laundry");
-                          }
-                        }}
-                        type="button"
-                      >
-                        <p className="text-sm font-semibold">{name}</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          {description}
-                        </p>
-                      </button>
-                    ))}
+                    )
+                      .filter(([id]) => !isReturningCustomer || id !== "knock")
+                      .map(([id, name, description]) => (
+                        <button
+                          className={cn(
+                            "rounded-2xl border p-3 text-left transition-colors",
+                            draft.serviceDetails.laundry.pickupMode === id
+                              ? "border-sky-500 bg-sky-50 text-slate-950"
+                              : "border-slate-200 bg-white text-slate-600"
+                          )}
+                          key={id}
+                          onClick={() => {
+                            const nextLaundry = {
+                              ...draft.serviceDetails.laundry,
+                              pickupMode: id,
+                            };
+                            setDraftValue("serviceDetails", {
+                              ...draft.serviceDetails,
+                              laundry: nextLaundry,
+                            });
+                            if (nextLaundry.bedding) {
+                              completeServiceDetails("laundry");
+                            }
+                          }}
+                          type="button"
+                        >
+                          <p className="text-sm font-semibold">{name}</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {description}
+                          </p>
+                        </button>
+                      ))}
                   </div>
                   {errors.pickupMode ? (
                     <p className="text-sm text-rose-600">{errors.pickupMode}</p>
