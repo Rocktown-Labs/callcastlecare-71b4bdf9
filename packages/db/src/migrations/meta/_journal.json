@@ -92,6 +92,13 @@
       "when": 1785873782016,
       "tag": "0012_third_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787976405842,
+      "tag": "0013_performance_indexes",
+      "breakpoints": true
     }
   ]
 }

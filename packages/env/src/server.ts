@@ -23,6 +23,11 @@ const runtimeEnv = {
     process.env.BETTER_AUTH_URL ??
     (vercelOrigin ? `${vercelOrigin}/api/auth` : undefined),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? vercelOrigin,
+  // Vercel's Blob integration uses BLOB_READ_WRITE_TOKEN, while the app's
+  // internal name stays explicit about the service it configures.
+  VERCEL_BLOB_READ_WRITE_TOKEN:
+    process.env.VERCEL_BLOB_READ_WRITE_TOKEN ??
+    process.env.BLOB_READ_WRITE_TOKEN,
 };
 
 export const env = createEnv({

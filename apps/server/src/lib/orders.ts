@@ -1,6 +1,5 @@
 /* eslint-disable complexity, eslint/no-await-in-loop, eslint/prefer-destructuring, eslint/require-await, eslint/require-unicode-regexp, oxc/branches-sharing-code, unicorn/prefer-ternary -- Legacy checkout/order finalization logic predates the current lint profile; keep this waiver narrow to this file until dispatch is redesigned. */
-import { db, and, eq, sql } from '@callcastlecare/db';
-import type { SQLWrapper } from '@callcastlecare/db';
+import { db, and, eq, sql } from "@callcastlecare/db";
 import {
   addresses,
   checkoutItems,
@@ -12,8 +11,12 @@ import {
 } from "@callcastlecare/db/schema/index";
 
 import { dispatchOrder } from "./dispatch";
+import { getComboServiceTypes } from "./domain/checkout";
+import type { CheckoutServiceType } from "./domain/checkout";
 import { logger } from "./logger";
 import { publishOutboxEvent } from "./outbox";
+
+const CHECKOUT_SLOT_LOCK_KEY = 7_318_204;
 
 const LAUNDRY_LEG_SEQUENCE = [
   "pickup",
@@ -37,29 +40,35 @@ const buildFormattedAddress = (input: {
 }) =>
   `${input.street}, ${input.city}, ${input.state} ${input.zip}, ${input.country}`;
 
-export const ensureAddressesSchemaColumns = async (tx?: {
-  execute: (query: string | SQLWrapper) => Promise<unknown>;
-}) => {
-  const run = tx ?? db;
-  await Promise.all([
-    run.execute(
-      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;`
-    ),
-    run.execute(
-      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "instructions" text;`
-    ),
-    run.execute(
-      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "is_default" boolean DEFAULT false NOT NULL;`
-    ),
-    run.execute(
-      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "label" text DEFAULT 'Address' NOT NULL;`
-    ),
-    run.execute(
-      sql`ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "location" geography(Point,4326);`
-    ),
-  ]).catch((_err) => {
-    // Ignore schema errors; the columns may already exist in newer databases.
-  });
+const isCheckoutServiceType = (value: unknown): value is CheckoutServiceType =>
+  value === "lawncare" || value === "laundry" || value === "window_washing";
+
+const getServiceOrderTypes = (metadata: Record<string, unknown>) => {
+  if (isCheckoutServiceType(metadata.serviceType)) {
+    return [metadata.serviceType];
+  }
+
+  if (metadata.serviceType !== "combo") {
+    return [];
+  }
+
+  if (Array.isArray(metadata.comboServiceTypes)) {
+    const serviceTypes = metadata.comboServiceTypes.filter(
+      isCheckoutServiceType
+    );
+    if (serviceTypes.length > 0) {
+      return serviceTypes;
+    }
+  }
+
+  return typeof metadata.planId === "string"
+    ? (getComboServiceTypes(metadata.planId) ?? [])
+    : [];
+};
+
+const allocateCents = (totalCents: number, index: number, count: number) => {
+  const baseCents = Math.floor(totalCents / count);
+  return index === count - 1 ? totalCents - baseCents * (count - 1) : baseCents;
 };
 
 export const createAddressRecord = async (input: {
@@ -78,8 +87,6 @@ export const createAddressRecord = async (input: {
   zip: string;
 }) =>
   db.transaction(async (tx) => {
-    await ensureAddressesSchemaColumns(tx);
-
     const existingAddresses = await tx.query.addresses.findMany({
       where: eq(addresses.customerId, input.customerId),
     });
@@ -265,22 +272,12 @@ export const finalizeCheckoutPayment = async (input: {
     };
   }
 
-  if (existingSession.status === "paid") {
-    const existingOrders = await db.query.orders.findMany({
-      columns: {
-        id: true,
-      },
-      where: eq(orders.checkoutSessionId, existingSession.id),
-    });
+  const { createdOrderIds, dispatchOrderIds, hasPaidHomePreorder } =
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${CHECKOUT_SLOT_LOCK_KEY})`
+      );
 
-    return {
-      checkoutSession: existingSession,
-      createdOrderIds: existingOrders.map((order) => order.id),
-    };
-  }
-
-  const { createdOrderIds, hasPaidHomePreorder } = await db.transaction(
-    async (tx) => {
       await tx
         .update(checkoutSessions)
         .set({
@@ -309,41 +306,62 @@ export const finalizeCheckoutPayment = async (input: {
       const orderIds: number[] = hasOrdersForSession
         ? existingOrders.map((entry) => entry.id)
         : [];
+      const newlyCreatedOrderIds: number[] = [];
       let paidHomePreorder = false;
 
       if (!hasOrdersForSession) {
         for (const item of items) {
           const metadata = (item.metadataJson ?? {}) as Record<string, unknown>;
-          const serviceTypeValue = metadata.serviceType;
 
+          const serviceOrderTypes = getServiceOrderTypes(metadata);
           if (
-            serviceTypeValue === "lawncare" ||
-            serviceTypeValue === "laundry" ||
-            serviceTypeValue === "window_washing"
+            metadata.serviceType === "combo" &&
+            serviceOrderTypes.length === 0
           ) {
+            throw new Error("Combo checkout item has no service components");
+          }
+
+          for (const [
+            componentIndex,
+            serviceType,
+          ] of serviceOrderTypes.entries()) {
+            const componentCount = serviceOrderTypes.length;
             const createdOrders = await tx
               .insert(orders)
               .values({
                 addressId: existingSession.addressId,
-                basePriceCents: item.basePriceCents,
+                basePriceCents: allocateCents(
+                  item.basePriceCents,
+                  componentIndex,
+                  componentCount
+                ),
                 checkoutSessionId: existingSession.id,
                 customerId: existingSession.customerId,
                 pricingTier:
-                  metadata.pricingTier === "small" ||
-                  metadata.pricingTier === "medium" ||
-                  metadata.pricingTier === "large"
+                  serviceType === "lawncare" &&
+                  (metadata.pricingTier === "small" ||
+                    metadata.pricingTier === "medium" ||
+                    metadata.pricingTier === "large")
                     ? metadata.pricingTier
                     : null,
                 scheduledEndAt: item.scheduledEndAt,
                 scheduledStartAt: item.scheduledStartAt,
-                serviceType: serviceTypeValue,
+                serviceType,
                 status: "paid",
                 stripePaymentIntentId:
                   input.stripePaymentIntentId ??
                   existingSession.stripePaymentIntentId,
                 timingType: item.timingType ?? "asap",
-                tipAmountCents: item.tipAmountCents,
-                totalPriceCents: item.totalPriceCents,
+                tipAmountCents: allocateCents(
+                  item.tipAmountCents,
+                  componentIndex,
+                  componentCount
+                ),
+                totalPriceCents: allocateCents(
+                  item.totalPriceCents,
+                  componentIndex,
+                  componentCount
+                ),
               })
               .returning({
                 id: orders.id,
@@ -356,6 +374,7 @@ export const finalizeCheckoutPayment = async (input: {
             }
 
             orderIds.push(createdOrder.id);
+            newlyCreatedOrderIds.push(createdOrder.id);
 
             if (createdOrder.serviceType === "laundry") {
               await tx.insert(serviceLegs).values(
@@ -422,10 +441,10 @@ export const finalizeCheckoutPayment = async (input: {
 
       return {
         createdOrderIds: orderIds,
+        dispatchOrderIds: newlyCreatedOrderIds,
         hasPaidHomePreorder: paidHomePreorder,
       };
-    }
-  );
+    });
 
   await publishOutboxEvent({
     eventName: "checkout_confirmed",
@@ -445,7 +464,7 @@ export const finalizeCheckoutPayment = async (input: {
     });
   }
 
-  for (const orderId of createdOrderIds) {
+  for (const orderId of dispatchOrderIds) {
     await dispatchOrder({
       orderId,
       sequence: 1,

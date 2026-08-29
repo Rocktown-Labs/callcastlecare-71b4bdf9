@@ -1,5 +1,14 @@
+import {
+  bookingTimeSlots,
+  buildTravelEstimate,
+  getBookingZoneDate,
+  getLawncareLotTier,
+  getLawncarePlanId,
+  getScheduledWindowForSlot,
+} from "@callcastlecare/api";
+import type { CheckoutPreviewRequest } from "@callcastlecare/api";
 import { auth } from "@callcastlecare/auth";
-import { and, db, eq } from "@callcastlecare/db";
+import { and, db, eq, gt, inArray, lt, sql } from "@callcastlecare/db";
 import {
   addresses,
   checkoutDrafts,
@@ -24,20 +33,21 @@ import {
   getOrCreateCustomerForUser,
 } from "../lib/auth";
 import { getCheckoutSettings } from "../lib/checkout-settings";
-import { computeCheckoutPreview } from "../lib/domain/checkout";
+import {
+  computeCheckoutPreview,
+  getComboPricingTier,
+  getComboServiceTypes,
+} from "../lib/domain/checkout";
 import { sendEmail } from "../lib/integrations/email";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
+import { lookupPropertyWithRentCast } from "../lib/integrations/rentcast";
 import {
   createStripeCheckoutSession,
   parseStripeWebhookEvent,
 } from "../lib/integrations/stripe-payments";
 import type { StripeWebhookEvent } from "../lib/integrations/stripe-payments";
 import { logger } from "../lib/logger";
-import {
-  createAddressRecord,
-  ensureAddressesSchemaColumns,
-  finalizeCheckoutPayment,
-} from "../lib/orders";
+import { createAddressRecord, finalizeCheckoutPayment } from "../lib/orders";
 import type { AppEnv } from "../types";
 import {
   checkoutDraftRequestSchema,
@@ -65,6 +75,72 @@ const parseScheduledDate = (value: string | undefined) => {
 };
 
 const depositCents = 5000;
+const SQFT_PER_ACRE = 43_560;
+const CHECKOUT_SLOT_LOCK_KEY = 7_318_204;
+const CHECKOUT_SLOT_HOLD_MS = 30 * 60 * 1000;
+const ACTIVE_ORDER_STATUSES = [
+  "pending_payment",
+  "paid",
+  "dispatching",
+  "assigned",
+  "en_route",
+  "arrived",
+  "in_progress",
+] as const;
+
+class CheckoutSlotUnavailableError extends Error {
+  constructor() {
+    super("That appointment window was just reserved. Choose another time.");
+    this.name = "CheckoutSlotUnavailableError";
+  }
+}
+
+interface ScheduledCheckoutSlot {
+  end: Date;
+  start: Date;
+}
+
+const getScheduledCheckoutSlots = (
+  items: {
+    scheduledEndAt?: string;
+    scheduledStartAt?: string;
+    timingType?: "asap" | "scheduled";
+  }[]
+): ScheduledCheckoutSlot[] => {
+  const slots = new Map<string, ScheduledCheckoutSlot>();
+
+  for (const item of items) {
+    const isScheduled =
+      item.timingType === "scheduled" ||
+      (item.timingType === undefined && item.scheduledStartAt);
+    if (!isScheduled) {
+      continue;
+    }
+
+    if (!(item.scheduledStartAt && item.scheduledEndAt)) {
+      throw new Error("Scheduled services require an appointment window.");
+    }
+
+    const start = new Date(item.scheduledStartAt);
+    const end = new Date(item.scheduledEndAt);
+    const bookingDate = getBookingZoneDate(start);
+    const isKnownSlot = bookingTimeSlots.some((slot) => {
+      const scheduledWindow = getScheduledWindowForSlot(bookingDate, slot);
+      return (
+        scheduledWindow.scheduledStartAt === start.toISOString() &&
+        scheduledWindow.scheduledEndAt === end.toISOString()
+      );
+    });
+
+    if (!isKnownSlot) {
+      throw new Error("Choose an available CastleCare appointment window.");
+    }
+
+    slots.set(start.toISOString(), { end, start });
+  }
+
+  return [...slots.values()];
+};
 
 const getCheckoutOrigin = (c: HonoContext) => {
   const requestOrigin = new URL(c.req.url).origin;
@@ -81,6 +157,111 @@ const getAmountDueCents = (input: {
   input.paymentOption === "pay_full"
     ? input.totalCents
     : Math.min(depositCents, input.totalCents);
+
+const getAddressLabel = (address: {
+  city: string;
+  country: string;
+  formattedAddress?: string | null;
+  state: string;
+  street: string;
+  zip: string;
+}) =>
+  address.formattedAddress ??
+  `${address.street}, ${address.city}, ${address.state} ${address.zip}, ${address.country}`;
+
+const getTrustedTravelEstimate = (address: {
+  latitude: number | null;
+  longitude: number | null;
+  state: string;
+}) => {
+  if (
+    typeof address.latitude !== "number" ||
+    typeof address.longitude !== "number"
+  ) {
+    return null;
+  }
+
+  return buildTravelEstimate({
+    latitude: address.latitude,
+    longitude: address.longitude,
+    stateCode: address.state,
+  });
+};
+
+const getLawncareFrequency = (planId: string) => {
+  if (planId.includes("bi-weekly")) {
+    return "bi_weekly" as const;
+  }
+  if (planId.includes("monthly")) {
+    return "monthly" as const;
+  }
+  return "one_time" as const;
+};
+
+const validateLawncarePlans = async (input: {
+  address: {
+    city: string;
+    country: string;
+    formattedAddress?: string | null;
+    state: string;
+    street: string;
+    zip: string;
+  };
+  items: CheckoutPreviewRequest["items"];
+}) => {
+  const lawncareItems = input.items.filter(
+    (item) => item.itemKind === "lawncare"
+  );
+  if (lawncareItems.length === 0) {
+    return null;
+  }
+
+  const property = await lookupPropertyWithRentCast(
+    getAddressLabel(input.address)
+  );
+  const lotSizeAcres =
+    property.source === "rentcast" &&
+    typeof property.lotSizeSqft === "number" &&
+    property.lotSizeSqft > 0
+      ? property.lotSizeSqft / SQFT_PER_ACRE
+      : null;
+  const lotTier = getLawncareLotTier(lotSizeAcres);
+
+  for (const item of lawncareItems) {
+    if (!item.planId) {
+      return "Choose a lawn care product before checkout.";
+    }
+
+    const comboServices = getComboServiceTypes(item.planId);
+    if (comboServices) {
+      if (!comboServices.some((serviceType) => serviceType === "lawncare")) {
+        continue;
+      }
+      if (lotTier === "custom") {
+        return "This property needs an on-site custom lawn care quote.";
+      }
+      if (getComboPricingTier(item.planId) !== lotTier) {
+        return "The selected lawn care plan does not match this property.";
+      }
+      continue;
+    }
+
+    const expectedPlanId =
+      lotTier === "custom"
+        ? "groundskeeper-custom-quote-deposit"
+        : getLawncarePlanId({
+            frequency: getLawncareFrequency(item.planId),
+            lotSizeAcres,
+          });
+    if (item.planId !== expectedPlanId) {
+      return lotTier === "custom"
+        ? "This property needs an on-site custom lawn care quote."
+        : "The selected lawn care plan does not match this property.";
+    }
+  }
+
+  return null;
+};
 
 const getObjectMetadata = (value: Record<string, unknown>) =>
   typeof value.metadata === "object" && value.metadata
@@ -295,6 +476,27 @@ const handleCheckoutSessionCompleted = async (event: StripeWebhookEvent) => {
   });
 };
 
+const handleCheckoutSessionExpired = async (event: StripeWebhookEvent) => {
+  const stripeSessionId =
+    typeof event.data.object.id === "string" ? event.data.object.id : null;
+  if (!stripeSessionId) {
+    return;
+  }
+
+  await db
+    .update(checkoutSessions)
+    .set({
+      status: "failed",
+      updatedAt: new Date(),
+    })
+    .where(eq(checkoutSessions.stripeCheckoutSessionId, stripeSessionId));
+
+  logger.info(
+    { stripeCheckoutSessionId: stripeSessionId },
+    "checkout:slot_hold_released"
+  );
+};
+
 const handlePaymentIntentSucceeded = async (event: StripeWebhookEvent) => {
   const paymentIntentObject = event.data.object;
   const paymentIntentId =
@@ -346,6 +548,11 @@ export const handleStripeWebhook = async (c: HonoContext) => {
 
   if (parsedEvent.type === "checkout.session.completed") {
     await handleCheckoutSessionCompleted(parsedEvent);
+    return c.json({ received: true }, 200);
+  }
+
+  if (parsedEvent.type === "checkout.session.expired") {
+    await handleCheckoutSessionExpired(parsedEvent);
     return c.json({ received: true }, 200);
   }
 
@@ -487,10 +694,18 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
-    await ensureAddressesSchemaColumns();
-
-    let resolvedAddress: string | null = parsed.data.address ?? null;
+    let resolvedAddress: string | null = null;
     let resolvedAddressId: number | null = parsed.data.addressId ?? null;
+    let addressForPricing: {
+      city: string;
+      country: string;
+      formattedAddress?: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      state: string;
+      street: string;
+      zip: string;
+    } | null = null;
 
     if (parsed.data.addressId) {
       const user = c.get("user");
@@ -511,12 +726,37 @@ export const checkoutRoutes = new Hono<AppEnv>()
       }
 
       resolvedAddressId = existingAddress.id;
-      resolvedAddress =
-        existingAddress.formattedAddress ??
-        `${existingAddress.street}, ${existingAddress.city}, ${existingAddress.state} ${existingAddress.zip}, ${existingAddress.country}`;
+      addressForPricing = existingAddress;
+      resolvedAddress = getAddressLabel(existingAddress);
+    } else if (parsed.data.address) {
+      const verifiedAddress = await verifyAddressWithRadar(parsed.data.address);
+      addressForPricing = verifiedAddress;
+      resolvedAddress = verifiedAddress.formattedAddress;
     }
 
-    const preview = computeCheckoutPreview(parsed.data);
+    if (!addressForPricing) {
+      return c.json({ error: "Address is required" }, 400);
+    }
+
+    const travel = getTrustedTravelEstimate(addressForPricing);
+    if (!travel) {
+      return c.json({ error: "Address could not be verified" }, 422);
+    }
+
+    const lawncarePlanError = await validateLawncarePlans({
+      address: addressForPricing,
+      items: parsed.data.items,
+    });
+    if (lawncarePlanError) {
+      return c.json({ error: lawncarePlanError }, 409);
+    }
+
+    const preview = computeCheckoutPreview({
+      ...parsed.data,
+      travelDistanceMiles: travel.distanceMiles,
+      travelFeeCents: travel.feeCents,
+      travelStateCode: addressForPricing.state,
+    });
 
     return c.json(
       {
@@ -641,14 +881,22 @@ export const checkoutRoutes = new Hono<AppEnv>()
       }
     }
 
-    await ensureAddressesSchemaColumns();
-
     const user = c.get("user");
     const customer = user
       ? await getOrCreateCustomerForUser(user)
       : await getOrCreateCustomerForCheckoutContact(parsed.data.contact);
 
-    let address: { id: number } | null = null;
+    let address: {
+      city: string;
+      country: string;
+      formattedAddress?: string | null;
+      id: number;
+      latitude: number | null;
+      longitude: number | null;
+      state: string;
+      street: string;
+      zip: string;
+    } | null = null;
 
     if (parsed.data.addressId) {
       const existingAddress = await db.query.addresses.findFirst({
@@ -669,7 +917,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
         city: verifiedAddress.city,
         country: verifiedAddress.country,
         customerId: customer.id,
-        formattedAddress: parsed.data.address,
+        formattedAddress: verifiedAddress.formattedAddress,
         isDefault: false,
         latitude: verifiedAddress.latitude,
         longitude: verifiedAddress.longitude,
@@ -684,105 +932,230 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: "Address is required" }, 400);
     }
 
-    const preview = computeCheckoutPreview(parsed.data);
+    const travel = getTrustedTravelEstimate(address);
+    if (!travel) {
+      return c.json({ error: "Address could not be verified" }, 422);
+    }
+
+    const lawncarePlanError = await validateLawncarePlans({
+      address,
+      items: parsed.data.items,
+    });
+    if (lawncarePlanError) {
+      return c.json({ error: lawncarePlanError }, 409);
+    }
+
+    const checkoutInput = {
+      ...parsed.data,
+      travelDistanceMiles: travel.distanceMiles,
+      travelFeeCents: travel.feeCents,
+      travelStateCode: address.state,
+    } satisfies CheckoutPreviewRequest;
+    let scheduledSlots: ScheduledCheckoutSlot[];
+    try {
+      scheduledSlots = getScheduledCheckoutSlots(checkoutInput.items);
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Choose an available CastleCare appointment window.",
+        },
+        400
+      );
+    }
+
+    const preview = computeCheckoutPreview(checkoutInput);
     const amountDueCents = getAmountDueCents({
       paymentOption: parsed.data.paymentOption,
       totalCents: preview.totalCents,
     });
 
-    const [checkoutSession] = await db
-      .insert(checkoutSessions)
-      .values({
-        addressId: address.id,
-        customerId: customer.id,
-        metadataJson: {
-          amountDueCents,
-          contact: parsed.data.contact,
-          paymentOption: parsed.data.paymentOption,
-          requestId: c.get("requestId"),
-        },
-        status: "pending_payment",
-        subtotalCents: preview.subtotalCents,
-        totalCents: preview.totalCents,
-      })
-      .returning();
+    let checkoutSession;
+    try {
+      checkoutSession = await db.transaction(async (tx) => {
+        if (scheduledSlots.length > 0) {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(${CHECKOUT_SLOT_LOCK_KEY})`
+          );
 
-    if (!checkoutSession) {
-      return c.json({ error: "Failed to create checkout session" }, 500);
+          const holdCutoff = new Date(Date.now() - CHECKOUT_SLOT_HOLD_MS);
+          const slotConflicts = await Promise.all(
+            scheduledSlots.map(async (slot) => {
+              const [[overlappingOrder], [heldCheckout]] = await Promise.all([
+                tx
+                  .select({ id: orders.id })
+                  .from(orders)
+                  .where(
+                    and(
+                      inArray(orders.status, ACTIVE_ORDER_STATUSES),
+                      lt(orders.scheduledStartAt, slot.end),
+                      gt(orders.scheduledEndAt, slot.start)
+                    )
+                  )
+                  .limit(1),
+                tx
+                  .select({ id: checkoutSessions.id })
+                  .from(checkoutSessions)
+                  .innerJoin(
+                    checkoutItems,
+                    eq(checkoutItems.checkoutSessionId, checkoutSessions.id)
+                  )
+                  .where(
+                    and(
+                      inArray(checkoutSessions.status, [
+                        "pending_payment",
+                        "paid",
+                      ]),
+                      gt(checkoutSessions.updatedAt, holdCutoff),
+                      lt(checkoutItems.scheduledStartAt, slot.end),
+                      gt(checkoutItems.scheduledEndAt, slot.start)
+                    )
+                  )
+                  .limit(1),
+              ]);
+
+              return Boolean(overlappingOrder || heldCheckout);
+            })
+          );
+
+          if (slotConflicts.some(Boolean)) {
+            throw new CheckoutSlotUnavailableError();
+          }
+        }
+
+        const [createdCheckoutSession] = await tx
+          .insert(checkoutSessions)
+          .values({
+            addressId: address.id,
+            customerId: customer.id,
+            metadataJson: {
+              amountDueCents,
+              contact: parsed.data.contact,
+              paymentOption: parsed.data.paymentOption,
+              requestId: c.get("requestId"),
+              travelDistanceMiles: travel.distanceMiles,
+              travelFeeCents: travel.feeCents,
+              travelStateCode: address.state,
+            },
+            status: "pending_payment",
+            subtotalCents: preview.subtotalCents,
+            totalCents: preview.totalCents,
+          })
+          .returning();
+
+        if (!createdCheckoutSession) {
+          throw new Error("Failed to create checkout session");
+        }
+
+        await tx.insert(checkoutItems).values(
+          preview.lineItems.map((lineItem) => ({
+            ...(lineItem.metadata.timingType === "scheduled"
+              ? { timingType: "scheduled" as const }
+              : { timingType: "asap" as const }),
+            basePriceCents: lineItem.basePriceCents,
+            checkoutSessionId: createdCheckoutSession.id,
+            itemKind: lineItem.itemKind,
+            label: lineItem.label,
+            metadataJson: lineItem.metadata,
+            quantity: lineItem.quantity,
+            scheduledEndAt: parseScheduledDate(
+              lineItem.metadata.scheduledEndAt as string | undefined
+            ),
+            scheduledStartAt: parseScheduledDate(
+              lineItem.metadata.scheduledStartAt as string | undefined
+            ),
+            tipAmountCents: lineItem.tipAmountCents,
+            totalPriceCents: lineItem.totalPriceCents,
+          }))
+        );
+
+        const homePreorderResults = await Promise.all(
+          preview.lineItems
+            .filter((lineItem) => lineItem.itemKind === "home_preorder")
+            .map(async (lineItem) => {
+              const homeQuoteId =
+                typeof lineItem.metadata.homeQuoteId === "number"
+                  ? lineItem.metadata.homeQuoteId
+                  : null;
+
+              if (homeQuoteId === null) {
+                return null;
+              }
+
+              const quote = await tx.query.homeQuotes.findFirst({
+                where: eq(homeQuotes.id, homeQuoteId),
+              });
+
+              if (!quote) {
+                return null;
+              }
+
+              return {
+                addressId: address.id,
+                checkoutSessionId: createdCheckoutSession.id,
+                customerId: customer.id,
+                depositAmountCents: lineItem.basePriceCents,
+                homeQuoteId,
+                status: "pending_payment" as const,
+              };
+            })
+        );
+        const homePreorderValues = homePreorderResults.filter(
+          (value) => value !== null
+        );
+
+        if (homePreorderValues.length > 0) {
+          await tx.insert(homePreorders).values(homePreorderValues);
+        }
+
+        return createdCheckoutSession;
+      });
+    } catch (error) {
+      if (error instanceof CheckoutSlotUnavailableError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
     }
-
-    await db.insert(checkoutItems).values(
-      preview.lineItems.map((lineItem) => ({
-        ...(lineItem.metadata.timingType === "scheduled"
-          ? { timingType: "scheduled" as const }
-          : { timingType: "asap" as const }),
-        basePriceCents: lineItem.basePriceCents,
-        checkoutSessionId: checkoutSession.id,
-        itemKind: lineItem.itemKind,
-        label: lineItem.label,
-        metadataJson: lineItem.metadata,
-        quantity: lineItem.quantity,
-        scheduledEndAt: parseScheduledDate(
-          lineItem.metadata.scheduledEndAt as string | undefined
-        ),
-        scheduledStartAt: parseScheduledDate(
-          lineItem.metadata.scheduledStartAt as string | undefined
-        ),
-        tipAmountCents: lineItem.tipAmountCents,
-        totalPriceCents: lineItem.totalPriceCents,
-      }))
-    );
-
-    await Promise.all(
-      preview.lineItems.map(async (lineItem) => {
-        if (lineItem.itemKind !== "home_preorder") {
-          return;
-        }
-
-        const homeQuoteId =
-          typeof lineItem.metadata.homeQuoteId === "number"
-            ? lineItem.metadata.homeQuoteId
-            : null;
-
-        if (homeQuoteId === null) {
-          return;
-        }
-
-        const quote = await db.query.homeQuotes.findFirst({
-          where: eq(homeQuotes.id, homeQuoteId),
-        });
-
-        if (!quote) {
-          return;
-        }
-
-        await db.insert(homePreorders).values({
-          addressId: address.id,
-          checkoutSessionId: checkoutSession.id,
-          customerId: customer.id,
-          depositAmountCents: lineItem.basePriceCents,
-          homeQuoteId,
-          status: "pending_payment",
-        });
-      })
-    );
 
     const origin = getCheckoutOrigin(c);
     const successUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
-    const stripeCheckoutSession = await createStripeCheckoutSession({
-      amountDueCents,
-      cancelUrl: `${origin}/book?checkout=cancelled`,
-      checkoutSessionId: checkoutSession.id,
-      customerEmail: parsed.data.contact.email,
-      metadata: {
-        amountDueCents: String(amountDueCents),
-        checkoutSessionId: String(checkoutSession.id),
-        customerId: String(customer.id),
-        paymentOption: parsed.data.paymentOption,
-        totalCents: String(preview.totalCents),
-      },
-      successUrl,
-    });
+    let stripeCheckoutSession;
+    try {
+      stripeCheckoutSession = await createStripeCheckoutSession({
+        amountDueCents,
+        cancelUrl: `${origin}/book?checkout=cancelled`,
+        checkoutSessionId: checkoutSession.id,
+        customerEmail: parsed.data.contact.email,
+        expiresAt: new Date(Date.now() + CHECKOUT_SLOT_HOLD_MS),
+        metadata: {
+          amountDueCents: String(amountDueCents),
+          checkoutSessionId: String(checkoutSession.id),
+          customerId: String(customer.id),
+          paymentOption: parsed.data.paymentOption,
+          totalCents: String(preview.totalCents),
+        },
+        successUrl,
+      });
+    } catch (error) {
+      await db
+        .update(checkoutSessions)
+        .set({
+          status: "failed",
+          updatedAt: new Date(),
+        })
+        .where(eq(checkoutSessions.id, checkoutSession.id));
+      logger.error(
+        {
+          checkoutSessionId: checkoutSession.id,
+          err: error,
+          requestId: c.get("requestId"),
+        },
+        "checkout:stripe_session_create_failed"
+      );
+      throw error;
+    }
 
     await db
       .update(checkoutSessions)

@@ -46,6 +46,10 @@ vi.mock("@callcastlecare/db", () => ({
     },
   },
   eq: vi.fn(),
+  gt: vi.fn(),
+  inArray: vi.fn(),
+  lt: vi.fn(),
+  sql: vi.fn(),
 }));
 
 vi.mock("@callcastlecare/db/schema/index", () => ({
@@ -85,6 +89,10 @@ vi.mock("../lib/integrations/radar", () => ({
   verifyAddressWithRadar: vi.fn(),
 }));
 
+vi.mock("../lib/integrations/rentcast", () => ({
+  lookupPropertyWithRentCast: vi.fn(),
+}));
+
 vi.mock("../lib/integrations/stripe-payments", () => ({
   createStripeCheckoutSession: vi.fn(),
   parseStripeWebhookEvent: (input: { rawBody: string }) => {
@@ -102,7 +110,6 @@ vi.mock("../lib/logger", () => ({
 
 vi.mock("../lib/orders", () => ({
   createAddressRecord: vi.fn(),
-  ensureAddressesSchemaColumns: vi.fn(),
   finalizeCheckoutPayment: vi.fn(),
 }));
 
@@ -114,6 +121,8 @@ vi.mock("../lib/auth", () => ({
 
 vi.mock("../lib/domain/checkout", () => ({
   computeCheckoutPreview: vi.fn(),
+  getComboPricingTier: vi.fn(),
+  getComboServiceTypes: vi.fn(),
 }));
 
 vi.mock("./schemas", () => ({

@@ -98,6 +98,7 @@ export const createStripeCheckoutSession = async (input: {
   checkoutSessionId: number;
   currency?: string;
   customerEmail: string;
+  expiresAt?: Date;
   metadata: Record<string, string>;
   successUrl: string;
 }): Promise<CastleCareCheckoutSession> => {
@@ -116,6 +117,9 @@ export const createStripeCheckoutSession = async (input: {
 
   const checkoutParams: Stripe.Checkout.SessionCreateParams = {
     cancel_url: input.cancelUrl,
+    ...(input.expiresAt
+      ? { expires_at: Math.floor(input.expiresAt.getTime() / 1000) }
+      : {}),
     customer_email: input.customerEmail,
     line_items: [
       {

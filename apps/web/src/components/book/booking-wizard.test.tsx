@@ -402,6 +402,16 @@ describe("BookingWizard", () => {
     expect(
       screen.queryByRole("button", { name: /groundskeeper small lot/iu })
     ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper medium lot/iu })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper large lot/iu })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper bi-weekly/iu })
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^monthly/iu })).toBeNull();
   });
 
   it("filters product choices and explains monthly trio service units", async () => {

@@ -25,7 +25,9 @@ describe("computeCheckoutPreview", () => {
       basePriceCents: 52_500,
       label: "Crown Estate Trio Medium",
       metadata: {
+        comboServiceTypes: ["lawncare", "laundry", "window_washing"],
         planId: "crown-estate-trio-medium",
+        pricingTier: "medium",
         serviceType: "combo",
       },
     });
@@ -52,6 +54,25 @@ describe("computeCheckoutPreview", () => {
     });
   });
 
+  it("recomputes travel fees instead of trusting a submitted fee", () => {
+    const preview = computeCheckoutPreview({
+      address: "123 Main St, Dallas, TX",
+      items: [
+        {
+          itemKind: CheckoutItemKind.Laundry,
+          planId: "royal-wash-basic",
+          timingType: "scheduled",
+        },
+      ],
+      travelDistanceMiles: 100,
+      travelFeeCents: 0,
+      travelStateCode: "TX",
+    });
+
+    expect(preview.travelFeeCents).toBe(10_000);
+    expect(preview.totalCents).toBe(4000 + 500 + 10_000);
+  });
+
   it("includes technology fee line item and calculates totals properly with travel fees and tips", () => {
     const preview = computeCheckoutPreview({
       address: "123 Main St, Fayetteville, AR",
@@ -63,7 +84,8 @@ describe("computeCheckoutPreview", () => {
         },
       ],
       tipAmountCents: 1000,
-      travelFeeCents: 5000,
+      travelDistanceMiles: 100,
+      travelStateCode: "AR",
     });
 
     expect(preview.subtotalCents).toBe(15_000);

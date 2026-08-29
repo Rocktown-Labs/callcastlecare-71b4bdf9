@@ -1227,6 +1227,9 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
       return [];
     }
 
+    const selectedProduct = productsByService[serviceId].find(
+      (product) => product.id === selectedProductId
+    );
     const baseItem = {
       ...scheduledWindow,
       timingType: "scheduled" as const,
@@ -1238,6 +1241,7 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
         {
           ...baseItem,
           cleanScreens: details.washScreens,
+          isSubscription: selectedProduct?.recurring,
           itemKind: CheckoutItemKind.WindowWashing,
           packageType:
             details.cleaningScope === "both"
@@ -1256,6 +1260,7 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
     return [
       {
         ...baseItem,
+        isSubscription: selectedProduct?.recurring,
         itemKind:
           serviceId === "lawncare"
             ? CheckoutItemKind.Lawncare

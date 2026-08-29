@@ -1,5 +1,4 @@
 import { auth } from "@callcastlecare/auth";
-import { db, sql } from "@callcastlecare/db";
 import { env } from "@callcastlecare/env/server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -105,24 +104,7 @@ app.use(
   })
 );
 
-let dbSchemaColumnsChecked = false;
-
 app.use("/*", async (c, next) => {
-  if (!dbSchemaColumnsChecked) {
-    dbSchemaColumnsChecked = true;
-    try {
-      await db.execute(
-        sql`
-          ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;
-          ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "instructions" text;
-          ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "tip_settled_at" timestamp with time zone;
-        `
-      );
-    } catch {
-      // Ignore if columns already exist or db connection is pending
-    }
-  }
-
   const session = await auth.api.getSession({
     headers: c.req.raw.headers,
   });
