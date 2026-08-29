@@ -123,6 +123,7 @@ vi.mock("../lib/domain/checkout", () => ({
   computeCheckoutPreview: vi.fn(),
   getComboPricingTier: vi.fn(),
   getComboServiceTypes: vi.fn(),
+  isRecurringCheckoutItem: vi.fn(),
 }));
 
 vi.mock("./schemas", () => ({

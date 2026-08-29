@@ -37,6 +37,7 @@ import {
   computeCheckoutPreview,
   getComboPricingTier,
   getComboServiceTypes,
+  isRecurringCheckoutItem,
 } from "../lib/domain/checkout";
 import { sendEmail } from "../lib/integrations/email";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
@@ -869,6 +870,16 @@ export const checkoutRoutes = new Hono<AppEnv>()
     const parsed = checkoutConfirmRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    if (parsed.data.items.some(isRecurringCheckoutItem)) {
+      return c.json(
+        {
+          error:
+            "Recurring service plans are not available yet. Choose a one-time service.",
+        },
+        409
+      );
     }
 
     if (parsed.data.paymentOption === "deposit_cash") {

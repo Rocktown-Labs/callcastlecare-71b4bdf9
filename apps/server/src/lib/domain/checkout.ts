@@ -37,6 +37,14 @@ export const getComboServiceTypes = (planId: string) => {
   return combo?.[1] ?? null;
 };
 
+const recurringPlanPrefixes = [
+  "groundskeeper-bi-weekly",
+  "groundskeeper-monthly",
+  "royal-pane-bi-annual",
+  "royal-pane-monthly",
+  "royal-wash-supreme",
+] as const;
+
 export const getComboPricingTier = (planId: string): PricingTier => {
   if (planId.endsWith("-large")) {
     return "large";
@@ -46,6 +54,16 @@ export const getComboPricingTier = (planId: string): PricingTier => {
   }
   return "small";
 };
+
+export const isRecurringPlanId = (planId: string) =>
+  getComboServiceTypes(planId) !== null ||
+  recurringPlanPrefixes.some(
+    (prefix) => planId === prefix || planId.startsWith(`${prefix}-`)
+  );
+
+export const isRecurringCheckoutItem = (item: CheckoutPreviewItemInput) =>
+  item.isSubscription === true ||
+  (typeof item.planId === "string" && isRecurringPlanId(item.planId));
 
 const parsePlanPrice = (
   item: CheckoutPreviewItemInput

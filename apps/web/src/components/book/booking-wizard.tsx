@@ -738,7 +738,9 @@ const getEligibleProductsForDraft = (
   draft: BookingDraft,
   serviceId: ServiceId
 ) => {
-  const products = productsByService[serviceId];
+  const products = productsByService[serviceId].filter(
+    (product) => !product.recurring
+  );
 
   if (serviceId === "lawncare") {
     const eligiblePlanIds = getLawncareFitPlanIds(draft);
@@ -1282,30 +1284,8 @@ const getPaymentOptionsForDraft = (
   return getPaymentOptionsForServices(draft.services, allowCashCheckout);
 };
 
-const isCustomLawncareDraft = (draft: BookingDraft) =>
-  draft.services.includes("lawncare") &&
-  getLawncareFitPlanIds(draft).has("groundskeeper-custom-quote-deposit");
-
-const getEligibleCombos = (draft: BookingDraft) => {
-  const selectedServiceIds = new Set(draft.services);
-  const selectedCombos = comboSubscriptions.filter((combo) =>
-    combo.requiredServices.every((serviceId) =>
-      selectedServiceIds.has(serviceId)
-    )
-  );
-
-  const pricedCombos = isCustomLawncareDraft(draft)
-    ? selectedCombos.filter(
-        (combo) => !combo.requiredServices.includes("lawncare")
-      )
-    : selectedCombos;
-
-  return draft.services.length === 3
-    ? pricedCombos.filter((combo) => combo.requiredServices.length === 3)
-    : pricedCombos.filter(
-        (combo) => combo.requiredServices.length === draft.services.length
-      );
-};
+const getEligibleCombos = (_draft: BookingDraft) =>
+  comboSubscriptions.filter(() => false);
 
 const isSubscriptionValidForDraft = (draft: BookingDraft) => {
   if (!draft.subscriptionId || draft.subscriptionId === "one_time") {

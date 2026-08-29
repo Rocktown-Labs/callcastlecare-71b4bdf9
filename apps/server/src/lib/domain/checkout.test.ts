@@ -1,9 +1,26 @@
 import { CheckoutItemKind } from "@callcastlecare/api";
 import { describe, expect, it } from "vitest";
 
-import { computeCheckoutPreview } from "./checkout";
+import { computeCheckoutPreview, isRecurringCheckoutItem } from "./checkout";
 
 describe("computeCheckoutPreview", () => {
+  it("identifies recurring plan ids even when the client omits the flag", () => {
+    expect(
+      isRecurringCheckoutItem({
+        itemKind: CheckoutItemKind.Lawncare,
+        planId: "groundskeeper-monthly-medium",
+        timingType: "scheduled",
+      })
+    ).toBe(true);
+    expect(
+      isRecurringCheckoutItem({
+        itemKind: CheckoutItemKind.Lawncare,
+        planId: "groundskeeper-one-time-medium",
+        timingType: "scheduled",
+      })
+    ).toBe(false);
+  });
+
   it("prices combo subscription plan ids directly", () => {
     const preview = computeCheckoutPreview({
       address: "123 Main St, Little Rock, AR",
