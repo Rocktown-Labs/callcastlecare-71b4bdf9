@@ -59,6 +59,7 @@ const webhookDefinitions = [
       "checkout.session.async_payment_failed",
       "checkout.session.async_payment_succeeded",
       "checkout.session.completed",
+      "checkout.session.expired",
       "charge.dispute.created",
       "charge.refunded",
       "refund.created",
