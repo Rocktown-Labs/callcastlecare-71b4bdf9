@@ -3,8 +3,8 @@ CREATE EXTENSION IF NOT EXISTS postgis;--> statement-breakpoint
 ALTER TABLE "customers" ALTER COLUMN "phone" DROP NOT NULL;--> statement-breakpoint
 UPDATE "customers" SET "phone" = NULL WHERE "phone" = '0000000000';--> statement-breakpoint
 
-ALTER TABLE "addresses" ADD COLUMN "formatted_address" text;--> statement-breakpoint
-ALTER TABLE "addresses" ADD COLUMN "instructions" text;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "instructions" text;--> statement-breakpoint
 ALTER TABLE "addresses" ADD COLUMN "is_default" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "addresses" ADD COLUMN "label" text DEFAULT 'Address' NOT NULL;--> statement-breakpoint
 ALTER TABLE "addresses" ADD COLUMN "location" geography(Point,4326);--> statement-breakpoint
