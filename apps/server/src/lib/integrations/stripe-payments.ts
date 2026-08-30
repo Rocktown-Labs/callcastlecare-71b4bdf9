@@ -46,7 +46,7 @@ const createMockPaymentIntent = (amountCents: number): StripePaymentIntent => {
     throw new Error("Stripe is not configured for production payments.");
   }
 
-  const random = Math.random().toString(36).slice(2);
+  const random = crypto.randomUUID();
   return {
     clientSecret: `mock_pi_client_secret_${random}`,
     id: `mock_pi_${amountCents}_${random}`,
@@ -213,7 +213,7 @@ export const createStripeCheckoutSession = async (input: {
   const mode = input.mode ?? "payment";
 
   if (isStripeMockMode()) {
-    const random = Math.random().toString(36).slice(2);
+    const random = crypto.randomUUID();
     return {
       id: `cs_mock_${input.checkoutSessionId}_${random}`,
       mode,
@@ -228,7 +228,10 @@ export const createStripeCheckoutSession = async (input: {
   }
 
   const currency = input.currency ?? "usd";
-  const integrationIdentifier = `castlecare_${Math.random().toString(36).slice(2, 10)}`;
+  const integrationIdentifier = `castlecare_${crypto
+    .randomUUID()
+    .replaceAll("-", "")
+    .slice(0, 8)}`;
   const checkoutParams: Stripe.Checkout.SessionCreateParams = {
     cancel_url: input.cancelUrl,
     ...(input.expiresAt
