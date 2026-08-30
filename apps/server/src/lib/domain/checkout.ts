@@ -1,4 +1,3 @@
-/* eslint-disable max-statements, no-nested-ternary */
 import type {
   CheckoutPreviewItemInput,
   CheckoutPreviewLineItem,
@@ -17,17 +16,65 @@ import {
   calculateTravelFeeCents,
   calculateWindowWashingQuote,
   getLawncarePricingTier,
+  getRecurringServiceUnits,
 } from "@callcastlecare/api";
 
 type PricingTier = "custom" | "large" | "medium" | "small";
+
+export type CheckoutServiceType = "lawncare" | "laundry" | "window_washing";
+
+const comboServiceTypes = {
+  "bi-weekly-royal-duo": ["lawncare", "laundry"],
+  "crown-estate-trio": ["lawncare", "laundry", "window_washing"],
+  "crown-estate-trio-deluxe": ["lawncare", "laundry", "window_washing"],
+  "monthly-castle-care": ["lawncare", "window_washing"],
+  "royal-linen-panes-duo": ["laundry", "window_washing"],
+} as const satisfies Record<string, readonly CheckoutServiceType[]>;
+
+export const getComboServiceTypes = (planId: string) => {
+  const combo = Object.entries(comboServiceTypes).find(
+    ([prefix]) => planId === prefix || planId.startsWith(`${prefix}-`)
+  );
+  return combo?.[1] ?? null;
+};
+
+const recurringPlanPrefixes = [
+  "groundskeeper-bi-weekly",
+  "groundskeeper-monthly",
+  "royal-pane-bi-annual",
+  "royal-pane-monthly",
+  "royal-wash-supreme",
+] as const;
+
+export const getComboPricingTier = (planId: string): PricingTier => {
+  if (planId.endsWith("-large")) {
+    return "large";
+  }
+  if (planId.endsWith("-medium")) {
+    return "medium";
+  }
+  return "small";
+};
+
+export const isRecurringPlanId = (planId: string) =>
+  getComboServiceTypes(planId) !== null ||
+  recurringPlanPrefixes.some(
+    (prefix) => planId === prefix || planId.startsWith(`${prefix}-`)
+  );
+
+export const isRecurringCheckoutItem = (item: CheckoutPreviewItemInput) =>
+  item.isSubscription === true ||
+  (typeof item.planId === "string" && isRecurringPlanId(item.planId));
 
 const parsePlanPrice = (
   item: CheckoutPreviewItemInput
 ): {
   basePriceCents: number;
   label: string;
+  comboServiceTypes?: readonly CheckoutServiceType[];
   pricingTier?: PricingTier;
-  serviceType?: "combo" | "lawncare" | "laundry" | "window_washing";
+  serviceType?: "combo" | CheckoutServiceType;
+  serviceUnits?: ReturnType<typeof getRecurringServiceUnits>;
   windowWashingQuote?: ReturnType<typeof calculateWindowWashingQuote>;
 } => {
   if (item.planId && item.planId in COMBO_SUBSCRIPTION_PRICES) {
@@ -50,8 +97,11 @@ const parsePlanPrice = (
 
     return {
       basePriceCents: COMBO_SUBSCRIPTION_PRICES[planId],
+      comboServiceTypes: getComboServiceTypes(planId) ?? undefined,
       label: comboLabels[planId],
+      pricingTier: getComboPricingTier(planId),
       serviceType: "combo",
+      serviceUnits: getRecurringServiceUnits(planId),
     };
   }
 
@@ -67,6 +117,7 @@ const parsePlanPrice = (
             ? "Royal Pane Bi-Annual Detail"
             : "Royal Pane Monthly",
         serviceType: "window_washing",
+        serviceUnits: getRecurringServiceUnits(item.planId),
       };
     }
 
@@ -113,6 +164,7 @@ const parsePlanPrice = (
       label: LAWNCARE_PLAN_LABELS[planId],
       pricingTier,
       serviceType: "lawncare",
+      serviceUnits: getRecurringServiceUnits(item.planId),
     };
   }
 
@@ -127,6 +179,7 @@ const parsePlanPrice = (
     basePriceCents: laundryPrice,
     label: LAUNDRY_PLAN_LABELS[item.planId as keyof typeof LAUNDRY_PLAN_LABELS],
     serviceType: "laundry",
+    serviceUnits: getRecurringServiceUnits(item.planId),
   };
 };
 
@@ -154,42 +207,49 @@ export interface ComputedCheckout {
   travelFeeCents: number;
 }
 
+const getCheckoutLineItem = (
+  item: CheckoutPreviewItemInput
+): CheckoutPreviewLineItem => {
+  const parsed = parsePlanPrice(item);
+  const tipAmountCents = Math.max(0, item.tipAmountCents ?? 0);
+  const quantity = 1;
+
+  return {
+    basePriceCents: parsed.basePriceCents,
+    itemKind: item.itemKind,
+    label: parsed.label,
+    metadata: {
+      comboServiceTypes: parsed.comboServiceTypes ?? null,
+      homeQuoteId: item.homeQuoteId ?? null,
+      planId: item.planId ?? null,
+      pricingTier: parsed.pricingTier ?? null,
+      scheduledEndAt: item.scheduledEndAt ?? null,
+      scheduledStartAt: item.scheduledStartAt ?? null,
+      serviceType: parsed.serviceType ?? null,
+      serviceUnits: parsed.serviceUnits ?? null,
+      timingType: normalizeTiming(item.timingType, item.scheduledStartAt),
+    },
+    planId: item.planId,
+    quantity,
+    tipAmountCents,
+    totalPriceCents: parsed.basePriceCents * quantity + tipAmountCents,
+  };
+};
+
+const getResolvedTravel = (input: CheckoutPreviewRequest) =>
+  calculateTravelFeeCents({
+    distanceMiles: input.travelDistanceMiles,
+    stateCode: input.travelStateCode,
+  });
+
 export const computeCheckoutPreview = (
   input: CheckoutPreviewRequest
 ): ComputedCheckout => {
-  const lineItems: CheckoutPreviewLineItem[] = [];
-
-  for (const item of input.items) {
-    const parsed = parsePlanPrice(item);
-    const tipAmountCents = Math.max(0, item.tipAmountCents ?? 0);
-    const quantity = 1;
-    const totalPriceCents = parsed.basePriceCents * quantity + tipAmountCents;
-
-    lineItems.push({
-      basePriceCents: parsed.basePriceCents,
-      itemKind: item.itemKind,
-      label: parsed.label,
-      metadata: {
-        homeQuoteId: item.homeQuoteId ?? null,
-        planId: item.planId ?? null,
-        pricingTier: parsed.pricingTier ?? null,
-        scheduledEndAt: item.scheduledEndAt ?? null,
-        scheduledStartAt: item.scheduledStartAt ?? null,
-        serviceType: parsed.serviceType ?? null,
-        timingType: normalizeTiming(item.timingType, item.scheduledStartAt),
-      },
-      planId: item.planId,
-      quantity,
-      tipAmountCents,
-      totalPriceCents,
-    });
-  }
-
+  const lineItems = input.items.map(getCheckoutLineItem);
   const subtotalCents = lineItems.reduce(
     (sum, item) => sum + item.basePriceCents * item.quantity,
     0
   );
-
   const technologyFeeCents = TECHNOLOGY_FEE_CENTS;
   lineItems.push({
     basePriceCents: technologyFeeCents,
@@ -202,23 +262,7 @@ export const computeCheckoutPreview = (
     totalPriceCents: technologyFeeCents,
   });
 
-  const resolvedTravel =
-    typeof input.travelFeeCents === "number"
-      ? {
-          feeCents: Math.max(0, input.travelFeeCents),
-          feeKind:
-            input.travelFeeCents > 0
-              ? input.travelStateCode &&
-                input.travelStateCode.toUpperCase() !== "AR"
-                ? ("out_of_state" as const)
-                : ("in_state" as const)
-              : ("free" as const),
-        }
-      : calculateTravelFeeCents({
-          distanceMiles: input.travelDistanceMiles,
-          stateCode: input.travelStateCode,
-        });
-
+  const resolvedTravel = getResolvedTravel(input);
   const travelFeeCents = resolvedTravel.feeCents;
   if (travelFeeCents > 0) {
     lineItems.push({
@@ -248,8 +292,8 @@ export const computeCheckoutPreview = (
     input.tipAmountCents ??
       lineItems.reduce((sum, item) => sum + item.tipAmountCents, 0)
   );
-
-  if (tipAmountCents > 0 && !input.items.some((item) => item.tipAmountCents)) {
+  const hasItemTip = input.items.some((item) => item.tipAmountCents);
+  if (tipAmountCents > 0 && !hasItemTip) {
     lineItems.push({
       basePriceCents: 0,
       itemKind: "lawncare",

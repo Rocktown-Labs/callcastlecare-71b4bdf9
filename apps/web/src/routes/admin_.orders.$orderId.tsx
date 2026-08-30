@@ -148,7 +148,12 @@ const getPrivateMediaUrl = (storagePath: string) => {
   return url.toString();
 };
 
-const actionConfig = [
+const actionConfig: {
+  action: AdminAction;
+  icon: typeof ClipboardCheck;
+  label: string;
+  statuses: string[];
+}[] = [
   {
     action: "confirm",
     icon: ClipboardCheck,
@@ -201,7 +206,7 @@ const actionConfig = [
       "in_progress",
     ],
   },
-] as const;
+];
 
 const MediaUpload = ({
   detail,
@@ -319,6 +324,7 @@ const MediaUpload = ({
               aspectRatio={1}
               className="aspect-square rounded-2xl border border-slate-200 object-cover"
               key={link.id}
+              layout="fullWidth"
               src={getPrivateMediaUrl(link.asset.storagePath)}
             />
           ) : null
@@ -334,8 +340,8 @@ const MediaUpload = ({
 };
 
 const RouteComponent = () => {
-  const { session } = useRouteContext({ from: "/admin/orders/$orderId" });
-  const { orderId } = useParams({ from: "/admin/orders/$orderId" });
+  const { session } = useRouteContext({ from: "/admin_/orders/$orderId" });
+  const { orderId } = useParams({ from: "/admin_/orders/$orderId" });
   const [detail, setDetail] = useState<AdminOrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -449,10 +455,10 @@ const RouteComponent = () => {
         <div className="mx-auto grid max-w-4xl gap-5">
           <Link
             className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600"
-            to="/admin"
+            to="/admin/orders"
           >
             <ArrowLeft className="size-4" />
-            Admin
+            Orders
           </Link>
 
           <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -634,7 +640,7 @@ const RouteComponent = () => {
   );
 };
 
-export const Route = createFileRoute("/admin/orders/$orderId")({
+export const Route = createFileRoute("/admin_/orders/$orderId")({
   beforeLoad: async () => {
     const session = await authClient.getSession();
     if (!session.data) {

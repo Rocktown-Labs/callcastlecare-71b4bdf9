@@ -10,6 +10,7 @@ import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
 import { disputeRoutes } from "./routes/disputes";
+import { driverRoutes } from "./routes/driver";
 import { laundryBagRoutes } from "./routes/laundry-bags";
 import { locationRoutes } from "./routes/locations";
 import { marketRoutes } from "./routes/markets";
@@ -17,6 +18,7 @@ import { meRoutes } from "./routes/me";
 import { mediaRoutes } from "./routes/media";
 import { notificationRoutes } from "./routes/notifications";
 import { orderRoutes } from "./routes/orders";
+import { subscriptionRoutes } from "./routes/subscriptions";
 import { supportRoutes } from "./routes/support";
 import { webhookRoutes } from "./routes/webhooks";
 import type { AppEnv } from "./types";
@@ -146,10 +148,12 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/markets", marketRoutes)
   .route("/laundry-bags", laundryBagRoutes)
   .route("/disputes", disputeRoutes)
+  .route("/driver", driverRoutes)
   .route("/media", mediaRoutes)
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)
   .route("/support", supportRoutes)
+  .route("/subscriptions", subscriptionRoutes)
   .route("/webhooks", webhookRoutes)
   .route("/admin", adminRoutes);
 

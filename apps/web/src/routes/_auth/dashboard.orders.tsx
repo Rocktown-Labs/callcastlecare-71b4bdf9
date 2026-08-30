@@ -94,7 +94,7 @@ const DashboardOrdersRoute = () => {
   return (
     <main className="px-4 py-6 text-slate-950 sm:py-10">
       <div className="mx-auto grid max-w-6xl gap-6">
-        <section className="grid gap-5 border-slate-200 border-b bg-white px-1 pb-6 sm:grid-cols-[1fr_auto] sm:items-end">
+        <section className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
               <ReceiptText className="size-4" />
@@ -108,7 +108,7 @@ const DashboardOrdersRoute = () => {
               order for status, totals, and support context.
             </p>
           </div>
-          <Link to="/dashboard/book">
+          <Link to="/dashboard/orders/new">
             <Button
               className="h-11 rounded-full bg-lime-300 px-5 font-bold text-slate-950 hover:bg-lime-200"
               type="button"
@@ -126,8 +126,22 @@ const DashboardOrdersRoute = () => {
             </div>
           ) : null}
           {!isLoading && orders.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-              No service history yet.
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center">
+              <ReceiptText className="mx-auto size-8 text-lime-600" />
+              <h2 className="mt-3 text-xl font-black">No orders yet</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                Your bookings, invoices, and visit status will appear here after
+                checkout.
+              </p>
+              <Link to="/dashboard/orders/new">
+                <Button
+                  className="mt-5 rounded-full bg-lime-300 font-bold text-slate-950 hover:bg-lime-200"
+                  type="button"
+                >
+                  Book service
+                  <ArrowRight className="size-4" />
+                </Button>
+              </Link>
             </div>
           ) : null}
           {orders.map((order) => (

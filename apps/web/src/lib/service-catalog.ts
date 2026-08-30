@@ -64,7 +64,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
   {
     accentClassName: "border-lime-400/30 bg-lime-400/10 text-lime-300",
     badge: "Groundskeeper",
-    ctaText: "Explore Lawn Care",
+    ctaText: "Explore Lawncare",
     description:
       "Eco-minded mowing, edge trimming, and cleanup for standard lots, larger yards, and commercial grounds.",
     detailHeading: "Grounds that look looked after, all season.",
@@ -94,7 +94,7 @@ export const serviceCatalog: ServiceCatalogItem[] = [
   {
     accentClassName: "border-sky-400/30 bg-sky-400/10 text-sky-300",
     badge: "Royal Wash",
-    ctaText: "Explore laundry",
+    ctaText: "Explore Laundry",
     description:
       "Same-day wash and fold, pickup, and delivery so the weekly laundry pile stops eating your day.",
     detailHeading: "Fresh laundry, folded neatly, back at your door.",
@@ -377,7 +377,14 @@ export const servicePageContent: Record<ServiceId, ServicePageContent> = {
   },
 };
 
-export const comboSubscriptions = [
+export const comboSubscriptions: {
+  description: string;
+  discountLabel: string;
+  frequency: string;
+  id: string;
+  name: string;
+  requiredServices: ServiceId[];
+}[] = [
   {
     description: "2 Lawn Care visits plus 2 wash and fold pickups each month.",
     discountLabel: "From $250/month",
@@ -421,7 +428,7 @@ export const comboSubscriptions = [
     name: "Crown Estate Trio Deluxe",
     requiredServices: ["lawncare", "laundry", "window-washing"],
   },
-] as const;
+];
 
 export const serviceQuestionIcons = {
   bedding: Home,

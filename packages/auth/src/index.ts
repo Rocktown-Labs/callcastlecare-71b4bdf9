@@ -18,7 +18,12 @@ type AuthOtpType =
   | "sign-in";
 
 const createStripePlugin = () => {
-  if (!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET)) {
+  const webhookSecret =
+    env.STRIPE_BILLING_WEBHOOK_SECRET ?? env.STRIPE_WEBHOOK_SECRET;
+  if (
+    !(env.STRIPE_SECRET_KEY && webhookSecret) ||
+    env.STRIPE_SECRET_KEY.includes("replace_me")
+  ) {
     return null;
   }
 
@@ -41,7 +46,7 @@ const createStripePlugin = () => {
         name: user.name,
       }),
     stripeClient,
-    stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
+    stripeWebhookSecret: webhookSecret,
   });
 };
 

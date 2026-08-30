@@ -2,6 +2,7 @@ import {
   defaultStripeCatalogItems,
   defaultStripeCoupons,
   stripeCatalogSyncRequestSchema,
+  stripeIntegrationSyncRequestSchema,
 } from "@callcastlecare/api";
 import { and, db, desc, eq, inArray } from "@callcastlecare/db";
 import {
@@ -12,27 +13,39 @@ import {
   orderMediaLinks,
   orders,
   orderStatusHistory,
+  notifications,
   stripeCatalogItems,
   stripeCoupons,
   stripeSyncRuns,
   supportRequests,
+  workers,
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 
 import {
+  getCheckoutSettings,
+  updateCheckoutSettings,
+} from "../lib/checkout-settings";
+import {
   createStripeClientOrThrow,
-  ensureStripeWebhookEndpoint,
+  ensureStripeWebhookEndpoints,
+  getStripeIntegrationStatus,
   syncStripeCatalogItem,
   syncStripeCoupon,
 } from "../lib/integrations/stripe-catalog";
+import { getStripeMode } from "../lib/integrations/stripe-client";
 import { logger } from "../lib/logger";
 import { setOrderStatus } from "../lib/orders";
+import { createCompletionPayoutRecords } from "../lib/payouts";
+import { createAdminRefund, RefundError } from "../lib/refunds";
 import type { AppEnv } from "../types";
 import {
   adminOrderActionRequestSchema,
   adminOrderNoteRequestSchema,
+  adminRefundRequestSchema,
+  updateCheckoutSettingsRequestSchema,
 } from "./schemas";
 
 type OrderStatus =
@@ -78,9 +91,13 @@ const normalizeCatalogRow = (row: typeof stripeCatalogItems.$inferSelect) => ({
   currency: row.currency,
   description: row.description,
   interval: row.interval ?? "one_time",
+  lastSyncStatus: row.lastSyncStatus,
+  lastSyncedAt: row.lastSyncedAt,
+  lookupKey: row.lookupKey,
   name: row.name,
   serviceType: row.serviceType,
   slug: row.slug,
+  stripeMode: row.stripeMode,
   stripePriceId: row.stripePriceId,
   stripeProductId: row.stripeProductId,
 });
@@ -96,6 +113,16 @@ const normalizeCouponRow = (row: typeof stripeCoupons.$inferSelect) => ({
   percentOff: row.percentOff,
   stripeCouponId: row.stripeCouponId,
 });
+
+const activeOrderStatuses = [
+  "pending_payment",
+  "paid",
+  "dispatching",
+  "assigned",
+  "en_route",
+  "arrived",
+  "in_progress",
+] as const;
 
 const serviceLabels = {
   laundry: "Laundry",
@@ -296,6 +323,7 @@ const seedCatalogIfEmpty = async () => {
           currency: item.currency,
           description: item.description,
           interval: item.interval,
+          lookupKey: `castlecare_${item.slug}`,
           metadataJson: {
             source: "default",
           },
@@ -311,6 +339,7 @@ const seedCatalogIfEmpty = async () => {
             currency: item.currency,
             description: item.description,
             interval: item.interval,
+            lookupKey: `castlecare_${item.slug}`,
             metadataJson: {
               source: "default",
             },
@@ -373,6 +402,70 @@ const seedCatalogIfEmpty = async () => {
 };
 
 export const adminRoutes = new Hono<AppEnv>()
+  .get("/summary", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const [orderRows, supportRows, workerRows, notificationRows] =
+      await Promise.all([
+        db.query.orders.findMany({
+          columns: {
+            id: true,
+            status: true,
+          },
+          limit: 100,
+          orderBy: desc(orders.createdAt),
+        }),
+        db.query.supportRequests
+          .findMany({
+            columns: {
+              id: true,
+              status: true,
+            },
+            limit: 100,
+            orderBy: desc(supportRequests.createdAt),
+          })
+          .catch(() => []),
+        db.query.workers.findMany({
+          columns: {
+            id: true,
+            onboardingStatus: true,
+          },
+          limit: 100,
+          orderBy: desc(workers.createdAt),
+        }),
+        db.query.notifications.findMany({
+          columns: {
+            id: true,
+            readAt: true,
+          },
+          limit: 100,
+          orderBy: desc(notifications.createdAt),
+        }),
+      ]);
+
+    return c.json(
+      {
+        activeOrders: orderRows.filter((order) =>
+          activeOrderStatuses.includes(
+            order.status as (typeof activeOrderStatuses)[number]
+          )
+        ).length,
+        openSupport: supportRows.filter(
+          (request) => request.status !== "closed"
+        ).length,
+        pendingWorkers: workerRows.filter(
+          (worker) => worker.onboardingStatus === "pending"
+        ).length,
+        unreadNotifications: notificationRows.filter(
+          (notification) => !notification.readAt
+        ).length,
+      },
+      200
+    );
+  })
   .get("/orders", async (c) => {
     const adminError = requireAdmin(c);
     if (adminError) {
@@ -409,6 +502,52 @@ export const adminRoutes = new Hono<AppEnv>()
       },
       200
     );
+  })
+  .get("/workers", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const list = await db.query.workers.findMany({
+      limit: 100,
+      orderBy: desc(workers.createdAt),
+    });
+
+    return c.json({ workers: list }, 200);
+  })
+  .post("/workers/:workerId/approve", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const workerId = parsePositiveId(c.req.param("workerId"));
+    if (!workerId) {
+      return c.json({ error: "Invalid worker id" }, 400);
+    }
+
+    const [worker] = await db
+      .update(workers)
+      .set({
+        onboardingStatus: "approved",
+        updatedAt: new Date(),
+      })
+      .where(eq(workers.id, workerId))
+      .returning();
+    if (!worker) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        requestId: c.get("requestId"),
+        workerId: worker.id,
+      },
+      "admin:worker_approved"
+    );
+    return c.json({ worker }, 200);
   })
   .get("/orders/:orderId", async (c) => {
     const adminError = requireAdmin(c);
@@ -462,6 +601,44 @@ export const adminRoutes = new Hono<AppEnv>()
     });
 
     return c.json({ ok: true }, 200);
+  })
+  .post("/orders/:orderId/refund", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const orderId = parsePositiveId(c.req.param("orderId"));
+    if (!orderId) {
+      return c.json({ error: "Invalid order id" }, 400);
+    }
+    const body = await c.req.json();
+    const parsed = adminRefundRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+    });
+    if (!order) {
+      return c.json({ error: "Order not found" }, 404);
+    }
+
+    try {
+      const refund = await createAdminRefund({
+        adminEmail: c.get("user")?.email ?? null,
+        amountCents: parsed.data.amountCents,
+        order,
+        reason: parsed.data.reason,
+      });
+      return c.json({ refund }, 200);
+    } catch (error) {
+      if (error instanceof RefundError) {
+        return c.json({ error: error.message }, error.statusCode);
+      }
+      throw error;
+    }
   })
   .post("/orders/:orderId/actions", async (c) => {
     const adminError = requireAdmin(c);
@@ -541,6 +718,16 @@ export const adminRoutes = new Hono<AppEnv>()
         .where(eq(orders.id, order.id));
     }
 
+    if (parsed.data.action === "complete" && order.assignedWorkerId) {
+      await createCompletionPayoutRecords({
+        dispatchBonusCents: order.dispatchBonusCents,
+        orderId: order.id,
+        tipAmountCents: order.tipAmountCents,
+        totalBasePriceCents: order.basePriceCents,
+        workerId: order.assignedWorkerId,
+      });
+    }
+
     return c.json({ ok: true }, 200);
   })
   .get("/support", async (c) => {
@@ -549,10 +736,12 @@ export const adminRoutes = new Hono<AppEnv>()
       return adminError;
     }
 
-    const requests = await db.query.supportRequests.findMany({
-      limit: 50,
-      orderBy: desc(supportRequests.createdAt),
-    });
+    const requests = await db.query.supportRequests
+      .findMany({
+        limit: 50,
+        orderBy: desc(supportRequests.createdAt),
+      })
+      .catch(() => []);
 
     return c.json({ requests }, 200);
   })
@@ -577,14 +766,74 @@ export const adminRoutes = new Hono<AppEnv>()
         .orderBy(desc(stripeSyncRuns.createdAt))
         .limit(5),
     ]);
+    const integrationStatus = await getStripeIntegrationStatus().catch(
+      (error: unknown) => ({
+        configured: Boolean(env.STRIPE_SECRET_KEY),
+        error: error instanceof Error ? error.message : "Stripe status failed",
+        mode: null,
+        webhookEndpoints: [],
+      })
+    );
+    const workerRows = await db.query.workers.findMany({
+      columns: {
+        stripeAccountId: true,
+        stripeAccountStatus: true,
+      },
+    });
+    const integrationStatusWithConnect = {
+      ...integrationStatus,
+      connectAccounts: {
+        linked: workerRows.filter((worker) => worker.stripeAccountId).length,
+        ready: workerRows.filter(
+          (worker) => worker.stripeAccountStatus === "ready"
+        ).length,
+        total: workerRows.length,
+      },
+    };
 
     return c.json(
       {
         adminEmail: env.ADMIN_EMAIL,
         coupons: coupons.map(normalizeCouponRow),
+        integrationStatus: integrationStatusWithConnect,
         items: items.map(normalizeCatalogRow),
         lastSync: syncRuns[0] ?? null,
         syncRuns,
+      },
+      200
+    );
+  })
+  .get("/stripe/status", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const [status, workerRows] = await Promise.all([
+      getStripeIntegrationStatus().catch((error: unknown) => ({
+        configured: Boolean(env.STRIPE_SECRET_KEY),
+        error: error instanceof Error ? error.message : "Stripe status failed",
+        mode: null,
+        webhookEndpoints: [],
+      })),
+      db.query.workers.findMany({
+        columns: {
+          stripeAccountId: true,
+          stripeAccountStatus: true,
+        },
+      }),
+    ]);
+
+    return c.json(
+      {
+        ...status,
+        connectAccounts: {
+          linked: workerRows.filter((worker) => worker.stripeAccountId).length,
+          ready: workerRows.filter(
+            (worker) => worker.stripeAccountStatus === "ready"
+          ).length,
+          total: workerRows.length,
+        },
       },
       200
     );
@@ -611,6 +860,7 @@ export const adminRoutes = new Hono<AppEnv>()
             currency: item.currency,
             description: item.description,
             interval: item.interval,
+            lookupKey: `castlecare_${item.slug}`,
             metadataJson: {
               source: "admin",
             },
@@ -626,8 +876,14 @@ export const adminRoutes = new Hono<AppEnv>()
               currency: item.currency,
               description: item.description,
               interval: item.interval,
+              lastSyncStatus: null,
+              lastSyncedAt: null,
+              lookupKey: `castlecare_${item.slug}`,
               name: item.name,
               serviceType: item.serviceType,
+              stripeMode: null,
+              stripePriceId: null,
+              stripeProductId: null,
               updatedAt: new Date(),
             },
             target: stripeCatalogItems.slug,
@@ -679,17 +935,31 @@ export const adminRoutes = new Hono<AppEnv>()
 
     await seedCatalogIfEmpty();
 
-    const items = await db.query.stripeCatalogItems.findMany({
-      where: eq(stripeCatalogItems.active, true),
-    });
-    const coupons = await db.query.stripeCoupons.findMany({
-      where: eq(stripeCoupons.active, true),
-    });
+    const body = await c.req.json().catch(() => ({}));
+    const parsedRequest = stripeIntegrationSyncRequestSchema.safeParse(body);
+    if (!parsedRequest.success) {
+      return c.json({ error: parsedRequest.error.flatten() }, 400);
+    }
+
+    const requestedPlanCodes = parsedRequest.data.planCodes
+      ? new Set(parsedRequest.data.planCodes)
+      : null;
+    const allItems = await db.query.stripeCatalogItems.findMany();
+    const items = requestedPlanCodes
+      ? allItems.filter((item) => requestedPlanCodes.has(item.slug))
+      : allItems;
+    const coupons = await db.query.stripeCoupons.findMany();
+
+    if (items.length === 0) {
+      return c.json({ error: "No matching catalog items found" }, 400);
+    }
 
     try {
       const stripe = createStripeClientOrThrow();
       const syncedItems: {
+        lookupKey: string;
         slug: string;
+        status: "created" | "matched" | "updated";
         stripePriceId: string;
         stripeProductId: string;
       }[] = [];
@@ -701,7 +971,12 @@ export const adminRoutes = new Hono<AppEnv>()
           amountCents: row.amountCents,
           currency: row.currency,
           description: row.description,
-          interval: row.interval as "month" | "one_time" | "week" | "year",
+          interval:
+            row.interval === "week" ||
+            row.interval === "month" ||
+            row.interval === "year"
+              ? row.interval
+              : "one_time",
           name: row.name,
           serviceType: row.serviceType as
             | "combo"
@@ -716,6 +991,10 @@ export const adminRoutes = new Hono<AppEnv>()
         await db
           .update(stripeCatalogItems)
           .set({
+            lastSyncStatus: synced.status,
+            lastSyncedAt: new Date(),
+            lookupKey: synced.lookupKey,
+            stripeMode: getStripeMode(),
             stripePriceId: synced.stripePriceId,
             stripeProductId: synced.stripeProductId,
             updatedAt: new Date(),
@@ -763,8 +1042,9 @@ export const adminRoutes = new Hono<AppEnv>()
         syncedCoupons.push({ code: row.code, ...synced });
       }
 
-      const webhookEndpointId = await ensureStripeWebhookEndpoint(stripe);
-
+      const webhookEndpoints = parsedRequest.data.syncWebhooks
+        ? await ensureStripeWebhookEndpoints(stripe)
+        : [];
       const syncRunRows = await db
         .insert(stripeSyncRuns)
         .values({
@@ -773,9 +1053,13 @@ export const adminRoutes = new Hono<AppEnv>()
           metadataJson: {
             coupons: syncedCoupons,
             items: syncedItems,
+            webhookEndpoints: webhookEndpoints.map(
+              ({ secret: _secret, ...endpoint }) => endpoint
+            ),
           },
           status: "success",
-          stripeWebhookEndpointId: webhookEndpointId,
+          stripeMode: getStripeMode(),
+          stripeWebhookEndpointId: webhookEndpoints[0]?.endpointId ?? null,
         })
         .returning();
 
@@ -784,7 +1068,7 @@ export const adminRoutes = new Hono<AppEnv>()
           coupons: syncedCoupons,
           items: syncedItems,
           syncRun: syncRunRows[0],
-          webhookEndpointId,
+          webhookEndpoints,
         },
         200
       );
@@ -802,4 +1086,40 @@ export const adminRoutes = new Hono<AppEnv>()
 
       return c.json({ error: message }, 500);
     }
+  })
+  .get("/checkout/settings", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const settings = await getCheckoutSettings();
+    return c.json(settings, 200);
+  })
+  .put("/checkout/settings", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const body = await c.req.json();
+    const parsed = updateCheckoutSettingsRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const settings = await updateCheckoutSettings({
+      allowCashCheckout: parsed.data.allowCashCheckout,
+    });
+
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        allowCashCheckout: parsed.data.allowCashCheckout,
+        requestId: c.get("requestId"),
+      },
+      "admin:checkout_settings_updated"
+    );
+
+    return c.json(settings, 200);
   });

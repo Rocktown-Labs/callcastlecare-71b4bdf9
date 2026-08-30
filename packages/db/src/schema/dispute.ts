@@ -7,6 +7,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
@@ -37,6 +38,7 @@ export const orderDisputes = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedByUserId: text("resolved_by_user_id").references(() => user.id),
     status: disputeStatusEnum("status").notNull().default("open"),
+    stripeDisputeId: text("stripe_dispute_id"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -44,5 +46,6 @@ export const orderDisputes = pgTable(
   (table) => [
     index("idx_order_disputes_order_id").on(table.orderId),
     index("idx_order_disputes_status").on(table.status, table.createdAt),
+    uniqueIndex("idx_order_disputes_stripe_id").on(table.stripeDisputeId),
   ]
 );

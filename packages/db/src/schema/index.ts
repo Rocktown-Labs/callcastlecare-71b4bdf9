@@ -2,6 +2,7 @@
 export * from "./auth";
 export * from "./chat";
 export * from "./checkout";
+export * from "./checkout-settings";
 export * from "./customer";
 export * from "./dispatch";
 export * from "./dispute";

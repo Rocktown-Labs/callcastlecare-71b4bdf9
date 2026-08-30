@@ -6,6 +6,10 @@ import { z } from "zod";
 
 export const timingTypeSchema = z.enum(["asap", "scheduled"]);
 
+export const updateCheckoutSettingsRequestSchema = z.object({
+  allowCashCheckout: z.boolean(),
+});
+
 export const checkoutPreviewItemSchema = z
   .object({
     cleanScreens: z.boolean().optional(),
@@ -199,6 +203,19 @@ export const driverLocationHeartbeatSchema = z.object({
   speedMps: z.number().finite().optional().nullable(),
 });
 
+export const providerProfileRequestSchema = z.object({
+  applicationFormData: z.record(z.string(), z.unknown()).optional(),
+  email: z.email(),
+  equipmentJson: z.record(z.string(), z.unknown()).optional().nullable(),
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  phone: phoneSchema,
+  serviceRadiusMiles: z.number().int().positive().max(100).default(20),
+  servicesOffered: z
+    .array(z.enum(["lawncare", "laundry", "window-washing"]))
+    .min(1),
+});
+
 export const homeQuoteRequestSchema = z.object({
   address: z.string().min(5),
 });
@@ -211,6 +228,7 @@ export const mediaUploadUrlRequestSchema = z.object({
     "service_after",
     "lawncare_before",
     "lawncare_after",
+    "provider_equipment",
     "laundry_pickup",
     "laundry_scan",
     "laundry_folded",
@@ -226,6 +244,7 @@ export const mediaAttachRequestSchema = z.object({
     "service_after",
     "lawncare_before",
     "lawncare_after",
+    "provider_equipment",
     "laundry_pickup",
     "laundry_scan",
     "laundry_folded",
@@ -244,4 +263,9 @@ export const adminOrderActionRequestSchema = z.object({
 
 export const adminOrderNoteRequestSchema = z.object({
   note: z.string().trim().min(1).max(1000),
+});
+
+export const adminRefundRequestSchema = z.object({
+  amountCents: z.number().int().positive().optional(),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
 });

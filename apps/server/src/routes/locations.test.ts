@@ -19,21 +19,39 @@ vi.mock("@callcastlecare/db", () => ({
         findMany: findManyOrders,
       },
     },
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([]),
-        }),
-      }),
+    select: vi.fn(() => {
+      const builder = {
+        from: vi.fn(),
+        innerJoin: vi.fn(),
+        limit: vi.fn().mockResolvedValue([]),
+        where: vi.fn(),
+      };
+      builder.from.mockReturnValue(builder);
+      builder.innerJoin.mockReturnValue(builder);
+      builder.where.mockReturnValue(builder);
+      return builder;
     }),
   },
   eq: vi.fn(),
+  gt: vi.fn(),
   gte: vi.fn(),
   inArray: vi.fn(),
   lt: vi.fn(),
 }));
 
 vi.mock("@callcastlecare/db/schema/index", () => ({
+  checkoutItems: {
+    checkoutSessionId: "checkoutSessionId",
+    scheduledStartAt: "scheduledStartAt",
+  },
+  checkoutSessions: {
+    id: "id",
+    status: "status",
+    updatedAt: "updatedAt",
+  },
+  markets: {
+    stateCode: "stateCode",
+  },
   orders: {
     scheduledStartAt: "scheduledStartAt",
     status: "status",

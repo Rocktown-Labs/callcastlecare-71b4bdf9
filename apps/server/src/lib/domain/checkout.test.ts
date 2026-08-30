@@ -1,9 +1,26 @@
 import { CheckoutItemKind } from "@callcastlecare/api";
 import { describe, expect, it } from "vitest";
 
-import { computeCheckoutPreview } from "./checkout";
+import { computeCheckoutPreview, isRecurringCheckoutItem } from "./checkout";
 
 describe("computeCheckoutPreview", () => {
+  it("identifies recurring plan ids even when the client omits the flag", () => {
+    expect(
+      isRecurringCheckoutItem({
+        itemKind: CheckoutItemKind.Lawncare,
+        planId: "groundskeeper-monthly-medium",
+        timingType: "scheduled",
+      })
+    ).toBe(true);
+    expect(
+      isRecurringCheckoutItem({
+        itemKind: CheckoutItemKind.Lawncare,
+        planId: "groundskeeper-one-time-medium",
+        timingType: "scheduled",
+      })
+    ).toBe(false);
+  });
+
   it("prices combo subscription plan ids directly", () => {
     const preview = computeCheckoutPreview({
       address: "123 Main St, Little Rock, AR",
@@ -25,8 +42,15 @@ describe("computeCheckoutPreview", () => {
       basePriceCents: 52_500,
       label: "Crown Estate Trio Medium",
       metadata: {
+        comboServiceTypes: ["lawncare", "laundry", "window_washing"],
         planId: "crown-estate-trio-medium",
+        pricingTier: "medium",
         serviceType: "combo",
+        serviceUnits: [
+          { serviceType: "lawncare", spacingDays: 14, units: 2 },
+          { serviceType: "laundry", spacingDays: 14, units: 2 },
+          { serviceType: "window_washing", spacingDays: 0, units: 1 },
+        ],
       },
     });
   });
@@ -52,6 +76,25 @@ describe("computeCheckoutPreview", () => {
     });
   });
 
+  it("recomputes travel fees instead of trusting a submitted fee", () => {
+    const preview = computeCheckoutPreview({
+      address: "123 Main St, Dallas, TX",
+      items: [
+        {
+          itemKind: CheckoutItemKind.Laundry,
+          planId: "royal-wash-basic",
+          timingType: "scheduled",
+        },
+      ],
+      travelDistanceMiles: 100,
+      travelFeeCents: 0,
+      travelStateCode: "TX",
+    });
+
+    expect(preview.travelFeeCents).toBe(10_000);
+    expect(preview.totalCents).toBe(4000 + 500 + 10_000);
+  });
+
   it("includes technology fee line item and calculates totals properly with travel fees and tips", () => {
     const preview = computeCheckoutPreview({
       address: "123 Main St, Fayetteville, AR",
@@ -63,7 +106,8 @@ describe("computeCheckoutPreview", () => {
         },
       ],
       tipAmountCents: 1000,
-      travelFeeCents: 5000,
+      travelDistanceMiles: 100,
+      travelStateCode: "AR",
     });
 
     expect(preview.subtotalCents).toBe(15_000);

@@ -70,6 +70,7 @@ export default function EarnServices() {
                     alt={`${title} opportunity`}
                     aspectRatio={4 / 3}
                     className="absolute inset-0 size-full object-cover"
+                    layout="fullWidth"
                     src={image}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#080c16] to-transparent" />

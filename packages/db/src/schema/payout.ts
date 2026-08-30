@@ -72,6 +72,9 @@ export const payouts = pgTable(
       .defaultNow(),
     failureReason: text("failure_reason"),
     id: serial("id").primaryKey(),
+    orderId: integer("order_id").references(() => orders.id, {
+      onDelete: "cascade",
+    }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     providerPayoutId: text("provider_payout_id"),
     status: payoutStatusEnum("status").notNull().default("pending"),
@@ -80,6 +83,7 @@ export const payouts = pgTable(
       .references(() => workers.id, { onDelete: "cascade" }),
   },
   (table) => [
+    uniqueIndex("idx_payouts_order_id").on(table.orderId),
     index("idx_payouts_worker_status").on(table.workerId, table.status),
   ]
 );

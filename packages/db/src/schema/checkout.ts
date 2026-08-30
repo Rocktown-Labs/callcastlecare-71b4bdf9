@@ -37,10 +37,12 @@ export const checkoutSessions = pgTable(
       .references(() => customers.id),
     id: serial("id").primaryKey(),
     metadataJson: jsonb("metadata_json"),
+    mode: text("mode").notNull().default("payment"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     status: checkoutSessionStatusEnum("status").notNull().default("draft"),
     stripeCheckoutSessionId: text("stripe_checkout_session_id"),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
     subtotalCents: integer("subtotal_cents").notNull().default(0),
     totalCents: integer("total_cents").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -55,6 +57,7 @@ export const checkoutSessions = pgTable(
     index("idx_checkout_sessions_payment_intent").on(
       table.stripePaymentIntentId
     ),
+    index("idx_checkout_sessions_subscription").on(table.stripeSubscriptionId),
     index("idx_checkout_sessions_stripe_session").on(
       table.stripeCheckoutSessionId
     ),

@@ -23,6 +23,11 @@ const runtimeEnv = {
     process.env.BETTER_AUTH_URL ??
     (vercelOrigin ? `${vercelOrigin}/api/auth` : undefined),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? vercelOrigin,
+  // Vercel's Blob integration uses BLOB_READ_WRITE_TOKEN, while the app's
+  // internal name stays explicit about the service it configures.
+  VERCEL_BLOB_READ_WRITE_TOKEN:
+    process.env.VERCEL_BLOB_READ_WRITE_TOKEN ??
+    process.env.BLOB_READ_WRITE_TOKEN,
 };
 
 export const env = createEnv({
@@ -39,14 +44,29 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
+    PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(0),
+    PROVIDER_PAYOUT_BPS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(10_000)
+      .default(6000),
     RADAR_API_KEY: z.string().min(1).optional(),
     RAPIDAPI_KEY: z.string().min(1).optional(),
     RAPIDAPI_ZILLOW_HOST: z.string().min(1).optional(),
     RENTCAST_API_KEY: z.string().min(1).optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+    STRIPE_BILLING_WEBHOOK_SECRET: z.string().min(1).optional(),
+    STRIPE_COMMERCE_WEBHOOK_SECRET: z.string().min(1).optional(),
+    STRIPE_CONNECT_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_PRICE_BASIC_MONTHLY: z.string().min(1).optional(),
-    STRIPE_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
+    STRIPE_SECRET_KEY: z
+      .string()
+      .regex(/^(?:sk|rk)_(?:test|live)_[A-Za-z0-9_]+$/u)
+      .optional(),
+    STRIPE_WEBHOOK_BASE_URL: z.url().optional(),
     STRIPE_WEBHOOK_PUBLIC_URL: z.url().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
     VERCEL_BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
