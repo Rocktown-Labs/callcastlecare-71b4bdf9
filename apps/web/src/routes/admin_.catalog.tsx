@@ -36,8 +36,36 @@ interface CatalogItem {
   name: string;
   serviceType: "combo" | "fee" | "laundry" | "lawncare" | "window_washing";
   slug: string;
+  lastSyncStatus?: string | null;
+  lastSyncedAt?: string | null;
+  lookupKey?: string | null;
+  stripeMode?: "live" | "test" | null;
   stripePriceId?: string | null;
   stripeProductId?: string | null;
+}
+
+interface StripeIntegrationStatus {
+  configured: boolean;
+  connectAccounts?: {
+    linked: number;
+    ready: number;
+    total: number;
+  };
+  error?: string;
+  mode: "live" | "test" | null;
+  webhookEndpoints: {
+    connect: boolean;
+    kind: string;
+    secretConfigured: boolean;
+    status: string;
+    url: string;
+  }[];
+}
+
+interface WebhookSecret {
+  kind: string;
+  secret: string;
+  url: string;
 }
 
 interface Coupon {
@@ -107,6 +135,91 @@ const groupCatalogItems = (items: CatalogItem[]) => {
   return [...groups.entries()];
 };
 
+const WebhookSecretNotice = ({
+  secrets,
+}: Readonly<{ secrets: WebhookSecret[] }>) => {
+  if (secrets.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-3xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+      <h2 className="text-lg font-black text-amber-950">
+        Save these new webhook secrets now
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        Stripe only returns a webhook signing secret when an endpoint is
+        created. Copy each value into the matching deployment secret.
+      </p>
+      <div className="mt-4 grid gap-3">
+        {secrets.map((endpoint) => (
+          <div
+            className="rounded-2xl border border-amber-200 bg-white p-3"
+            key={endpoint.kind}
+          >
+            <p className="text-xs font-black uppercase text-amber-800">
+              {endpoint.kind} · {endpoint.url}
+            </p>
+            <code className="mt-2 block break-all text-sm text-slate-950">
+              {endpoint.secret}
+            </code>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const StripeStatusCard = (props: {
+  lastSyncLabel: string | null;
+  stripeStatus: StripeIntegrationStatus | null;
+}) => (
+  <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="grid gap-4 sm:grid-cols-5">
+      <div>
+        <p className="text-sm font-bold text-slate-500">Stripe</p>
+        <p className="mt-2 text-lg font-black">
+          {props.stripeStatus?.configured ? "Configured" : "Missing key"}
+        </p>
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-500">Mode</p>
+        <p className="mt-2 text-lg font-black uppercase">
+          {props.stripeStatus?.mode ?? "—"}
+        </p>
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-500">Webhooks</p>
+        <p className="mt-2 text-lg font-black">
+          {props.stripeStatus?.webhookEndpoints.filter(
+            (endpoint) =>
+              endpoint.status === "enabled" && endpoint.secretConfigured
+          ).length ?? 0}
+          /{props.stripeStatus?.webhookEndpoints.length ?? 0} ready
+        </p>
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-500">Connect</p>
+        <p className="mt-2 text-sm font-black">
+          {props.stripeStatus?.connectAccounts?.ready ?? 0}/
+          {props.stripeStatus?.connectAccounts?.total ?? 0} ready
+        </p>
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-500">Last sync</p>
+        <p className="mt-2 text-sm font-black">
+          {props.lastSyncLabel ?? "Not synced yet"}
+        </p>
+      </div>
+    </div>
+    {props.stripeStatus?.error ? (
+      <p className="mt-4 text-sm font-semibold text-rose-600">
+        {props.stripeStatus.error}
+      </p>
+    ) : null}
+  </section>
+);
+
 const AdminCatalogRoute = () => {
   const { session } = useRouteContext({ from: "/admin_/catalog" });
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -115,6 +228,9 @@ const AdminCatalogRoute = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncLabel, setLastSyncLabel] = useState<string | null>(null);
+  const [stripeStatus, setStripeStatus] =
+    useState<StripeIntegrationStatus | null>(null);
+  const [webhookSecrets, setWebhookSecrets] = useState<WebhookSecret[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -134,6 +250,7 @@ const AdminCatalogRoute = () => {
       const payload = await response.json();
       setItems(payload.items as CatalogItem[]);
       setCoupons(payload.coupons as Coupon[]);
+      setStripeStatus(payload.integrationStatus as StripeIntegrationStatus);
       setLastSyncLabel(
         payload.lastSync?.createdAt
           ? new Date(payload.lastSync.createdAt).toLocaleString()
@@ -205,6 +322,19 @@ const AdminCatalogRoute = () => {
     }
 
     const payload = await response.json();
+    const createdWebhookSecrets = (payload.webhookEndpoints ?? []).flatMap(
+      (endpoint: { kind: string; secret?: string | null; url: string }) =>
+        endpoint.secret
+          ? [
+              {
+                kind: endpoint.kind,
+                secret: endpoint.secret,
+                url: endpoint.url,
+              },
+            ]
+          : []
+    );
+    setWebhookSecrets(createdWebhookSecrets);
     setLastSyncLabel(new Date().toLocaleString());
     toast.success(
       `Synced ${payload.items.length} products and ${payload.coupons.length} coupons`
@@ -252,6 +382,13 @@ const AdminCatalogRoute = () => {
               </Button>
             </div>
           </section>
+
+          <WebhookSecretNotice secrets={webhookSecrets} />
+
+          <StripeStatusCard
+            lastSyncLabel={lastSyncLabel}
+            stripeStatus={stripeStatus}
+          />
 
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="grid gap-4 sm:grid-cols-3">

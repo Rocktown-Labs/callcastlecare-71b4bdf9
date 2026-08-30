@@ -135,7 +135,11 @@ interface ProviderApplicationDraft {
   services: ProviderServiceId[];
   canDoAllServices: boolean;
   serviceNotes: string;
+  mowerAccess: "" | "no" | "yes";
+  mowerType: "" | "commercial" | "push" | "riding";
+  equipmentPhotoName: string;
   hasVehicle: boolean;
+  windowToolsAccess: "" | "no" | "yes";
   vehicleMake: string;
   vehicleModel: string;
   vehicleYear: string;
@@ -168,11 +172,14 @@ const initialDraft: ProviderApplicationDraft = {
   confirmPassword: "",
   dateOfBirth: "",
   email: "",
+  equipmentPhotoName: "",
   firstName: "",
   fullAddress: "",
   hasVehicle: true,
   lastName: "",
   licensePlate: "",
+  mowerAccess: "",
+  mowerType: "",
   password: "",
   phone: "",
   plan: "pro",
@@ -188,6 +195,7 @@ const initialDraft: ProviderApplicationDraft = {
   vehicleModel: "",
   vehicleYear: "",
   vin: "",
+  windowToolsAccess: "",
   zip: "",
 };
 
@@ -237,10 +245,44 @@ const contactSchema = z.object({
     .regex(/^\d{5}$/u, "Enter a 5-digit ZIP code."),
 });
 
-const servicesSchema = z.object({
-  serviceNotes: z.string().trim().max(600).optional(),
-  services: serviceSchema,
-});
+const servicesSchema = z
+  .object({
+    equipmentPhotoName: z.string().trim().max(160).optional(),
+    mowerAccess: z.enum(["", "no", "yes"]),
+    mowerType: z.enum(["", "commercial", "push", "riding"]),
+    serviceNotes: z.string().trim().max(600).optional(),
+    services: serviceSchema,
+    windowToolsAccess: z.enum(["", "no", "yes"]),
+  })
+  .superRefine((value, context) => {
+    if (value.services.includes("lawncare")) {
+      if (value.mowerAccess === "") {
+        context.addIssue({
+          code: "custom",
+          message: "Tell us whether you own or can access a mower.",
+          path: ["mowerAccess"],
+        });
+      }
+      if (value.mowerAccess === "yes" && value.mowerType === "") {
+        context.addIssue({
+          code: "custom",
+          message: "Choose the mower type you can use.",
+          path: ["mowerType"],
+        });
+      }
+    }
+
+    if (
+      value.services.includes("window-washing") &&
+      value.windowToolsAccess === ""
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Tell us whether you can access a squeegee and ladder.",
+        path: ["windowToolsAccess"],
+      });
+    }
+  });
 
 const vehicleSchema = z
   .object({
@@ -1012,6 +1054,7 @@ export default function EarnOnboarding() {
             email: result.data.email,
             firstName: result.data.firstName,
             lastName: result.data.lastName,
+            password: result.data.password,
             plan: result.data.plan,
           }),
           headers: { "Content-Type": "application/json" },
@@ -1292,6 +1335,92 @@ export default function EarnOnboarding() {
                   />
                   <FieldError>{errors.serviceNotes}</FieldError>
                 </div>
+
+                {draft.services.includes("lawncare") ? (
+                  <div className="grid gap-3 rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4">
+                    <div>
+                      <Label htmlFor="provider-mower-access">
+                        Do you own or have access to a mower?
+                      </Label>
+                      <select
+                        className="mt-2 h-11 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 text-sm text-white"
+                        id="provider-mower-access"
+                        onChange={(event) =>
+                          updateDraft(
+                            "mowerAccess",
+                            event.target
+                              .value as ProviderApplicationDraft["mowerAccess"]
+                          )
+                        }
+                        value={draft.mowerAccess}
+                      >
+                        <option value="">Choose one</option>
+                        <option value="yes">Yes, I can use a mower</option>
+                        <option value="no">
+                          Not yet, I need equipment guidance
+                        </option>
+                      </select>
+                      <FieldError>{errors.mowerAccess}</FieldError>
+                    </div>
+                    {draft.mowerAccess === "yes" ? (
+                      <div>
+                        <Label htmlFor="provider-mower-type">Mower type</Label>
+                        <select
+                          className="mt-2 h-11 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 text-sm text-white"
+                          id="provider-mower-type"
+                          onChange={(event) =>
+                            updateDraft(
+                              "mowerType",
+                              event.target
+                                .value as ProviderApplicationDraft["mowerType"]
+                            )
+                          }
+                          value={draft.mowerType}
+                        >
+                          <option value="">Choose one</option>
+                          <option value="push">Push mower</option>
+                          <option value="riding">Riding mower</option>
+                          <option value="commercial">Commercial mower</option>
+                        </select>
+                        <FieldError>{errors.mowerType}</FieldError>
+                      </div>
+                    ) : null}
+                    <p className="text-xs leading-5 text-white/60">
+                      You can start with equipment you own or can reliably
+                      access; CastleCare will review fit and local equipment
+                      options.
+                    </p>
+                  </div>
+                ) : null}
+
+                {draft.services.includes("window-washing") ? (
+                  <div className="grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+                    <Label htmlFor="provider-window-tools">
+                      Can you access a squeegee and safe ladder?
+                    </Label>
+                    <select
+                      className="h-11 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 text-sm text-white"
+                      id="provider-window-tools"
+                      onChange={(event) =>
+                        updateDraft(
+                          "windowToolsAccess",
+                          event.target
+                            .value as ProviderApplicationDraft["windowToolsAccess"]
+                        )
+                      }
+                      value={draft.windowToolsAccess}
+                    >
+                      <option value="">Choose one</option>
+                      <option value="yes">Yes, I have access</option>
+                      <option value="no">Not yet, I need guidance</option>
+                    </select>
+                    <FieldError>{errors.windowToolsAccess}</FieldError>
+                    <p className="text-xs leading-5 text-white/60">
+                      We will provide a recommended tool list before your first
+                      window route.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

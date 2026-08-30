@@ -154,4 +154,35 @@ describe("finalizeCheckoutPayment", () => {
       },
     });
   });
+
+  it("materializes recurring service units for the first billing period", async () => {
+    mocks.txQueryCheckoutItems.mockResolvedValue([
+      {
+        basePriceCents: 20_000,
+        itemKind: "laundry",
+        metadataJson: {
+          serviceType: "laundry",
+          serviceUnits: [{ serviceType: "laundry", spacingDays: 7, units: 4 }],
+        },
+        scheduledEndAt: new Date("2026-09-01T16:00:00.000Z"),
+        scheduledStartAt: new Date("2026-09-01T14:00:00.000Z"),
+        timingType: "scheduled",
+        tipAmountCents: 0,
+        totalPriceCents: 20_000,
+      },
+    ]);
+    let orderId = 0;
+    mocks.orderInsertReturning.mockImplementation(() => {
+      orderId += 1;
+      return [{ id: orderId, serviceType: "laundry" }];
+    });
+
+    const result = await finalizeCheckoutPayment({
+      checkoutSessionId: checkoutSession.id,
+      stripePaymentIntentId: "pi_subscription",
+    });
+
+    expect(result.createdOrderIds).toEqual([1, 2, 3, 4]);
+    expect(mocks.dispatchOrder).toHaveBeenCalledTimes(4);
+  });
 });

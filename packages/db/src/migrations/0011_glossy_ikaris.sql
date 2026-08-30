@@ -1,23 +1,68 @@
-CREATE TYPE "public"."dispute_status" AS ENUM('open', 'under_review', 'resolved_customer', 'resolved_provider', 'dismissed');--> statement-breakpoint
-CREATE TYPE "public"."checkout_item_kind" AS ENUM('lawncare', 'laundry', 'window_washing', 'home_preorder');--> statement-breakpoint
-CREATE TYPE "public"."checkout_session_status" AS ENUM('draft', 'pending_payment', 'paid', 'failed', 'cancelled');--> statement-breakpoint
-CREATE TYPE "public"."home_preorder_status" AS ENUM('pending_payment', 'paid', 'cancelled', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."home_quote_status" AS ENUM('pending', 'ready', 'expired');--> statement-breakpoint
-CREATE TYPE "public"."quote_request_status" AS ENUM('draft', 'contact_captured', 'checkout_started', 'paid', 'abandoned', 'cancelled');--> statement-breakpoint
-CREATE TYPE "public"."window_washing_package" AS ENUM('EXTERIOR_ONLY', 'FULL_SERVICE');--> statement-breakpoint
-CREATE TYPE "public"."laundry_bag_status" AS ENUM('available', 'assigned', 'in_transit', 'at_facility', 'retired');--> statement-breakpoint
-CREATE TYPE "public"."market_mode" AS ENUM('on_demand', 'subscription_first', 'paused');--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'service_before' BEFORE 'lawncare_before';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'service_after' BEFORE 'lawncare_before';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'property_front' BEFORE 'laundry_pickup';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'property_left' BEFORE 'laundry_pickup';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'property_right' BEFORE 'laundry_pickup';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'property_back' BEFORE 'laundry_pickup';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'property_baseline' BEFORE 'laundry_pickup';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'laundry_front' BEFORE 'laundry_pickup';--> statement-breakpoint
-ALTER TYPE "public"."media_type" ADD VALUE 'dispute_evidence';--> statement-breakpoint
-ALTER TYPE "public"."service_type" ADD VALUE 'window_washing';--> statement-breakpoint
-CREATE TABLE "subscription" (
+DO $$ BEGIN
+  CREATE TYPE "public"."dispute_status" AS ENUM('open', 'under_review', 'resolved_customer', 'resolved_provider', 'dismissed');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."checkout_item_kind" AS ENUM('lawncare', 'laundry', 'window_washing', 'home_preorder');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."checkout_session_status" AS ENUM('draft', 'pending_payment', 'paid', 'failed', 'cancelled');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."home_preorder_status" AS ENUM('pending_payment', 'paid', 'cancelled', 'failed');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."home_quote_status" AS ENUM('pending', 'ready', 'expired');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."quote_request_status" AS ENUM('draft', 'contact_captured', 'checkout_started', 'paid', 'abandoned', 'cancelled');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."window_washing_package" AS ENUM('EXTERIOR_ONLY', 'FULL_SERVICE');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."laundry_bag_status" AS ENUM('available', 'assigned', 'in_transit', 'at_facility', 'retired');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."market_mode" AS ENUM('on_demand', 'subscription_first', 'paused');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'service_before' BEFORE 'lawncare_before';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'service_after' BEFORE 'lawncare_before';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'property_front' BEFORE 'laundry_pickup';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'property_left' BEFORE 'laundry_pickup';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'property_right' BEFORE 'laundry_pickup';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'property_back' BEFORE 'laundry_pickup';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'property_baseline' BEFORE 'laundry_pickup';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'laundry_front' BEFORE 'laundry_pickup';--> statement-breakpoint
+ALTER TYPE "public"."media_type" ADD VALUE IF NOT EXISTS 'dispute_evidence';--> statement-breakpoint
+ALTER TYPE "public"."service_type" ADD VALUE IF NOT EXISTS 'window_washing';--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "subscription" (
 	"billing_interval" text,
 	"cancel_at" timestamp,
 	"cancel_at_period_end" boolean DEFAULT false,
@@ -37,7 +82,7 @@ CREATE TABLE "subscription" (
 	"trial_start" timestamp
 );
 --> statement-breakpoint
-CREATE TABLE "checkout_drafts" (
+CREATE TABLE IF NOT EXISTS "checkout_drafts" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"customer_id" integer NOT NULL,
 	"id" serial PRIMARY KEY NOT NULL,
@@ -45,7 +90,7 @@ CREATE TABLE "checkout_drafts" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "checkout_items" (
+CREATE TABLE IF NOT EXISTS "checkout_items" (
 	"base_price_cents" integer NOT NULL,
 	"checkout_session_id" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -61,7 +106,7 @@ CREATE TABLE "checkout_items" (
 	"total_price_cents" integer NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "checkout_sessions" (
+CREATE TABLE IF NOT EXISTS "checkout_sessions" (
 	"address_id" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"currency" text DEFAULT 'usd' NOT NULL,
@@ -77,7 +122,7 @@ CREATE TABLE "checkout_sessions" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "home_preorders" (
+CREATE TABLE IF NOT EXISTS "home_preorders" (
 	"address_id" integer NOT NULL,
 	"checkout_session_id" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -92,7 +137,7 @@ CREATE TABLE "home_preorders" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "home_quotes" (
+CREATE TABLE IF NOT EXISTS "home_quotes" (
 	"address_id" integer NOT NULL,
 	"confidence_score" numeric(5, 2),
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -111,7 +156,7 @@ CREATE TABLE "home_quotes" (
 	"zillow_payload_json" jsonb
 );
 --> statement-breakpoint
-CREATE TABLE "quote_requests" (
+CREATE TABLE IF NOT EXISTS "quote_requests" (
 	"address_text" text,
 	"checkout_session_id" integer,
 	"contact_email" text,
@@ -126,7 +171,7 @@ CREATE TABLE "quote_requests" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "order_disputes" (
+CREATE TABLE IF NOT EXISTS "order_disputes" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"customer_note" text,
 	"evidence_json" jsonb,
@@ -140,7 +185,7 @@ CREATE TABLE "order_disputes" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "laundry_bags" (
+CREATE TABLE IF NOT EXISTS "laundry_bags" (
 	"assigned_at" timestamp with time zone,
 	"code" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -152,7 +197,7 @@ CREATE TABLE "laundry_bags" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "markets" (
+CREATE TABLE IF NOT EXISTS "markets" (
 	"active_pro_count" integer DEFAULT 0 NOT NULL,
 	"auto_on_demand_at_pros" integer DEFAULT 5 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -167,7 +212,7 @@ CREATE TABLE "markets" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "stripe_catalog_items" (
+CREATE TABLE IF NOT EXISTS "stripe_catalog_items" (
 	"active" boolean DEFAULT true NOT NULL,
 	"amount_cents" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -184,7 +229,7 @@ CREATE TABLE "stripe_catalog_items" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "stripe_coupons" (
+CREATE TABLE IF NOT EXISTS "stripe_coupons" (
 	"active" boolean DEFAULT true NOT NULL,
 	"amount_off_cents" integer,
 	"code" text NOT NULL,
@@ -200,7 +245,7 @@ CREATE TABLE "stripe_coupons" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "stripe_sync_runs" (
+CREATE TABLE IF NOT EXISTS "stripe_sync_runs" (
 	"catalog_item_count" integer DEFAULT 0 NOT NULL,
 	"coupon_count" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -211,7 +256,7 @@ CREATE TABLE "stripe_sync_runs" (
 	"stripe_webhook_endpoint_id" text
 );
 --> statement-breakpoint
-CREATE TABLE "support_requests" (
+CREATE TABLE IF NOT EXISTS "support_requests" (
 	"address_text" text,
 	"city" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -234,7 +279,7 @@ CREATE TABLE "support_requests" (
 	"zip" text
 );
 --> statement-breakpoint
-CREATE TABLE "order_tracking_points" (
+CREATE TABLE IF NOT EXISTS "order_tracking_points" (
 	"accuracy_meters" numeric(7, 2),
 	"captured_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -248,7 +293,7 @@ CREATE TABLE "order_tracking_points" (
 	"worker_id" integer NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "window_washing_details" (
+CREATE TABLE IF NOT EXISTS "window_washing_details" (
 	"checkout_item_id" integer,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"estimated_windows" integer NOT NULL,
@@ -261,96 +306,211 @@ CREATE TABLE "window_washing_details" (
 );
 --> statement-breakpoint
 ALTER TABLE "customers" ALTER COLUMN "phone" SET DEFAULT '';--> statement-breakpoint
-ALTER TABLE "session" ADD COLUMN "impersonated_by" text;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "ban_expires" timestamp;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "ban_reason" text;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "banned" boolean DEFAULT false;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "role" text DEFAULT 'user';--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "stripe_customer_id" text;--> statement-breakpoint
-ALTER TABLE "addresses" ADD COLUMN "formatted_address" text;--> statement-breakpoint
-ALTER TABLE "addresses" ADD COLUMN "instructions" text;--> statement-breakpoint
-ALTER TABLE "addresses" ADD COLUMN "is_default" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "addresses" ADD COLUMN "label" text DEFAULT 'Address' NOT NULL;--> statement-breakpoint
-ALTER TABLE "addresses" ADD COLUMN "location" "geography(Point,4326)";--> statement-breakpoint
-ALTER TABLE "dispatch_batches" ADD COLUMN "bonus_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "notifications" ADD COLUMN "read_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "auto_rescheduled_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "checkout_session_id" integer;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "dispatch_bonus_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "dispatch_started_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "dispatch_window_end_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "next_wave_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "tip_settled_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "travel_distance_miles" integer;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "travel_fee_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "workers" ADD COLUMN "location" "geography(Point,4326)";--> statement-breakpoint
-ALTER TABLE "workers" ADD COLUMN "next_offer_eligible_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "checkout_drafts" ADD CONSTRAINT "checkout_drafts_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "checkout_items" ADD CONSTRAINT "checkout_items_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_home_quote_id_home_quotes_id_fk" FOREIGN KEY ("home_quote_id") REFERENCES "public"."home_quotes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "home_quotes" ADD CONSTRAINT "home_quotes_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "home_quotes" ADD CONSTRAINT "home_quotes_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "quote_requests" ADD CONSTRAINT "quote_requests_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "order_disputes" ADD CONSTRAINT "order_disputes_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "order_disputes" ADD CONSTRAINT "order_disputes_resolved_by_user_id_user_id_fk" FOREIGN KEY ("resolved_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "laundry_bags" ADD CONSTRAINT "laundry_bags_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "laundry_bags" ADD CONSTRAINT "laundry_bags_last_order_id_orders_id_fk" FOREIGN KEY ("last_order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "support_requests" ADD CONSTRAINT "support_requests_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "support_requests" ADD CONSTRAINT "support_requests_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "support_requests" ADD CONSTRAINT "support_requests_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "order_tracking_points" ADD CONSTRAINT "order_tracking_points_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "order_tracking_points" ADD CONSTRAINT "order_tracking_points_worker_id_workers_id_fk" FOREIGN KEY ("worker_id") REFERENCES "public"."workers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "window_washing_details" ADD CONSTRAINT "window_washing_details_checkout_item_id_checkout_items_id_fk" FOREIGN KEY ("checkout_item_id") REFERENCES "public"."checkout_items"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "window_washing_details" ADD CONSTRAINT "window_washing_details_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "subscription_reference_id_idx" ON "subscription" USING btree ("reference_id");--> statement-breakpoint
-CREATE INDEX "subscription_stripe_customer_id_idx" ON "subscription" USING btree ("stripe_customer_id");--> statement-breakpoint
-CREATE INDEX "subscription_stripe_subscription_id_idx" ON "subscription" USING btree ("stripe_subscription_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_checkout_drafts_customer_id" ON "checkout_drafts" USING btree ("customer_id");--> statement-breakpoint
-CREATE INDEX "idx_checkout_drafts_updated_at" ON "checkout_drafts" USING btree ("updated_at");--> statement-breakpoint
-CREATE INDEX "idx_checkout_items_session_id" ON "checkout_items" USING btree ("checkout_session_id");--> statement-breakpoint
-CREATE INDEX "idx_checkout_sessions_customer_status" ON "checkout_sessions" USING btree ("customer_id","status");--> statement-breakpoint
-CREATE INDEX "idx_checkout_sessions_payment_intent" ON "checkout_sessions" USING btree ("stripe_payment_intent_id");--> statement-breakpoint
-CREATE INDEX "idx_checkout_sessions_stripe_session" ON "checkout_sessions" USING btree ("stripe_checkout_session_id");--> statement-breakpoint
-CREATE INDEX "idx_home_preorders_checkout_session_id" ON "home_preorders" USING btree ("checkout_session_id");--> statement-breakpoint
-CREATE INDEX "idx_home_preorders_customer_status" ON "home_preorders" USING btree ("customer_id","status");--> statement-breakpoint
-CREATE INDEX "idx_home_quotes_customer_status" ON "home_quotes" USING btree ("customer_id","status");--> statement-breakpoint
-CREATE INDEX "idx_home_quotes_address_id" ON "home_quotes" USING btree ("address_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_quote_requests_tracking_id" ON "quote_requests" USING btree ("tracking_id");--> statement-breakpoint
-CREATE INDEX "idx_quote_requests_status_updated" ON "quote_requests" USING btree ("status","updated_at");--> statement-breakpoint
-CREATE INDEX "idx_quote_requests_contact_email" ON "quote_requests" USING btree ("contact_email");--> statement-breakpoint
-CREATE INDEX "idx_order_disputes_order_id" ON "order_disputes" USING btree ("order_id");--> statement-breakpoint
-CREATE INDEX "idx_order_disputes_status" ON "order_disputes" USING btree ("status","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_laundry_bags_code" ON "laundry_bags" USING btree ("code");--> statement-breakpoint
-CREATE INDEX "idx_laundry_bags_customer_id" ON "laundry_bags" USING btree ("customer_id");--> statement-breakpoint
-CREATE INDEX "idx_laundry_bags_status" ON "laundry_bags" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_markets_state_code" ON "markets" USING btree ("state_code");--> statement-breakpoint
-CREATE INDEX "idx_markets_mode" ON "markets" USING btree ("mode","is_active");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_stripe_catalog_items_slug" ON "stripe_catalog_items" USING btree ("slug");--> statement-breakpoint
-CREATE INDEX "idx_stripe_catalog_items_service_active" ON "stripe_catalog_items" USING btree ("service_type","active");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_stripe_coupons_code" ON "stripe_coupons" USING btree ("code");--> statement-breakpoint
-CREATE INDEX "idx_stripe_coupons_active" ON "stripe_coupons" USING btree ("active");--> statement-breakpoint
-CREATE INDEX "idx_stripe_sync_runs_created_at" ON "stripe_sync_runs" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "idx_support_requests_created_at" ON "support_requests" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "idx_support_requests_email" ON "support_requests" USING btree ("email");--> statement-breakpoint
-CREATE INDEX "idx_support_requests_order_id" ON "support_requests" USING btree ("order_id");--> statement-breakpoint
-CREATE INDEX "idx_support_requests_status_created" ON "support_requests" USING btree ("status","created_at");--> statement-breakpoint
-CREATE INDEX "idx_support_requests_type" ON "support_requests" USING btree ("request_type");--> statement-breakpoint
-CREATE INDEX "idx_order_tracking_points_order_captured" ON "order_tracking_points" USING btree ("order_id","captured_at");--> statement-breakpoint
-CREATE INDEX "idx_order_tracking_points_worker_captured" ON "order_tracking_points" USING btree ("worker_id","captured_at");--> statement-breakpoint
-ALTER TABLE "orders" ADD CONSTRAINT "orders_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_addresses_customer_default_unique" ON "addresses" USING btree ("customer_id") WHERE "addresses"."is_default" = true;--> statement-breakpoint
-CREATE INDEX "idx_addresses_formatted_address" ON "addresses" USING btree ("formatted_address");--> statement-breakpoint
-CREATE INDEX "idx_dispatch_offers_order_created_at" ON "dispatch_offers" USING btree ("order_id","created_at");--> statement-breakpoint
-CREATE INDEX "idx_notifications_customer_id" ON "notifications" USING btree ("customer_id");--> statement-breakpoint
-CREATE INDEX "idx_notifications_order_id" ON "notifications" USING btree ("order_id");--> statement-breakpoint
-CREATE INDEX "idx_orders_address_id" ON "orders" USING btree ("address_id");--> statement-breakpoint
-CREATE INDEX "idx_orders_checkout_session_id" ON "orders" USING btree ("checkout_session_id");--> statement-breakpoint
-CREATE INDEX "idx_orders_next_wave_status" ON "orders" USING btree ("next_wave_at","status");--> statement-breakpoint
-CREATE INDEX "idx_orders_quote_id" ON "orders" USING btree ("quote_id");--> statement-breakpoint
-CREATE INDEX "idx_orders_stripe_payment_intent" ON "orders" USING btree ("stripe_payment_intent_id");--> statement-breakpoint
-CREATE INDEX "idx_workers_next_offer_eligible_active" ON "workers" USING btree ("next_offer_eligible_at","is_active");
+ALTER TABLE "session" ADD COLUMN IF NOT EXISTS "impersonated_by" text;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "ban_expires" timestamp;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "ban_reason" text;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "banned" boolean DEFAULT false;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'user';--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "stripe_customer_id" text;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "formatted_address" text;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "instructions" text;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "is_default" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "label" text DEFAULT 'Address' NOT NULL;--> statement-breakpoint
+ALTER TABLE "addresses" ADD COLUMN IF NOT EXISTS "location" "geography(Point,4326)";--> statement-breakpoint
+ALTER TABLE "dispatch_batches" ADD COLUMN IF NOT EXISTS "bonus_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "read_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "auto_rescheduled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "checkout_session_id" integer;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "dispatch_bonus_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "dispatch_started_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "dispatch_window_end_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "next_wave_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "tip_settled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "travel_distance_miles" integer;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "travel_fee_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "workers" ADD COLUMN IF NOT EXISTS "location" "geography(Point,4326)";--> statement-breakpoint
+ALTER TABLE "workers" ADD COLUMN IF NOT EXISTS "next_offer_eligible_at" timestamp with time zone;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "checkout_drafts" ADD CONSTRAINT "checkout_drafts_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "checkout_items" ADD CONSTRAINT "checkout_items_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "home_preorders" ADD CONSTRAINT "home_preorders_home_quote_id_home_quotes_id_fk" FOREIGN KEY ("home_quote_id") REFERENCES "public"."home_quotes"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "home_quotes" ADD CONSTRAINT "home_quotes_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "home_quotes" ADD CONSTRAINT "home_quotes_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "quote_requests" ADD CONSTRAINT "quote_requests_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "order_disputes" ADD CONSTRAINT "order_disputes_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "order_disputes" ADD CONSTRAINT "order_disputes_resolved_by_user_id_user_id_fk" FOREIGN KEY ("resolved_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "laundry_bags" ADD CONSTRAINT "laundry_bags_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "laundry_bags" ADD CONSTRAINT "laundry_bags_last_order_id_orders_id_fk" FOREIGN KEY ("last_order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "support_requests" ADD CONSTRAINT "support_requests_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "support_requests" ADD CONSTRAINT "support_requests_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "support_requests" ADD CONSTRAINT "support_requests_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "order_tracking_points" ADD CONSTRAINT "order_tracking_points_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "order_tracking_points" ADD CONSTRAINT "order_tracking_points_worker_id_workers_id_fk" FOREIGN KEY ("worker_id") REFERENCES "public"."workers"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "window_washing_details" ADD CONSTRAINT "window_washing_details_checkout_item_id_checkout_items_id_fk" FOREIGN KEY ("checkout_item_id") REFERENCES "public"."checkout_items"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "window_washing_details" ADD CONSTRAINT "window_washing_details_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "subscription_reference_id_idx" ON "subscription" USING btree ("reference_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "subscription_stripe_customer_id_idx" ON "subscription" USING btree ("stripe_customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "subscription_stripe_subscription_id_idx" ON "subscription" USING btree ("stripe_subscription_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_checkout_drafts_customer_id" ON "checkout_drafts" USING btree ("customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_checkout_drafts_updated_at" ON "checkout_drafts" USING btree ("updated_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_checkout_items_session_id" ON "checkout_items" USING btree ("checkout_session_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_checkout_sessions_customer_status" ON "checkout_sessions" USING btree ("customer_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_checkout_sessions_payment_intent" ON "checkout_sessions" USING btree ("stripe_payment_intent_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_checkout_sessions_stripe_session" ON "checkout_sessions" USING btree ("stripe_checkout_session_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_home_preorders_checkout_session_id" ON "home_preorders" USING btree ("checkout_session_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_home_preorders_customer_status" ON "home_preorders" USING btree ("customer_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_home_quotes_customer_status" ON "home_quotes" USING btree ("customer_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_home_quotes_address_id" ON "home_quotes" USING btree ("address_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_quote_requests_tracking_id" ON "quote_requests" USING btree ("tracking_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_quote_requests_status_updated" ON "quote_requests" USING btree ("status","updated_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_quote_requests_contact_email" ON "quote_requests" USING btree ("contact_email");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_order_disputes_order_id" ON "order_disputes" USING btree ("order_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_order_disputes_status" ON "order_disputes" USING btree ("status","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_laundry_bags_code" ON "laundry_bags" USING btree ("code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_laundry_bags_customer_id" ON "laundry_bags" USING btree ("customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_laundry_bags_status" ON "laundry_bags" USING btree ("status");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_markets_state_code" ON "markets" USING btree ("state_code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_markets_mode" ON "markets" USING btree ("mode","is_active");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_stripe_catalog_items_slug" ON "stripe_catalog_items" USING btree ("slug");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_stripe_catalog_items_service_active" ON "stripe_catalog_items" USING btree ("service_type","active");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_stripe_coupons_code" ON "stripe_coupons" USING btree ("code");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_stripe_coupons_active" ON "stripe_coupons" USING btree ("active");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_stripe_sync_runs_created_at" ON "stripe_sync_runs" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_support_requests_created_at" ON "support_requests" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_support_requests_email" ON "support_requests" USING btree ("email");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_support_requests_order_id" ON "support_requests" USING btree ("order_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_support_requests_status_created" ON "support_requests" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_support_requests_type" ON "support_requests" USING btree ("request_type");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_order_tracking_points_order_captured" ON "order_tracking_points" USING btree ("order_id","captured_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_order_tracking_points_worker_captured" ON "order_tracking_points" USING btree ("worker_id","captured_at");--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "orders" ADD CONSTRAINT "orders_checkout_session_id_checkout_sessions_id_fk" FOREIGN KEY ("checkout_session_id") REFERENCES "public"."checkout_sessions"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_addresses_customer_default_unique" ON "addresses" USING btree ("customer_id") WHERE "addresses"."is_default" = true;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_addresses_formatted_address" ON "addresses" USING btree ("formatted_address");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_dispatch_offers_order_created_at" ON "dispatch_offers" USING btree ("order_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_notifications_customer_id" ON "notifications" USING btree ("customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_notifications_order_id" ON "notifications" USING btree ("order_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_orders_address_id" ON "orders" USING btree ("address_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_orders_checkout_session_id" ON "orders" USING btree ("checkout_session_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_orders_next_wave_status" ON "orders" USING btree ("next_wave_at","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_orders_quote_id" ON "orders" USING btree ("quote_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_orders_stripe_payment_intent" ON "orders" USING btree ("stripe_payment_intent_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_workers_next_offer_eligible_active" ON "workers" USING btree ("next_offer_eligible_at","is_active");

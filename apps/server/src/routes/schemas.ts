@@ -206,6 +206,7 @@ export const driverLocationHeartbeatSchema = z.object({
 export const providerProfileRequestSchema = z.object({
   applicationFormData: z.record(z.string(), z.unknown()).optional(),
   email: z.email(),
+  equipmentJson: z.record(z.string(), z.unknown()).optional().nullable(),
   firstName: z.string().trim().min(1),
   lastName: z.string().trim().min(1),
   phone: phoneSchema,
@@ -227,6 +228,7 @@ export const mediaUploadUrlRequestSchema = z.object({
     "service_after",
     "lawncare_before",
     "lawncare_after",
+    "provider_equipment",
     "laundry_pickup",
     "laundry_scan",
     "laundry_folded",
@@ -242,6 +244,7 @@ export const mediaAttachRequestSchema = z.object({
     "service_after",
     "lawncare_before",
     "lawncare_after",
+    "provider_equipment",
     "laundry_pickup",
     "laundry_scan",
     "laundry_folded",
@@ -260,4 +263,9 @@ export const adminOrderActionRequestSchema = z.object({
 
 export const adminOrderNoteRequestSchema = z.object({
   note: z.string().trim().min(1).max(1000),
+});
+
+export const adminRefundRequestSchema = z.object({
+  amountCents: z.number().int().positive().optional(),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
 });

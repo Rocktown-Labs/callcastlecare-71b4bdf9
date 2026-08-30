@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   dbInsert: vi.fn(),
   dbInsertValues: vi.fn(),
   dbQueryUserFindFirst: vi.fn(),
+  dbUpdate: vi.fn(),
+  dbUpdateSet: vi.fn(),
   logger: {
     error: vi.fn(),
     info: vi.fn(),
@@ -44,6 +46,7 @@ vi.mock("@callcastlecare/db", () => ({
         findFirst: mocks.dbQueryUserFindFirst,
       },
     },
+    update: mocks.dbUpdate,
   },
   eq: vi.fn(),
   gt: vi.fn(),
@@ -59,8 +62,11 @@ vi.mock("@callcastlecare/db/schema/index", () => ({
   checkoutSessions: { id: "id" },
   homePreorders: { id: "id" },
   homeQuotes: { id: "id" },
+  orderDisputes: { stripeDisputeId: "stripeDisputeId" },
   orders: { id: "id" },
   quoteRequests: { id: "id" },
+  serviceSubscriptions: { stripeSubscriptionId: "stripeSubscriptionId" },
+  stripeWebhookEvents: { id: "id", stripeEventId: "stripeEventId" },
   user: { email: "email" },
   workers: { userId: "userId" },
 }));
@@ -179,11 +185,20 @@ describe("provider express onboarding webhook", () => {
       },
     });
     mocks.dbInsert.mockReturnValue({
+      onConflictDoNothing: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([workerRow]),
+      }),
       onConflictDoUpdate: vi.fn().mockReturnValue({
         returning: vi.fn().mockResolvedValue([workerRow]),
       }),
       returning: vi.fn().mockResolvedValue([workerRow]),
       values: mocks.dbInsertValues.mockReturnThis(),
+    });
+    mocks.dbUpdate.mockReturnValue({
+      set: mocks.dbUpdateSet.mockReturnThis(),
+    });
+    mocks.dbUpdateSet.mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
     });
   });
 

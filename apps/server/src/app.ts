@@ -18,6 +18,7 @@ import { meRoutes } from "./routes/me";
 import { mediaRoutes } from "./routes/media";
 import { notificationRoutes } from "./routes/notifications";
 import { orderRoutes } from "./routes/orders";
+import { subscriptionRoutes } from "./routes/subscriptions";
 import { supportRoutes } from "./routes/support";
 import { webhookRoutes } from "./routes/webhooks";
 import type { AppEnv } from "./types";
@@ -152,6 +153,7 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)
   .route("/support", supportRoutes)
+  .route("/subscriptions", subscriptionRoutes)
   .route("/webhooks", webhookRoutes)
   .route("/admin", adminRoutes);
 

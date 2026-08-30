@@ -8,6 +8,7 @@ import {
   orders,
   orderStatusHistory,
   serviceLegs,
+  serviceSubscriptions,
 } from "@callcastlecare/db/schema/index";
 
 import { dispatchOrder } from "./dispatch";
@@ -43,9 +44,51 @@ const buildFormattedAddress = (input: {
 const isCheckoutServiceType = (value: unknown): value is CheckoutServiceType =>
   value === "lawncare" || value === "laundry" || value === "window_washing";
 
-const getServiceOrderTypes = (metadata: Record<string, unknown>) => {
+interface ServiceOrderComponent {
+  serviceType: CheckoutServiceType;
+  spacingDays: number;
+}
+
+const getServiceOrderTypes = (
+  metadata: Record<string, unknown>
+): ServiceOrderComponent[] => {
+  if (Array.isArray(metadata.serviceUnits)) {
+    const components: ServiceOrderComponent[] = [];
+    for (const unit of metadata.serviceUnits) {
+      if (!unit || typeof unit !== "object") {
+        continue;
+      }
+      const serviceUnit = unit as Record<string, unknown>;
+      const serviceType = isCheckoutServiceType(serviceUnit.serviceType)
+        ? serviceUnit.serviceType
+        : null;
+      const units =
+        typeof serviceUnit.units === "number" &&
+        Number.isInteger(serviceUnit.units) &&
+        serviceUnit.units > 0 &&
+        serviceUnit.units <= 12
+          ? serviceUnit.units
+          : 0;
+      const spacingDays =
+        typeof serviceUnit.spacingDays === "number" &&
+        Number.isInteger(serviceUnit.spacingDays) &&
+        serviceUnit.spacingDays >= 0
+          ? serviceUnit.spacingDays
+          : 0;
+      if (!serviceType) {
+        continue;
+      }
+      for (let index = 0; index < units; index += 1) {
+        components.push({ serviceType, spacingDays });
+      }
+    }
+    if (components.length > 0) {
+      return components;
+    }
+  }
+
   if (isCheckoutServiceType(metadata.serviceType)) {
-    return [metadata.serviceType];
+    return [{ serviceType: metadata.serviceType, spacingDays: 0 }];
   }
 
   if (metadata.serviceType !== "combo") {
@@ -53,17 +96,33 @@ const getServiceOrderTypes = (metadata: Record<string, unknown>) => {
   }
 
   if (Array.isArray(metadata.comboServiceTypes)) {
-    const serviceTypes = metadata.comboServiceTypes.filter(
-      isCheckoutServiceType
-    );
+    const serviceTypes = metadata.comboServiceTypes
+      .filter(isCheckoutServiceType)
+      .map((serviceType) => ({ serviceType, spacingDays: 0 }));
     if (serviceTypes.length > 0) {
       return serviceTypes;
     }
   }
 
   return typeof metadata.planId === "string"
-    ? (getComboServiceTypes(metadata.planId) ?? [])
+    ? (getComboServiceTypes(metadata.planId) ?? []).map((serviceType) => ({
+        serviceType,
+        spacingDays: 0,
+      }))
     : [];
+};
+
+const getScheduledComponentDate = (
+  value: Date | null,
+  occurrence: number,
+  spacingDays: number
+) => {
+  if (!value || spacingDays === 0 || occurrence === 0) {
+    return value;
+  }
+  return new Date(
+    value.getTime() + occurrence * spacingDays * 24 * 60 * 60 * 1000
+  );
 };
 
 const allocateCents = (totalCents: number, index: number, count: number) => {
@@ -260,6 +319,7 @@ export const setOrderStatus = async (input: {
 export const finalizeCheckoutPayment = async (input: {
   checkoutSessionId: number;
   stripePaymentIntentId?: string;
+  stripeSubscriptionId?: string;
 }) => {
   const existingSession = await db.query.checkoutSessions.findFirst({
     where: eq(checkoutSessions.id, input.checkoutSessionId),
@@ -286,6 +346,8 @@ export const finalizeCheckoutPayment = async (input: {
           stripePaymentIntentId:
             input.stripePaymentIntentId ??
             existingSession.stripePaymentIntentId,
+          stripeSubscriptionId:
+            input.stripeSubscriptionId ?? existingSession.stripeSubscriptionId,
           updatedAt: new Date(),
         })
         .where(eq(checkoutSessions.id, existingSession.id));
@@ -293,6 +355,14 @@ export const finalizeCheckoutPayment = async (input: {
       const items = await tx.query.checkoutItems.findMany({
         where: eq(checkoutItems.checkoutSessionId, existingSession.id),
       });
+      const serviceSubscription = input.stripeSubscriptionId
+        ? await tx.query.serviceSubscriptions.findFirst({
+            where: eq(
+              serviceSubscriptions.stripeSubscriptionId,
+              input.stripeSubscriptionId
+            ),
+          })
+        : null;
 
       const existingOrders = await tx.query.orders.findMany({
         columns: {
@@ -321,11 +391,25 @@ export const finalizeCheckoutPayment = async (input: {
             throw new Error("Combo checkout item has no service components");
           }
 
+          const occurrenceByService = new Map<CheckoutServiceType, number>();
           for (const [
             componentIndex,
-            serviceType,
+            component,
           ] of serviceOrderTypes.entries()) {
             const componentCount = serviceOrderTypes.length;
+            const occurrence =
+              occurrenceByService.get(component.serviceType) ?? 0;
+            occurrenceByService.set(component.serviceType, occurrence + 1);
+            const scheduledStartAt = getScheduledComponentDate(
+              item.scheduledStartAt,
+              occurrence,
+              component.spacingDays
+            );
+            const scheduledEndAt = getScheduledComponentDate(
+              item.scheduledEndAt,
+              occurrence,
+              component.spacingDays
+            );
             const createdOrders = await tx
               .insert(orders)
               .values({
@@ -338,19 +422,23 @@ export const finalizeCheckoutPayment = async (input: {
                 checkoutSessionId: existingSession.id,
                 customerId: existingSession.customerId,
                 pricingTier:
-                  serviceType === "lawncare" &&
+                  component.serviceType === "lawncare" &&
                   (metadata.pricingTier === "small" ||
                     metadata.pricingTier === "medium" ||
                     metadata.pricingTier === "large")
                     ? metadata.pricingTier
                     : null,
-                scheduledEndAt: item.scheduledEndAt,
-                scheduledStartAt: item.scheduledStartAt,
-                serviceType,
+                scheduledEndAt,
+                scheduledStartAt,
+                serviceSubscriptionId: serviceSubscription?.id ?? null,
+                serviceType: component.serviceType,
                 status: "paid",
                 stripePaymentIntentId:
                   input.stripePaymentIntentId ??
                   existingSession.stripePaymentIntentId,
+                subscriptionPeriodStart:
+                  serviceSubscription?.currentPeriodStart ?? null,
+                subscriptionUnitIndex: componentIndex,
                 timingType: item.timingType ?? "asap",
                 tipAmountCents: allocateCents(
                   item.tipAmountCents,

@@ -6,6 +6,7 @@ import {
   orderMediaLinks,
   orders,
   serviceLegs,
+  workers,
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import { Hono } from "hono";
@@ -55,6 +56,45 @@ const toOrderRequiredTransition = (value?: string) =>
 const toLegRequiredTransition = (value?: string) =>
   legTransitionMediaStatuses.find((status) => status === value) ?? null;
 
+const isProviderEquipmentMedia = (mediaType: string) =>
+  mediaType === "provider_equipment";
+
+const validateAttachmentTarget = async (input: {
+  isProviderEquipment: boolean;
+  legId?: number;
+  orderId?: number;
+  worker: Awaited<ReturnType<typeof requireWorkerForUser>>;
+}) => {
+  if (input.isProviderEquipment) {
+    return input.worker
+      ? null
+      : { error: "worker_profile_required", status: 403 as const };
+  }
+  if (!input.orderId && !input.legId) {
+    return {
+      error: "Either orderId or legId is required",
+      status: 400 as const,
+    };
+  }
+  if (input.orderId) {
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, input.orderId),
+    });
+    if (!order) {
+      return { error: "Order not found", status: 404 as const };
+    }
+  }
+  if (input.legId) {
+    const leg = await db.query.serviceLegs.findFirst({
+      where: eq(serviceLegs.id, input.legId),
+    });
+    if (!leg) {
+      return { error: "Leg not found", status: 404 as const };
+    }
+  }
+  return null;
+};
+
 const canReadPrivateMedia = async (input: {
   pathname: string;
   user: NonNullable<ReturnType<typeof requireUser>["user"]>;
@@ -99,6 +139,14 @@ const canReadPrivateMedia = async (input: {
     ...orderLinks.map((link) => link.orderId),
     ...linkedLegs.map((leg) => leg.orderId),
   ]);
+
+  if (worker && asset.uploadedByWorkerId === worker.id) {
+    return { allowed: true, found: true };
+  }
+
+  if (worker && asset.uploadedByWorkerId === worker.id) {
+    return { allowed: true, found: true };
+  }
 
   if (linkedOrderIds.size === 0) {
     return { allowed: false, found: true };
@@ -175,6 +223,11 @@ export const mediaRoutes = new Hono<AppEnv>()
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
+    const worker = await requireWorkerForUser(userResult.user);
+    if (isProviderEquipmentMedia(parsed.data.mediaType) && !worker) {
+      return c.json({ error: "worker_profile_required" }, 403);
+    }
+
     const extension = extensionFromContentType(parsed.data.contentType);
     const storagePath = createMediaStoragePath({
       extension,
@@ -213,27 +266,14 @@ export const mediaRoutes = new Hono<AppEnv>()
     }
 
     const worker = await requireWorkerForUser(userResult.user);
-
-    if (!parsed.data.orderId && !parsed.data.legId) {
-      return c.json({ error: "Either orderId or legId is required" }, 400);
-    }
-
-    if (parsed.data.orderId) {
-      const order = await db.query.orders.findFirst({
-        where: eq(orders.id, parsed.data.orderId),
-      });
-      if (!order) {
-        return c.json({ error: "Order not found" }, 404);
-      }
-    }
-
-    if (parsed.data.legId) {
-      const leg = await db.query.serviceLegs.findFirst({
-        where: eq(serviceLegs.id, parsed.data.legId),
-      });
-      if (!leg) {
-        return c.json({ error: "Leg not found" }, 404);
-      }
+    const attachmentError = await validateAttachmentTarget({
+      isProviderEquipment: isProviderEquipmentMedia(parsed.data.mediaType),
+      legId: parsed.data.legId,
+      orderId: parsed.data.orderId,
+      worker,
+    });
+    if (attachmentError) {
+      return c.json({ error: attachmentError.error }, attachmentError.status);
     }
 
     const insertedAssets = await db
@@ -269,6 +309,23 @@ export const mediaRoutes = new Hono<AppEnv>()
           parsed.data.requiredForTransition
         ),
       });
+    }
+
+    if (isProviderEquipmentMedia(parsed.data.mediaType) && worker) {
+      const currentEquipment =
+        worker.equipmentJson && typeof worker.equipmentJson === "object"
+          ? (worker.equipmentJson as Record<string, unknown>)
+          : {};
+      await db
+        .update(workers)
+        .set({
+          equipmentJson: {
+            ...currentEquipment,
+            equipmentPhotoPath: parsed.data.storagePath,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(workers.id, worker.id));
     }
 
     return c.json(

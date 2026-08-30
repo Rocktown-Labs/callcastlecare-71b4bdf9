@@ -16,8 +16,13 @@ import {
   checkoutSessions,
   homePreorders,
   homeQuotes,
+  orderDisputes,
   orders,
+  payouts,
   quoteRequests,
+  stripeCatalogItems,
+  stripeRefunds,
+  stripeWebhookEvents,
   user as authUsers,
   workers,
 } from "@callcastlecare/db/schema/index";
@@ -43,12 +48,29 @@ import { sendEmail } from "../lib/integrations/email";
 import { verifyAddressWithRadar } from "../lib/integrations/radar";
 import { lookupPropertyWithRentCast } from "../lib/integrations/rentcast";
 import {
+  getStripeMode,
+  isStripeMockMode,
+} from "../lib/integrations/stripe-client";
+import type { StripeWebhookEndpointKind } from "../lib/integrations/stripe-client";
+import { reverseWorkerTransfer } from "../lib/integrations/stripe-connect";
+import {
   createStripeCheckoutSession,
+  getOrCreateStripeCustomer,
   parseStripeWebhookEvent,
+  retrieveStripeSubscription,
 } from "../lib/integrations/stripe-payments";
-import type { StripeWebhookEvent } from "../lib/integrations/stripe-payments";
+import type {
+  CastleCareCheckoutLineItem,
+  StripeWebhookEvent,
+} from "../lib/integrations/stripe-payments";
 import { logger } from "../lib/logger";
 import { createAddressRecord, finalizeCheckoutPayment } from "../lib/orders";
+import { releasePendingWorkerPayouts } from "../lib/payouts";
+import {
+  materializeSubscriptionPeriodOrders,
+  updateServiceSubscriptionStatus,
+  upsertServiceSubscription,
+} from "../lib/subscriptions";
 import type { AppEnv } from "../types";
 import {
   checkoutDraftRequestSchema,
@@ -158,6 +180,83 @@ const getAmountDueCents = (input: {
   input.paymentOption === "pay_full"
     ? input.totalCents
     : Math.min(depositCents, input.totalCents);
+
+const applyCatalogPriceOverrides = (
+  preview: ReturnType<typeof computeCheckoutPreview>,
+  catalogRows: (typeof stripeCatalogItems.$inferSelect)[],
+  planIds: string[]
+) => {
+  const catalogBySlug = new Map(catalogRows.map((row) => [row.slug, row]));
+  const selectedPlans = new Set(planIds);
+  let { subtotalCents } = preview;
+  let { totalCents } = preview;
+  const lineItems = preview.lineItems.map((lineItem) => {
+    if (!lineItem.planId || !selectedPlans.has(lineItem.planId)) {
+      return lineItem;
+    }
+
+    const catalogItem = catalogBySlug.get(lineItem.planId);
+    if (!catalogItem || catalogItem.serviceType === "fee") {
+      return lineItem;
+    }
+
+    const basePriceCents = catalogItem.amountCents;
+    const difference =
+      (basePriceCents - lineItem.basePriceCents) * lineItem.quantity;
+    subtotalCents += difference;
+    totalCents += difference;
+    return {
+      ...lineItem,
+      basePriceCents,
+      totalPriceCents:
+        basePriceCents * lineItem.quantity + lineItem.tipAmountCents,
+    };
+  });
+
+  return { ...preview, lineItems, subtotalCents, totalCents };
+};
+
+const getStripeLineItems = (
+  lineItems: ReturnType<typeof computeCheckoutPreview>["lineItems"],
+  catalogRows: (typeof stripeCatalogItems.$inferSelect)[]
+): CastleCareCheckoutLineItem[] => {
+  const catalogBySlug = new Map(catalogRows.map((row) => [row.slug, row]));
+  const stripeMode = getStripeMode();
+
+  return lineItems.map((lineItem) => {
+    const catalogItem = lineItem.planId
+      ? catalogBySlug.get(lineItem.planId)
+      : undefined;
+    const canUseSyncedPrice = Boolean(
+      catalogItem?.active &&
+      catalogItem.stripePriceId &&
+      catalogItem.stripeMode === stripeMode
+    );
+
+    return {
+      amountCents: lineItem.totalPriceCents,
+      currency: "usd",
+      description: lineItem.label,
+      name: lineItem.label,
+      ...(canUseSyncedPrice && catalogItem?.stripePriceId
+        ? { priceId: catalogItem.stripePriceId }
+        : {}),
+      quantity: lineItem.quantity,
+    };
+  });
+};
+
+const getStripeCheckoutLineItems = (input: {
+  catalogRows: (typeof stripeCatalogItems.$inferSelect)[];
+  hasRecurringCheckout: boolean;
+  paymentOption: ParsedCheckoutConfirm["paymentOption"];
+  preview: ReturnType<typeof computeCheckoutPreview>;
+}) => {
+  if (!(input.hasRecurringCheckout || input.paymentOption === "pay_full")) {
+    return;
+  }
+  return getStripeLineItems(input.preview.lineItems, input.catalogRows);
+};
 
 const getAddressLabel = (address: {
   city: string;
@@ -272,6 +371,7 @@ const getObjectMetadata = (value: Record<string, unknown>) =>
 const finalizeFromMetadata = async (input: {
   metadata: Record<string, unknown> | null;
   stripePaymentIntentId?: string;
+  stripeSubscriptionId?: string;
 }) => {
   const checkoutSessionId = input.metadata
     ? Number(input.metadata.checkoutSessionId)
@@ -286,6 +386,9 @@ const finalizeFromMetadata = async (input: {
     ...(input.stripePaymentIntentId
       ? { stripePaymentIntentId: input.stripePaymentIntentId }
       : {}),
+    ...(input.stripeSubscriptionId
+      ? { stripeSubscriptionId: input.stripeSubscriptionId }
+      : {}),
   });
   return true;
 };
@@ -299,6 +402,7 @@ const getOrCreateProviderUser = async (input: {
   email: string;
   firstName: string;
   lastName: string;
+  password?: string;
 }) => {
   const normalizedEmail = input.email.trim().toLowerCase();
 
@@ -314,7 +418,7 @@ const getOrCreateProviderUser = async (input: {
       callbackURL: "/dashboard/provider",
       email: normalizedEmail,
       name: `${input.firstName} ${input.lastName}`.trim(),
-      password: PROVIDER_TEMP_PASSWORD,
+      password: input.password ?? PROVIDER_TEMP_PASSWORD,
     },
   });
 
@@ -416,39 +520,93 @@ const handleProviderExpressOnboarding = async (input: {
   }
 };
 
+const getRecordField = (value: unknown, key: string) => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return (value as Record<string, unknown>)[key] ?? null;
+};
+
+const getStringField = (value: unknown) =>
+  typeof value === "string" && value.length > 0 ? value : null;
+
+const getStripeObjectId = (value: unknown) => {
+  const directId = getStringField(value);
+  if (directId) {
+    return directId;
+  }
+  return getStringField(getRecordField(value, "id"));
+};
+
+const getCheckoutSessionMode = (checkoutObject: Record<string, unknown>) =>
+  getStringField(checkoutObject.mode) ?? "payment";
+
+const handleProviderCheckoutCompleted = async (
+  metadata: Record<string, unknown> | null
+) => {
+  if (metadata?.type !== "provider_express_onboarding") {
+    return false;
+  }
+
+  const email = getStringField(metadata.email);
+  if (email) {
+    await handleProviderExpressOnboarding({
+      email,
+      firstName: getStringField(metadata.firstName) ?? "",
+      lastName: getStringField(metadata.lastName) ?? "",
+      plan: getStringField(metadata.plan) ?? "free",
+    });
+  }
+  return true;
+};
+
 const handleCheckoutSessionCompleted = async (event: StripeWebhookEvent) => {
   const checkoutObject = event.data.object;
   const metadata = getObjectMetadata(checkoutObject);
 
-  if (metadata?.type === "provider_express_onboarding") {
-    const email = typeof metadata.email === "string" ? metadata.email : null;
-    const firstName =
-      typeof metadata.firstName === "string" ? metadata.firstName : "";
-    const lastName =
-      typeof metadata.lastName === "string" ? metadata.lastName : "";
-    const plan = typeof metadata.plan === "string" ? metadata.plan : "free";
-
-    if (email) {
-      await handleProviderExpressOnboarding({
-        email,
-        firstName,
-        lastName,
-        plan,
-      });
-    }
+  if (await handleProviderCheckoutCompleted(metadata)) {
     return;
   }
 
-  const stripeCheckoutSessionId =
-    typeof checkoutObject.id === "string" ? checkoutObject.id : null;
-  const stripePaymentIntentId =
-    typeof checkoutObject.payment_intent === "string"
-      ? checkoutObject.payment_intent
-      : undefined;
+  const stripeCheckoutSessionId = getStripeObjectId(checkoutObject.id);
+  const stripePaymentIntentId = getStripeObjectId(
+    checkoutObject.payment_intent
+  );
+  const stripeSubscriptionId = getStripeObjectId(checkoutObject.subscription);
+  const checkoutMode = getCheckoutSessionMode(checkoutObject);
+  const paymentStatus = getStringField(checkoutObject.payment_status);
+
+  if (paymentStatus && paymentStatus !== "paid") {
+    logger.info(
+      { paymentStatus, stripeCheckoutSessionId },
+      "stripe_webhook:checkout_not_paid"
+    );
+    return;
+  }
+
+  if (checkoutMode === "subscription" && stripeSubscriptionId) {
+    const retrievedSubscription =
+      await retrieveStripeSubscription(stripeSubscriptionId);
+    const stripeSubscription = retrievedSubscription
+      ? (retrievedSubscription as unknown as Record<string, unknown>)
+      : {
+          customer: getStripeObjectId(checkoutObject.customer),
+          id: stripeSubscriptionId,
+          metadata,
+          status: "active",
+        };
+    await upsertServiceSubscription({
+      ...(getStringField(metadata?.checkoutSessionId)
+        ? { checkoutSessionId: Number(metadata?.checkoutSessionId) }
+        : {}),
+      stripeSubscription,
+    });
+  }
 
   const finalizedFromMetadata = await finalizeFromMetadata({
-    metadata: getObjectMetadata(checkoutObject),
+    metadata,
     ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
+    ...(stripeSubscriptionId ? { stripeSubscriptionId } : {}),
   });
   if (finalizedFromMetadata || !stripeCheckoutSessionId) {
     return;
@@ -474,6 +632,91 @@ const handleCheckoutSessionCompleted = async (event: StripeWebhookEvent) => {
   await finalizeCheckoutPayment({
     checkoutSessionId: checkoutSession.id,
     ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
+    ...(stripeSubscriptionId ? { stripeSubscriptionId } : {}),
+  });
+};
+
+const handleCheckoutSessionAsyncPaymentFailed = async (
+  event: StripeWebhookEvent
+) => {
+  const stripeCheckoutSessionId = getStringField(event.data.object.id);
+  if (!stripeCheckoutSessionId) {
+    return;
+  }
+
+  await db
+    .update(checkoutSessions)
+    .set({ status: "failed", updatedAt: new Date() })
+    .where(
+      eq(checkoutSessions.stripeCheckoutSessionId, stripeCheckoutSessionId)
+    );
+};
+
+const handleSubscriptionEvent = async (event: StripeWebhookEvent) => {
+  const subscription = await upsertServiceSubscription({
+    stripeSubscription: event.data.object,
+  });
+  if (!subscription) {
+    return;
+  }
+
+  if (event.type === "customer.subscription.deleted") {
+    await updateServiceSubscriptionStatus({
+      canceledAt: new Date(),
+      status: "canceled",
+      stripeSubscriptionId: subscription.stripeSubscriptionId,
+    });
+  }
+};
+
+const getEpochDate = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? new Date(value * 1000)
+    : null;
+
+const handleInvoiceEvent = async (event: StripeWebhookEvent) => {
+  const invoice = event.data.object;
+  const stripeSubscriptionId = getStripeObjectId(invoice.subscription);
+  if (!stripeSubscriptionId) {
+    return;
+  }
+
+  const retrievedSubscription =
+    await retrieveStripeSubscription(stripeSubscriptionId);
+  if (!retrievedSubscription) {
+    return;
+  }
+
+  const serviceSubscription = await upsertServiceSubscription({
+    stripeSubscription: retrievedSubscription as unknown as Record<
+      string,
+      unknown
+    >,
+  });
+  if (!serviceSubscription) {
+    return;
+  }
+
+  if (event.type === "invoice.payment_failed") {
+    await updateServiceSubscriptionStatus({
+      status: "past_due",
+      stripeSubscriptionId,
+    });
+    return;
+  }
+
+  const periodStart = getEpochDate(invoice.period_start);
+  const periodEnd = getEpochDate(invoice.period_end);
+  await updateServiceSubscriptionStatus({
+    currentPeriodEnd: periodEnd,
+    currentPeriodStart: periodStart,
+    status: "active",
+    stripeSubscriptionId,
+  });
+  await materializeSubscriptionPeriodOrders({
+    periodEnd,
+    periodStart,
+    serviceSubscriptionId: serviceSubscription.id,
   });
 };
 
@@ -535,10 +778,274 @@ const handlePaymentIntentSucceeded = async (event: StripeWebhookEvent) => {
   });
 };
 
-export const handleStripeWebhook = async (c: HonoContext) => {
+const handleStripeConnectAccountEvent = async (event: StripeWebhookEvent) => {
+  const account = event.data.object;
+  const stripeAccountId =
+    getStringField(account.id) ?? getStringField(account.account);
+  if (!stripeAccountId) {
+    return;
+  }
+
+  if (event.type === "payout.failed") {
+    await db
+      .update(workers)
+      .set({
+        isActive: false,
+        stripeAccountStatus: "restricted",
+        stripePayoutsEnabled: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(workers.stripeAccountId, stripeAccountId));
+    return;
+  }
+  if (event.type === "payout.paid") {
+    return;
+  }
+
+  const configuration = getRecordField(account, "configuration");
+  const recipient = getRecordField(configuration, "recipient");
+  const recipientCapabilities = getRecordField(recipient, "capabilities");
+  const stripeBalance = getRecordField(recipientCapabilities, "stripe_balance");
+  const transferCapability = getRecordField(stripeBalance, "stripe_transfers");
+  const payoutCapability = getRecordField(stripeBalance, "payouts");
+  const transferStatus = getStringField(
+    getRecordField(transferCapability, "status")
+  );
+  const payoutStatus = getStringField(
+    getRecordField(payoutCapability, "status")
+  );
+  const chargesEnabled = account.charges_enabled === true;
+  const payoutsEnabled =
+    account.payouts_enabled === true ||
+    payoutStatus === "active" ||
+    (payoutStatus === null && transferStatus === "active");
+  const transferReady = transferStatus === "active" || payoutsEnabled;
+  const requirements =
+    account.requirements ?? account.future_requirements ?? null;
+  const requirementValues =
+    requirements && typeof requirements === "object"
+      ? Object.values(requirements as Record<string, unknown>)
+      : [];
+  const hasRequirements = requirementValues.some((value) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
+  let status = "pending";
+  if (hasRequirements) {
+    status = "restricted";
+  }
+  if (transferReady) {
+    status = "ready";
+  }
+  if (event.type === "account.application.deauthorized") {
+    status = "deauthorized";
+  }
+
+  const worker = await db.query.workers.findFirst({
+    where: eq(workers.stripeAccountId, stripeAccountId),
+  });
+  await db
+    .update(workers)
+    .set({
+      isActive: status === "ready" && worker?.onboardingStatus === "approved",
+      stripeAccountMode: getStripeMode(),
+      stripeAccountStatus: status,
+      stripeChargesEnabled: chargesEnabled,
+      stripePayoutsEnabled: payoutsEnabled,
+      stripeRequirementsJson: requirements,
+      updatedAt: new Date(),
+    })
+    .where(eq(workers.stripeAccountId, stripeAccountId));
+
+  if (worker && status === "ready") {
+    await releasePendingWorkerPayouts(worker.id);
+  }
+
+  logger.info(
+    {
+      chargesEnabled,
+      payoutsEnabled,
+      status,
+      stripeAccountId,
+      transferStatus,
+    },
+    "stripe_connect:account_status_updated"
+  );
+};
+
+const handleRefundEvent = async (event: StripeWebhookEvent) => {
+  const refundObject =
+    event.type === "refund.created"
+      ? event.data.object
+      : (() => {
+          const refunds = getRecordField(event.data.object, "refunds");
+          const data = getRecordField(refunds, "data");
+          return Array.isArray(data) && data[0] && typeof data[0] === "object"
+            ? (data[0] as Record<string, unknown>)
+            : null;
+        })();
+  const refundId = getStripeObjectId(refundObject?.id);
+  const paymentIntentId = getStripeObjectId(
+    refundObject?.payment_intent ?? event.data.object.payment_intent
+  );
+  let amountCents: number | null = null;
+  if (typeof refundObject?.amount === "number") {
+    amountCents = refundObject.amount;
+  } else if (typeof event.data.object.amount_refunded === "number") {
+    amountCents = event.data.object.amount_refunded;
+  }
+  if (!(refundId && paymentIntentId && amountCents !== null)) {
+    return;
+  }
+
+  const order = await db.query.orders.findFirst({
+    where: eq(orders.stripePaymentIntentId, paymentIntentId),
+  });
+  if (!order) {
+    logger.warn(
+      { paymentIntentId, stripeRefundId: refundId },
+      "stripe_refund:order_not_found"
+    );
+    return;
+  }
+
+  await db
+    .insert(stripeRefunds)
+    .values({
+      amountCents,
+      metadataJson: refundObject,
+      orderId: order.id,
+      reason: getStringField(refundObject?.reason),
+      status: getStringField(refundObject?.status) ?? "succeeded",
+      stripeRefundId: refundId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing({ target: stripeRefunds.stripeRefundId });
+};
+
+const handleChargeDisputeCreated = async (event: StripeWebhookEvent) => {
+  const dispute = event.data.object;
+  const stripeDisputeId = getStripeObjectId(dispute.id);
+  const paymentIntentId = getStripeObjectId(dispute.payment_intent);
+  if (!(stripeDisputeId && paymentIntentId)) {
+    return;
+  }
+
+  const order = await db.query.orders.findFirst({
+    where: eq(orders.stripePaymentIntentId, paymentIntentId),
+  });
+  if (!order) {
+    logger.warn(
+      { paymentIntentId, stripeDisputeId },
+      "stripe_dispute:order_not_found"
+    );
+    return;
+  }
+
+  await db
+    .insert(orderDisputes)
+    .values({
+      customerNote: "Stripe dispute opened; operations review required.",
+      evidenceJson: dispute,
+      orderId: order.id,
+      reason: getStringField(dispute.reason) ?? "stripe_dispute",
+      status: "open",
+      stripeDisputeId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing({ target: orderDisputes.stripeDisputeId });
+
+  const payout = await db.query.payouts.findFirst({
+    where: eq(payouts.orderId, order.id),
+  });
+  if (payout?.status === "paid" && payout.providerPayoutId) {
+    try {
+      await reverseWorkerTransfer({
+        amountCents: payout.amountCents,
+        providerPayoutId: payout.providerPayoutId,
+      });
+      await db
+        .update(payouts)
+        .set({ status: "cancelled" })
+        .where(eq(payouts.id, payout.id));
+    } catch (error) {
+      logger.error(
+        { err: error, orderId: order.id, payoutId: payout.id },
+        "stripe_dispute:payout_reversal_failed"
+      );
+    }
+  }
+};
+
+const processStripeEvent = async (event: StripeWebhookEvent) => {
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded"
+  ) {
+    await handleCheckoutSessionCompleted(event);
+    return;
+  }
+
+  if (event.type === "checkout.session.async_payment_failed") {
+    await handleCheckoutSessionAsyncPaymentFailed(event);
+    return;
+  }
+
+  if (event.type === "checkout.session.expired") {
+    await handleCheckoutSessionExpired(event);
+    return;
+  }
+
+  if (event.type === "payment_intent.succeeded") {
+    await handlePaymentIntentSucceeded(event);
+    return;
+  }
+
+  if (
+    event.type === "account.updated" ||
+    event.type === "account.application.deauthorized" ||
+    event.type === "capability.updated" ||
+    event.type === "payout.failed" ||
+    event.type === "payout.paid"
+  ) {
+    await handleStripeConnectAccountEvent(event);
+    return;
+  }
+
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+  ) {
+    await handleSubscriptionEvent(event);
+    return;
+  }
+
+  if (
+    event.type === "invoice.paid" ||
+    event.type === "invoice.payment_failed"
+  ) {
+    await handleInvoiceEvent(event);
+    return;
+  }
+
+  if (event.type === "charge.refunded" || event.type === "refund.created") {
+    await handleRefundEvent(event);
+    return;
+  }
+
+  if (event.type === "charge.dispute.created") {
+    await handleChargeDisputeCreated(event);
+  }
+};
+
+const handleStripeWebhookForEndpoint = async (
+  c: HonoContext,
+  endpointKind: StripeWebhookEndpointKind
+) => {
   const rawBody = await c.req.text();
 
   const parsedEvent = await parseStripeWebhookEvent({
+    endpointKind,
     rawBody,
     signatureHeader: c.req.header("stripe-signature"),
   });
@@ -547,22 +1054,66 @@ export const handleStripeWebhook = async (c: HonoContext) => {
     return c.json({ error: "invalid webhook payload" }, 400);
   }
 
-  if (parsedEvent.type === "checkout.session.completed") {
-    await handleCheckoutSessionCompleted(parsedEvent);
-    return c.json({ received: true }, 200);
+  let [storedEvent] = await db
+    .insert(stripeWebhookEvents)
+    .values({
+      endpointKind,
+      eventType: parsedEvent.type,
+      payloadJson: parsedEvent,
+      status: "received",
+      stripeEventId: parsedEvent.id,
+    })
+    .onConflictDoNothing({ target: stripeWebhookEvents.stripeEventId })
+    .returning({ id: stripeWebhookEvents.id });
+
+  if (!storedEvent) {
+    const existingEvent = await db.query.stripeWebhookEvents.findFirst({
+      where: eq(stripeWebhookEvents.stripeEventId, parsedEvent.id),
+    });
+    if (!existingEvent || existingEvent.status === "processed") {
+      return c.json({ duplicate: true, received: true }, 200);
+    }
+    storedEvent = { id: existingEvent.id };
   }
 
-  if (parsedEvent.type === "checkout.session.expired") {
-    await handleCheckoutSessionExpired(parsedEvent);
-    return c.json({ received: true }, 200);
-  }
+  await db
+    .update(stripeWebhookEvents)
+    .set({ status: "processing", updatedAt: new Date() })
+    .where(eq(stripeWebhookEvents.id, storedEvent.id));
 
-  if (parsedEvent.type === "payment_intent.succeeded") {
-    await handlePaymentIntentSucceeded(parsedEvent);
+  try {
+    await processStripeEvent(parsedEvent);
+    await db
+      .update(stripeWebhookEvents)
+      .set({
+        processedAt: new Date(),
+        status: "processed",
+        updatedAt: new Date(),
+      })
+      .where(eq(stripeWebhookEvents.id, storedEvent.id));
+  } catch (error) {
+    await db
+      .update(stripeWebhookEvents)
+      .set({
+        attemptCount: sql`${stripeWebhookEvents.attemptCount} + 1`,
+        failedAt: new Date(),
+        lastError: error instanceof Error ? error.message : "Webhook failed",
+        status: "failed",
+        updatedAt: new Date(),
+      })
+      .where(eq(stripeWebhookEvents.id, storedEvent.id));
+    throw error;
   }
 
   return c.json({ received: true }, 200);
 };
+
+export const handleStripeWebhook = (c: HonoContext) =>
+  handleStripeWebhookForEndpoint(c, "commerce");
+
+export const createStripeWebhookHandler =
+  (endpointKind: StripeWebhookEndpointKind) => (c: HonoContext) =>
+    handleStripeWebhookForEndpoint(c, endpointKind);
 
 interface PublicQuoteRequestInput {
   address?: string;
@@ -651,8 +1202,485 @@ const providerCheckoutSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
+  password: z.string().min(8).optional(),
   plan: z.string().default("standard_provider"),
 });
+
+interface CheckoutAddress {
+  city: string;
+  country: string;
+  formattedAddress?: string | null;
+  id: number;
+  latitude: number | null;
+  longitude: number | null;
+  state: string;
+  street: string;
+  zip: string;
+}
+
+type ParsedCheckoutConfirm = z.infer<typeof checkoutConfirmRequestSchema>;
+
+const getCheckoutCustomer = (c: HonoContext, input: ParsedCheckoutConfirm) => {
+  const user = c.get("user");
+  if (user) {
+    return getOrCreateCustomerForUser(user);
+  }
+  return getOrCreateCustomerForCheckoutContact(input.contact);
+};
+
+const resolveCheckoutAddress = async (input: {
+  addressId?: number;
+  address?: string;
+  customerId: number;
+}): Promise<{
+  address: CheckoutAddress | null;
+  error?: string;
+  status?: 400 | 404;
+}> => {
+  if (input.addressId) {
+    const address = await db.query.addresses.findFirst({
+      where: and(
+        eq(addresses.id, input.addressId),
+        eq(addresses.customerId, input.customerId)
+      ),
+    });
+    return address
+      ? { address }
+      : { address: null, error: "Address not found", status: 404 };
+  }
+
+  if (!input.address) {
+    return { address: null, error: "Address is required", status: 400 };
+  }
+
+  const verifiedAddress = await verifyAddressWithRadar(input.address);
+  return {
+    address: await createAddressRecord({
+      city: verifiedAddress.city,
+      country: verifiedAddress.country,
+      customerId: input.customerId,
+      formattedAddress: verifiedAddress.formattedAddress,
+      isDefault: false,
+      latitude: verifiedAddress.latitude,
+      longitude: verifiedAddress.longitude,
+      radarGeocodeJson: verifiedAddress.raw,
+      state: verifiedAddress.state,
+      street: verifiedAddress.street,
+      zip: verifiedAddress.zip,
+    }),
+  };
+};
+
+const getCheckoutPricing = async (input: {
+  address: CheckoutAddress;
+  checkout: ParsedCheckoutConfirm;
+  travel: NonNullable<ReturnType<typeof getTrustedTravelEstimate>>;
+}) => {
+  const hasRecurringCheckout = input.checkout.items.some(
+    isRecurringCheckoutItem
+  );
+  if (input.address.state.toUpperCase() !== "AR" && !hasRecurringCheckout) {
+    return {
+      error:
+        "This service area is currently subscription-only. Choose a recurring plan to continue.",
+      status: 409 as const,
+    } as const;
+  }
+
+  const lawncarePlanError = await validateLawncarePlans({
+    address: input.address,
+    items: input.checkout.items,
+  });
+  if (lawncarePlanError) {
+    return { error: lawncarePlanError, status: 409 as const } as const;
+  }
+
+  const checkoutInput = {
+    ...input.checkout,
+    travelDistanceMiles: input.travel.distanceMiles,
+    travelFeeCents: input.travel.feeCents,
+    travelStateCode: input.address.state,
+  } satisfies CheckoutPreviewRequest;
+  const scheduledSlots = getScheduledCheckoutSlots(checkoutInput.items);
+  const preview = computeCheckoutPreview(checkoutInput);
+  const planIds = input.checkout.items.flatMap((item) =>
+    item.planId ? [item.planId] : []
+  );
+  const catalogRows =
+    planIds.length === 0
+      ? []
+      : await db.query.stripeCatalogItems.findMany({
+          where: inArray(stripeCatalogItems.slug, planIds),
+        });
+  const catalogBySlug = new Map(catalogRows.map((row) => [row.slug, row]));
+  const hasInactiveSelectedPlan = input.checkout.items.some(
+    (item) =>
+      item.planId &&
+      catalogBySlug.has(item.planId) &&
+      !catalogBySlug.get(item.planId)?.active
+  );
+  if (hasInactiveSelectedPlan) {
+    return {
+      error: "One of the selected service plans is not currently available.",
+      status: 409 as const,
+    } as const;
+  }
+  const adjustedPreview = applyCatalogPriceOverrides(
+    preview,
+    catalogRows,
+    planIds
+  );
+  const amountDueCents = getAmountDueCents({
+    paymentOption: input.checkout.paymentOption,
+    totalCents: adjustedPreview.totalCents,
+  });
+  const recurringPlans = input.checkout.items
+    .filter(isRecurringCheckoutItem)
+    .map((item) => (item.planId ? catalogBySlug.get(item.planId) : null));
+  const hasUnsyncedRecurringPlan = recurringPlans.some(
+    (item) =>
+      !item ||
+      !item.active ||
+      item.interval === "one_time" ||
+      !item.stripePriceId ||
+      (!isStripeMockMode() && item.stripeMode !== getStripeMode())
+  );
+  if (hasUnsyncedRecurringPlan) {
+    return {
+      error:
+        "Recurring pricing is not ready yet. An administrator must sync the Stripe catalog first.",
+      status: 503 as const,
+    } as const;
+  }
+
+  return {
+    amountDueCents,
+    catalogRows,
+    hasRecurringCheckout,
+    planIds,
+    preview: adjustedPreview,
+    recurringPlans,
+    scheduledSlots,
+  } as const;
+};
+
+const reserveCheckoutSession = (input: {
+  address: CheckoutAddress;
+  amountDueCents: number;
+  contact: ParsedCheckoutConfirm["contact"];
+  customerId: number;
+  hasRecurringCheckout: boolean;
+  paymentOption: ParsedCheckoutConfirm["paymentOption"];
+  planIds: string[];
+  preview: ReturnType<typeof computeCheckoutPreview>;
+  requestId: string;
+  scheduledSlots: ScheduledCheckoutSlot[];
+  travel: NonNullable<ReturnType<typeof getTrustedTravelEstimate>>;
+}) =>
+  db.transaction(async (tx) => {
+    if (input.scheduledSlots.length > 0) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${CHECKOUT_SLOT_LOCK_KEY})`
+      );
+      const holdCutoff = new Date(Date.now() - CHECKOUT_SLOT_HOLD_MS);
+      const slotConflicts = await Promise.all(
+        input.scheduledSlots.map(async (slot) => {
+          const [[overlappingOrder], [heldCheckout]] = await Promise.all([
+            tx
+              .select({ id: orders.id })
+              .from(orders)
+              .where(
+                and(
+                  inArray(orders.status, ACTIVE_ORDER_STATUSES),
+                  lt(orders.scheduledStartAt, slot.end),
+                  gt(orders.scheduledEndAt, slot.start)
+                )
+              )
+              .limit(1),
+            tx
+              .select({ id: checkoutSessions.id })
+              .from(checkoutSessions)
+              .innerJoin(
+                checkoutItems,
+                eq(checkoutItems.checkoutSessionId, checkoutSessions.id)
+              )
+              .where(
+                and(
+                  inArray(checkoutSessions.status, ["pending_payment", "paid"]),
+                  gt(checkoutSessions.updatedAt, holdCutoff),
+                  lt(checkoutItems.scheduledStartAt, slot.end),
+                  gt(checkoutItems.scheduledEndAt, slot.start)
+                )
+              )
+              .limit(1),
+          ]);
+          return Boolean(overlappingOrder || heldCheckout);
+        })
+      );
+      if (slotConflicts.some(Boolean)) {
+        throw new CheckoutSlotUnavailableError();
+      }
+    }
+
+    const [createdCheckoutSession] = await tx
+      .insert(checkoutSessions)
+      .values({
+        addressId: input.address.id,
+        customerId: input.customerId,
+        metadataJson: {
+          amountDueCents: input.amountDueCents,
+          checkoutMode: input.hasRecurringCheckout ? "subscription" : "payment",
+          contact: input.contact,
+          paymentOption: input.paymentOption,
+          planIds: input.planIds,
+          requestId: input.requestId,
+          travelDistanceMiles: input.travel.distanceMiles,
+          travelFeeCents: input.travel.feeCents,
+          travelStateCode: input.address.state,
+        },
+        mode: input.hasRecurringCheckout ? "subscription" : "payment",
+        status: "pending_payment",
+        subtotalCents: input.preview.subtotalCents,
+        totalCents: input.preview.totalCents,
+      })
+      .returning();
+    if (!createdCheckoutSession) {
+      throw new Error("Failed to create checkout session");
+    }
+
+    await tx.insert(checkoutItems).values(
+      input.preview.lineItems.map((lineItem) => ({
+        basePriceCents: lineItem.basePriceCents,
+        checkoutSessionId: createdCheckoutSession.id,
+        itemKind: lineItem.itemKind,
+        label: lineItem.label,
+        metadataJson: lineItem.metadata,
+        quantity: lineItem.quantity,
+        scheduledEndAt: parseScheduledDate(
+          lineItem.metadata.scheduledEndAt as string | undefined
+        ),
+        scheduledStartAt: parseScheduledDate(
+          lineItem.metadata.scheduledStartAt as string | undefined
+        ),
+        timingType:
+          lineItem.metadata.timingType === "scheduled"
+            ? ("scheduled" as const)
+            : ("asap" as const),
+        tipAmountCents: lineItem.tipAmountCents,
+        totalPriceCents: lineItem.totalPriceCents,
+      }))
+    );
+
+    const homePreorderResults = await Promise.all(
+      input.preview.lineItems
+        .filter((lineItem) => lineItem.itemKind === "home_preorder")
+        .map(async (lineItem) => {
+          const homeQuoteId =
+            typeof lineItem.metadata.homeQuoteId === "number"
+              ? lineItem.metadata.homeQuoteId
+              : null;
+          if (homeQuoteId === null) {
+            return null;
+          }
+
+          const quote = await tx.query.homeQuotes.findFirst({
+            where: eq(homeQuotes.id, homeQuoteId),
+          });
+          return quote
+            ? {
+                addressId: input.address.id,
+                checkoutSessionId: createdCheckoutSession.id,
+                customerId: input.customerId,
+                depositAmountCents: lineItem.basePriceCents,
+                homeQuoteId,
+                status: "pending_payment" as const,
+              }
+            : null;
+        })
+    );
+    const homePreorderValues = homePreorderResults.filter(
+      (value) => value !== null
+    );
+
+    if (homePreorderValues.length > 0) {
+      await tx.insert(homePreorders).values(homePreorderValues);
+    }
+
+    return createdCheckoutSession;
+  });
+
+const validateCheckoutPaymentOption = async (input: ParsedCheckoutConfirm) => {
+  const hasRecurringCheckout = input.items.some(isRecurringCheckoutItem);
+  if (hasRecurringCheckout && input.paymentOption !== "pay_full") {
+    return {
+      error: "Recurring plans require payment in full today.",
+      hasRecurringCheckout,
+    } as const;
+  }
+
+  if (input.paymentOption === "deposit_cash") {
+    const settings = await getCheckoutSettings();
+    if (!settings.allowCashCheckout) {
+      return {
+        error: "Pay-in-cash checkout is currently disabled.",
+        hasRecurringCheckout,
+      } as const;
+    }
+  }
+
+  return { error: null, hasRecurringCheckout } as const;
+};
+
+const handleCheckoutConfirm = async (c: HonoContext) => {
+  const body = await c.req.json();
+  const parsed = checkoutConfirmRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const paymentValidation = await validateCheckoutPaymentOption(parsed.data);
+  if (paymentValidation.error) {
+    return c.json({ error: paymentValidation.error }, 409);
+  }
+  const { hasRecurringCheckout } = paymentValidation;
+  const customer = await getCheckoutCustomer(c, parsed.data);
+  const addressResult = await resolveCheckoutAddress({
+    address: parsed.data.address,
+    addressId: parsed.data.addressId,
+    customerId: customer.id,
+  });
+  if (addressResult.error) {
+    return c.json({ error: addressResult.error }, addressResult.status ?? 400);
+  }
+  if (!addressResult.address) {
+    return c.json({ error: "Address is required" }, 400);
+  }
+
+  const travel = getTrustedTravelEstimate(addressResult.address);
+  if (!travel) {
+    return c.json({ error: "Address could not be verified" }, 422);
+  }
+
+  let pricing: Awaited<ReturnType<typeof getCheckoutPricing>>;
+  try {
+    pricing = await getCheckoutPricing({
+      address: addressResult.address,
+      checkout: parsed.data,
+      travel,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Choose an available CastleCare appointment window.",
+      },
+      400
+    );
+  }
+  if ("error" in pricing) {
+    return c.json({ error: pricing.error }, pricing.status);
+  }
+
+  let checkoutSession;
+  try {
+    checkoutSession = await reserveCheckoutSession({
+      address: addressResult.address,
+      amountDueCents: pricing.amountDueCents,
+      contact: parsed.data.contact,
+      customerId: customer.id,
+      hasRecurringCheckout,
+      paymentOption: parsed.data.paymentOption,
+      planIds: pricing.planIds,
+      preview: pricing.preview,
+      requestId: c.get("requestId"),
+      scheduledSlots: pricing.scheduledSlots,
+      travel,
+    });
+  } catch (error) {
+    if (error instanceof CheckoutSlotUnavailableError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
+
+  const origin = getCheckoutOrigin(c);
+  const successUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+  let stripeCheckoutSession;
+  try {
+    const stripeCustomerId = await getOrCreateStripeCustomer({
+      email: parsed.data.contact.email,
+      name: parsed.data.contact.name,
+      userId: customer.userId,
+    });
+    stripeCheckoutSession = await createStripeCheckoutSession({
+      amountDueCents: pricing.amountDueCents,
+      cancelUrl: `${origin}/book?checkout=cancelled`,
+      checkoutSessionId: checkoutSession.id,
+      customerEmail: parsed.data.contact.email,
+      expiresAt: new Date(Date.now() + CHECKOUT_SLOT_HOLD_MS),
+      lineItems: getStripeCheckoutLineItems({
+        catalogRows: pricing.catalogRows,
+        hasRecurringCheckout,
+        paymentOption: parsed.data.paymentOption,
+        preview: pricing.preview,
+      }),
+      metadata: {
+        amountDueCents: String(pricing.amountDueCents),
+        checkoutMode: hasRecurringCheckout ? "subscription" : "payment",
+        checkoutSessionId: String(checkoutSession.id),
+        customerId: String(customer.id),
+        paymentOption: parsed.data.paymentOption,
+        planIds: pricing.planIds.join(","),
+        totalCents: String(pricing.preview.totalCents),
+      },
+      mode: hasRecurringCheckout ? "subscription" : "payment",
+      stripeCustomerId,
+      subscriptionMetadata: {
+        billingInterval: pricing.recurringPlans[0]?.interval ?? "month",
+        checkoutSessionId: String(checkoutSession.id),
+        customerId: String(customer.id),
+        planCode: pricing.planIds[0] ?? "",
+        planIds: pricing.planIds.join(","),
+      },
+      successUrl,
+    });
+  } catch (error) {
+    await db
+      .update(checkoutSessions)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(eq(checkoutSessions.id, checkoutSession.id));
+    logger.error(
+      {
+        checkoutSessionId: checkoutSession.id,
+        err: error,
+        requestId: c.get("requestId"),
+      },
+      "checkout:stripe_session_create_failed"
+    );
+    throw error;
+  }
+
+  await db
+    .update(checkoutSessions)
+    .set({
+      stripeCheckoutSessionId: stripeCheckoutSession.id,
+      stripeSubscriptionId: stripeCheckoutSession.subscriptionId ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(checkoutSessions.id, checkoutSession.id));
+
+  return c.json(
+    {
+      checkoutSessionId: checkoutSession.id,
+      checkoutUrl: stripeCheckoutSession.url,
+      status: "pending_payment",
+      stripeCheckoutSessionId: stripeCheckoutSession.id,
+    },
+    200
+  );
+};
 
 export const checkoutRoutes = new Hono<AppEnv>()
   .get("/settings", async (c) => {
@@ -666,7 +1694,13 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
-    const { email, firstName, lastName, plan } = parsed.data;
+    const { email, firstName, lastName, password, plan } = parsed.data;
+    const providerUser = await getOrCreateProviderUser({
+      email,
+      firstName,
+      lastName,
+      ...(password ? { password } : {}),
+    });
     const origin = getCheckoutOrigin(c);
     const successUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&type=provider&plan=${encodeURIComponent(plan)}`;
     const cancelUrl = `${origin}/earn#apply?checkout=cancelled`;
@@ -674,13 +1708,14 @@ export const checkoutRoutes = new Hono<AppEnv>()
     const stripeCheckoutSession = await createStripeCheckoutSession({
       amountDueCents: 5000,
       cancelUrl,
-      checkoutSessionId: Math.floor(Date.now() / 1000),
+      checkoutSessionId: Date.now(),
       customerEmail: email,
       metadata: {
         email,
         firstName,
         lastName,
         plan,
+        providerUserId: providerUser.id,
         type: "provider_express_onboarding",
       },
       successUrl,
@@ -758,14 +1793,28 @@ export const checkoutRoutes = new Hono<AppEnv>()
       travelFeeCents: travel.feeCents,
       travelStateCode: addressForPricing.state,
     });
+    const planIds = parsed.data.items.flatMap((item) =>
+      item.planId ? [item.planId] : []
+    );
+    const catalogRows =
+      planIds.length === 0
+        ? []
+        : await db.query.stripeCatalogItems.findMany({
+            where: inArray(stripeCatalogItems.slug, planIds),
+          });
+    const adjustedPreview = applyCatalogPriceOverrides(
+      preview,
+      catalogRows,
+      planIds
+    );
 
     return c.json(
       {
         address: resolvedAddress,
         addressId: resolvedAddressId,
-        lineItems: preview.lineItems,
-        subtotalCents: preview.subtotalCents,
-        totalCents: preview.totalCents,
+        lineItems: adjustedPreview.lineItems,
+        subtotalCents: adjustedPreview.subtotalCents,
+        totalCents: adjustedPreview.totalCents,
       },
       200
     );
@@ -865,327 +1914,7 @@ export const checkoutRoutes = new Hono<AppEnv>()
       statusCode
     );
   })
-  .post("/confirm", async (c) => {
-    const body = await c.req.json();
-    const parsed = checkoutConfirmRequestSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.flatten() }, 400);
-    }
-
-    if (parsed.data.items.some(isRecurringCheckoutItem)) {
-      return c.json(
-        {
-          error:
-            "Recurring service plans are not available yet. Choose a one-time service.",
-        },
-        409
-      );
-    }
-
-    if (parsed.data.paymentOption === "deposit_cash") {
-      const settings = await getCheckoutSettings();
-      if (!settings.allowCashCheckout) {
-        return c.json(
-          { error: "Pay-in-cash checkout is currently disabled." },
-          409
-        );
-      }
-    }
-
-    const user = c.get("user");
-    const customer = user
-      ? await getOrCreateCustomerForUser(user)
-      : await getOrCreateCustomerForCheckoutContact(parsed.data.contact);
-
-    let address: {
-      city: string;
-      country: string;
-      formattedAddress?: string | null;
-      id: number;
-      latitude: number | null;
-      longitude: number | null;
-      state: string;
-      street: string;
-      zip: string;
-    } | null = null;
-
-    if (parsed.data.addressId) {
-      const existingAddress = await db.query.addresses.findFirst({
-        where: and(
-          eq(addresses.id, parsed.data.addressId),
-          eq(addresses.customerId, customer.id)
-        ),
-      });
-
-      if (!existingAddress) {
-        return c.json({ error: "Address not found" }, 404);
-      }
-
-      address = existingAddress;
-    } else if (parsed.data.address) {
-      const verifiedAddress = await verifyAddressWithRadar(parsed.data.address);
-      address = await createAddressRecord({
-        city: verifiedAddress.city,
-        country: verifiedAddress.country,
-        customerId: customer.id,
-        formattedAddress: verifiedAddress.formattedAddress,
-        isDefault: false,
-        latitude: verifiedAddress.latitude,
-        longitude: verifiedAddress.longitude,
-        radarGeocodeJson: verifiedAddress.raw,
-        state: verifiedAddress.state,
-        street: verifiedAddress.street,
-        zip: verifiedAddress.zip,
-      });
-    }
-
-    if (!address) {
-      return c.json({ error: "Address is required" }, 400);
-    }
-
-    const travel = getTrustedTravelEstimate(address);
-    if (!travel) {
-      return c.json({ error: "Address could not be verified" }, 422);
-    }
-
-    const lawncarePlanError = await validateLawncarePlans({
-      address,
-      items: parsed.data.items,
-    });
-    if (lawncarePlanError) {
-      return c.json({ error: lawncarePlanError }, 409);
-    }
-
-    const checkoutInput = {
-      ...parsed.data,
-      travelDistanceMiles: travel.distanceMiles,
-      travelFeeCents: travel.feeCents,
-      travelStateCode: address.state,
-    } satisfies CheckoutPreviewRequest;
-    let scheduledSlots: ScheduledCheckoutSlot[];
-    try {
-      scheduledSlots = getScheduledCheckoutSlots(checkoutInput.items);
-    } catch (error) {
-      return c.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Choose an available CastleCare appointment window.",
-        },
-        400
-      );
-    }
-
-    const preview = computeCheckoutPreview(checkoutInput);
-    const amountDueCents = getAmountDueCents({
-      paymentOption: parsed.data.paymentOption,
-      totalCents: preview.totalCents,
-    });
-
-    let checkoutSession;
-    try {
-      checkoutSession = await db.transaction(async (tx) => {
-        if (scheduledSlots.length > 0) {
-          await tx.execute(
-            sql`SELECT pg_advisory_xact_lock(${CHECKOUT_SLOT_LOCK_KEY})`
-          );
-
-          const holdCutoff = new Date(Date.now() - CHECKOUT_SLOT_HOLD_MS);
-          const slotConflicts = await Promise.all(
-            scheduledSlots.map(async (slot) => {
-              const [[overlappingOrder], [heldCheckout]] = await Promise.all([
-                tx
-                  .select({ id: orders.id })
-                  .from(orders)
-                  .where(
-                    and(
-                      inArray(orders.status, ACTIVE_ORDER_STATUSES),
-                      lt(orders.scheduledStartAt, slot.end),
-                      gt(orders.scheduledEndAt, slot.start)
-                    )
-                  )
-                  .limit(1),
-                tx
-                  .select({ id: checkoutSessions.id })
-                  .from(checkoutSessions)
-                  .innerJoin(
-                    checkoutItems,
-                    eq(checkoutItems.checkoutSessionId, checkoutSessions.id)
-                  )
-                  .where(
-                    and(
-                      inArray(checkoutSessions.status, [
-                        "pending_payment",
-                        "paid",
-                      ]),
-                      gt(checkoutSessions.updatedAt, holdCutoff),
-                      lt(checkoutItems.scheduledStartAt, slot.end),
-                      gt(checkoutItems.scheduledEndAt, slot.start)
-                    )
-                  )
-                  .limit(1),
-              ]);
-
-              return Boolean(overlappingOrder || heldCheckout);
-            })
-          );
-
-          if (slotConflicts.some(Boolean)) {
-            throw new CheckoutSlotUnavailableError();
-          }
-        }
-
-        const [createdCheckoutSession] = await tx
-          .insert(checkoutSessions)
-          .values({
-            addressId: address.id,
-            customerId: customer.id,
-            metadataJson: {
-              amountDueCents,
-              contact: parsed.data.contact,
-              paymentOption: parsed.data.paymentOption,
-              requestId: c.get("requestId"),
-              travelDistanceMiles: travel.distanceMiles,
-              travelFeeCents: travel.feeCents,
-              travelStateCode: address.state,
-            },
-            status: "pending_payment",
-            subtotalCents: preview.subtotalCents,
-            totalCents: preview.totalCents,
-          })
-          .returning();
-
-        if (!createdCheckoutSession) {
-          throw new Error("Failed to create checkout session");
-        }
-
-        await tx.insert(checkoutItems).values(
-          preview.lineItems.map((lineItem) => ({
-            ...(lineItem.metadata.timingType === "scheduled"
-              ? { timingType: "scheduled" as const }
-              : { timingType: "asap" as const }),
-            basePriceCents: lineItem.basePriceCents,
-            checkoutSessionId: createdCheckoutSession.id,
-            itemKind: lineItem.itemKind,
-            label: lineItem.label,
-            metadataJson: lineItem.metadata,
-            quantity: lineItem.quantity,
-            scheduledEndAt: parseScheduledDate(
-              lineItem.metadata.scheduledEndAt as string | undefined
-            ),
-            scheduledStartAt: parseScheduledDate(
-              lineItem.metadata.scheduledStartAt as string | undefined
-            ),
-            tipAmountCents: lineItem.tipAmountCents,
-            totalPriceCents: lineItem.totalPriceCents,
-          }))
-        );
-
-        const homePreorderResults = await Promise.all(
-          preview.lineItems
-            .filter((lineItem) => lineItem.itemKind === "home_preorder")
-            .map(async (lineItem) => {
-              const homeQuoteId =
-                typeof lineItem.metadata.homeQuoteId === "number"
-                  ? lineItem.metadata.homeQuoteId
-                  : null;
-
-              if (homeQuoteId === null) {
-                return null;
-              }
-
-              const quote = await tx.query.homeQuotes.findFirst({
-                where: eq(homeQuotes.id, homeQuoteId),
-              });
-
-              if (!quote) {
-                return null;
-              }
-
-              return {
-                addressId: address.id,
-                checkoutSessionId: createdCheckoutSession.id,
-                customerId: customer.id,
-                depositAmountCents: lineItem.basePriceCents,
-                homeQuoteId,
-                status: "pending_payment" as const,
-              };
-            })
-        );
-        const homePreorderValues = homePreorderResults.filter(
-          (value) => value !== null
-        );
-
-        if (homePreorderValues.length > 0) {
-          await tx.insert(homePreorders).values(homePreorderValues);
-        }
-
-        return createdCheckoutSession;
-      });
-    } catch (error) {
-      if (error instanceof CheckoutSlotUnavailableError) {
-        return c.json({ error: error.message }, 409);
-      }
-      throw error;
-    }
-
-    const origin = getCheckoutOrigin(c);
-    const successUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
-    let stripeCheckoutSession;
-    try {
-      stripeCheckoutSession = await createStripeCheckoutSession({
-        amountDueCents,
-        cancelUrl: `${origin}/book?checkout=cancelled`,
-        checkoutSessionId: checkoutSession.id,
-        customerEmail: parsed.data.contact.email,
-        expiresAt: new Date(Date.now() + CHECKOUT_SLOT_HOLD_MS),
-        metadata: {
-          amountDueCents: String(amountDueCents),
-          checkoutSessionId: String(checkoutSession.id),
-          customerId: String(customer.id),
-          paymentOption: parsed.data.paymentOption,
-          totalCents: String(preview.totalCents),
-        },
-        successUrl,
-      });
-    } catch (error) {
-      await db
-        .update(checkoutSessions)
-        .set({
-          status: "failed",
-          updatedAt: new Date(),
-        })
-        .where(eq(checkoutSessions.id, checkoutSession.id));
-      logger.error(
-        {
-          checkoutSessionId: checkoutSession.id,
-          err: error,
-          requestId: c.get("requestId"),
-        },
-        "checkout:stripe_session_create_failed"
-      );
-      throw error;
-    }
-
-    await db
-      .update(checkoutSessions)
-      .set({
-        stripeCheckoutSessionId: stripeCheckoutSession.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(checkoutSessions.id, checkoutSession.id));
-
-    return c.json(
-      {
-        checkoutSessionId: checkoutSession.id,
-        checkoutUrl: stripeCheckoutSession.url,
-        status: "pending_payment",
-        stripeCheckoutSessionId: stripeCheckoutSession.id,
-      },
-      200
-    );
-  })
+  .post("/confirm", handleCheckoutConfirm)
   .put("/draft", async (c) => {
     const userResult = requireUser(c);
     if (userResult.error) {

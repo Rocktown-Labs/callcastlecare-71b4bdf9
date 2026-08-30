@@ -17,9 +17,19 @@ import type { Context } from "hono";
 
 import { requireUser, requireWorkerForUser } from "../lib/auth";
 import { sendEmail } from "../lib/integrations/email";
+import { getStripeMode } from "../lib/integrations/stripe-client";
+import {
+  createConnectAccount,
+  createConnectAccountLink,
+  retrieveConnectAccountState,
+} from "../lib/integrations/stripe-connect";
+import { logger } from "../lib/logger";
 import { setOrderStatus } from "../lib/orders";
 import { publishOutboxEvent } from "../lib/outbox";
-import { createCompletionPayoutRecords } from "../lib/payouts";
+import {
+  createCompletionPayoutRecords,
+  releasePendingWorkerPayouts,
+} from "../lib/payouts";
 import type { AppEnv } from "../types";
 import {
   driverLocationHeartbeatSchema,
@@ -136,7 +146,7 @@ const getRequiredMediaForLeg = (
   return null;
 };
 
-const requireWorker = async (c: Context<AppEnv>) => {
+const requireWorkerProfile = async (c: Context<AppEnv>) => {
   const userResult = requireUser(c);
   if (userResult.error) {
     return {
@@ -162,6 +172,24 @@ const requireWorker = async (c: Context<AppEnv>) => {
   };
 };
 
+const requireWorker = async (c: Context<AppEnv>) => {
+  const workerResult = await requireWorkerProfile(c);
+  if (workerResult.error || !workerResult.worker) {
+    return workerResult;
+  }
+  if (
+    workerResult.worker.onboardingStatus !== "approved" ||
+    !workerResult.worker.isActive
+  ) {
+    return {
+      error: c.json({ error: "provider_activation_required" }, 403),
+      user: workerResult.user,
+      worker: null,
+    };
+  }
+  return workerResult;
+};
+
 const withDriverOrder = async (input: {
   orderId: number;
   workerId: number;
@@ -180,7 +208,164 @@ const withDriverOrder = async (input: {
   return order;
 };
 
+const updateWorkerConnectState = async (
+  workerId: number,
+  state: {
+    accountApiVersion: "2026-06-24-v1" | "2026-06-24-v2";
+    chargesEnabled: boolean;
+    mode: "live" | "test";
+    payoutsEnabled: boolean;
+    requirements: unknown;
+    status: string;
+  }
+) => {
+  const current = await db.query.workers.findFirst({
+    where: eq(workers.id, workerId),
+  });
+  const [updated] = await db
+    .update(workers)
+    .set({
+      isActive:
+        state.status === "ready" && current?.onboardingStatus === "approved",
+      stripeAccountApiVersion: state.accountApiVersion,
+      stripeAccountMode: state.mode,
+      stripeAccountStatus: state.status,
+      stripeChargesEnabled: state.chargesEnabled,
+      stripePayoutsEnabled: state.payoutsEnabled,
+      stripeRequirementsJson: state.requirements,
+      updatedAt: new Date(),
+    })
+    .where(eq(workers.id, workerId))
+    .returning();
+  return updated ?? null;
+};
+
 export const driverRoutes = new Hono<AppEnv>()
+  .post("/connect/status", async (c) => {
+    const workerResult = await requireWorkerProfile(c);
+    if (workerResult.error) {
+      return workerResult.error;
+    }
+    if (!workerResult.worker.stripeAccountId) {
+      return c.json(
+        {
+          accountId: null,
+          onboardingStatus: workerResult.worker.onboardingStatus,
+          payoutsEnabled: false,
+          status: "not_started",
+        },
+        200
+      );
+    }
+
+    try {
+      const state = await retrieveConnectAccountState(
+        workerResult.worker.stripeAccountId
+      );
+      const worker = await updateWorkerConnectState(
+        workerResult.worker.id,
+        state
+      );
+      if (worker && state.status === "ready") {
+        await releasePendingWorkerPayouts(worker.id);
+      }
+      return c.json(
+        {
+          accountId: state.accountId,
+          onboardingStatus:
+            worker?.onboardingStatus ?? workerResult.worker.onboardingStatus,
+          payoutsEnabled: state.payoutsEnabled,
+          status: worker?.stripeAccountStatus ?? state.status,
+          transferCapabilityStatus: state.transferCapabilityStatus,
+        },
+        200
+      );
+    } catch (error) {
+      logger.error(
+        {
+          err: error,
+          requestId: c.get("requestId"),
+          workerId: workerResult.worker.id,
+        },
+        "stripe_connect:status_refresh_failed"
+      );
+      return c.json({ error: "Connect status could not be refreshed" }, 502);
+    }
+  })
+  .post("/connect/account-link", async (c) => {
+    const workerResult = await requireWorkerProfile(c);
+    if (workerResult.error) {
+      return workerResult.error;
+    }
+    if (workerResult.worker.onboardingStatus !== "approved") {
+      return c.json(
+        { error: "Connect onboarding unlocks after screening approval" },
+        409
+      );
+    }
+
+    let accountId =
+      workerResult.worker.stripeAccountMode === getStripeMode()
+        ? workerResult.worker.stripeAccountId
+        : null;
+    let accountApiVersion = workerResult.worker.stripeAccountApiVersion as
+      | "2026-06-24-v1"
+      | "2026-06-24-v2"
+      | null;
+    try {
+      if (!accountId) {
+        const created = await createConnectAccount({
+          email: workerResult.worker.email,
+          name: `${workerResult.worker.firstName} ${workerResult.worker.lastName}`.trim(),
+          workerId: workerResult.worker.id,
+        });
+        const {
+          accountApiVersion: createdAccountApiVersion,
+          accountId: createdAccountId,
+        } = created;
+        accountId = createdAccountId;
+        accountApiVersion = createdAccountApiVersion;
+        await db
+          .update(workers)
+          .set({
+            stripeAccountApiVersion: accountApiVersion,
+            stripeAccountId: accountId,
+            stripeAccountMode: getStripeMode(),
+            stripeAccountStatus: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(workers.id, workerResult.worker.id));
+      }
+
+      const { origin } = new URL(c.req.url);
+      const url = await createConnectAccountLink({
+        accountApiVersion: accountApiVersion ?? "2026-06-24-v1",
+        accountId,
+        refreshUrl: `${origin}/dashboard/provider?connect=refresh`,
+        returnUrl: `${origin}/dashboard/provider?connect=complete`,
+      });
+      logger.info(
+        {
+          accountId,
+          requestId: c.get("requestId"),
+          userId: workerResult.user.id,
+          workerId: workerResult.worker.id,
+        },
+        "stripe_connect:onboarding_link_created"
+      );
+      return c.json({ url }, 200);
+    } catch (error) {
+      logger.error(
+        {
+          err: error,
+          requestId: c.get("requestId"),
+          workerId: workerResult.worker.id,
+        },
+        "stripe_connect:onboarding_link_failed"
+      );
+      return c.json({ error: "Connect onboarding could not be started" }, 502);
+    }
+  })
   .post("/profile", async (c) => {
     const userResult = requireUser(c);
     if (userResult.error) {
@@ -199,6 +384,7 @@ export const driverRoutes = new Hono<AppEnv>()
       .values({
         applicationFormData: payload.applicationFormData ?? null,
         email: payload.email.trim().toLowerCase(),
+        equipmentJson: payload.equipmentJson ?? null,
         firstName: payload.firstName,
         lastName: payload.lastName,
         phone: payload.phone,
@@ -211,6 +397,7 @@ export const driverRoutes = new Hono<AppEnv>()
         set: {
           applicationFormData: payload.applicationFormData ?? null,
           email: payload.email.trim().toLowerCase(),
+          equipmentJson: payload.equipmentJson ?? null,
           firstName: payload.firstName,
           lastName: payload.lastName,
           phone: payload.phone,

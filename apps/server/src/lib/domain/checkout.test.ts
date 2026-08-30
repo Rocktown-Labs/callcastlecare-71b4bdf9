@@ -46,6 +46,11 @@ describe("computeCheckoutPreview", () => {
         planId: "crown-estate-trio-medium",
         pricingTier: "medium",
         serviceType: "combo",
+        serviceUnits: [
+          { serviceType: "lawncare", spacingDays: 14, units: 2 },
+          { serviceType: "laundry", spacingDays: 14, units: 2 },
+          { serviceType: "window_washing", spacingDays: 0, units: 1 },
+        ],
       },
     });
   });

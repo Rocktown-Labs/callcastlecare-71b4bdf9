@@ -16,6 +16,7 @@ import {
   calculateTravelFeeCents,
   calculateWindowWashingQuote,
   getLawncarePricingTier,
+  getRecurringServiceUnits,
 } from "@callcastlecare/api";
 
 type PricingTier = "custom" | "large" | "medium" | "small";
@@ -73,6 +74,7 @@ const parsePlanPrice = (
   comboServiceTypes?: readonly CheckoutServiceType[];
   pricingTier?: PricingTier;
   serviceType?: "combo" | CheckoutServiceType;
+  serviceUnits?: ReturnType<typeof getRecurringServiceUnits>;
   windowWashingQuote?: ReturnType<typeof calculateWindowWashingQuote>;
 } => {
   if (item.planId && item.planId in COMBO_SUBSCRIPTION_PRICES) {
@@ -99,6 +101,7 @@ const parsePlanPrice = (
       label: comboLabels[planId],
       pricingTier: getComboPricingTier(planId),
       serviceType: "combo",
+      serviceUnits: getRecurringServiceUnits(planId),
     };
   }
 
@@ -114,6 +117,7 @@ const parsePlanPrice = (
             ? "Royal Pane Bi-Annual Detail"
             : "Royal Pane Monthly",
         serviceType: "window_washing",
+        serviceUnits: getRecurringServiceUnits(item.planId),
       };
     }
 
@@ -160,6 +164,7 @@ const parsePlanPrice = (
       label: LAWNCARE_PLAN_LABELS[planId],
       pricingTier,
       serviceType: "lawncare",
+      serviceUnits: getRecurringServiceUnits(item.planId),
     };
   }
 
@@ -174,6 +179,7 @@ const parsePlanPrice = (
     basePriceCents: laundryPrice,
     label: LAUNDRY_PLAN_LABELS[item.planId as keyof typeof LAUNDRY_PLAN_LABELS],
     serviceType: "laundry",
+    serviceUnits: getRecurringServiceUnits(item.planId),
   };
 };
 
@@ -220,6 +226,7 @@ const getCheckoutLineItem = (
       scheduledEndAt: item.scheduledEndAt ?? null,
       scheduledStartAt: item.scheduledStartAt ?? null,
       serviceType: parsed.serviceType ?? null,
+      serviceUnits: parsed.serviceUnits ?? null,
       timingType: normalizeTiming(item.timingType, item.scheduledStartAt),
     },
     planId: item.planId,

@@ -699,6 +699,9 @@ const getLotSizeAcres = (property: PropertyEstimate | null) => {
   return property.lotSizeSqft / SQFT_PER_ACRE;
 };
 
+const isSubscriptionOnlyMarket = (draft: BookingDraft) =>
+  draft.marketMode === "subscription_first" || draft.travel?.inState === false;
+
 const getDraftLotSizeAcres = (draft: BookingDraft) => {
   const directLot = getLotSizeAcres(draft.property);
   if (directLot) {
@@ -716,7 +719,9 @@ const getDraftLotSizeAcres = (draft: BookingDraft) => {
 const getLawncareFitPlanIds = (draft: BookingDraft) => {
   const lotSizeAcres = getDraftLotSizeAcres(draft);
   if (!lotSizeAcres) {
-    return new Set(["groundskeeper-custom-quote-deposit"]);
+    return isSubscriptionOnlyMarket(draft)
+      ? new Set(["groundskeeper-bi-weekly", "groundskeeper-monthly"])
+      : new Set(["groundskeeper-custom-quote-deposit"]);
   }
 
   const oneTimePlanId = getLawncarePlanId({
@@ -738,8 +743,8 @@ const getEligibleProductsForDraft = (
   draft: BookingDraft,
   serviceId: ServiceId
 ) => {
-  const products = productsByService[serviceId].filter(
-    (product) => !product.recurring
+  const products = productsByService[serviceId].filter((product) =>
+    isSubscriptionOnlyMarket(draft) ? product.recurring : true
   );
 
   if (serviceId === "lawncare") {
@@ -1277,15 +1282,37 @@ const getPaymentOptionsForDraft = (
   draft: BookingDraft,
   allowCashCheckout = true
 ) => {
-  if (hasSubscriptionCheckout(draft)) {
+  if (hasSubscriptionCheckout(draft) || hasSelectedRecurringProduct(draft)) {
     return [subscriptionPaymentOption];
   }
 
   return getPaymentOptionsForServices(draft.services, allowCashCheckout);
 };
 
-const getEligibleCombos = (_draft: BookingDraft) =>
-  comboSubscriptions.filter(() => false);
+const isCustomLawncareDraft = (draft: BookingDraft) =>
+  draft.services.includes("lawncare") &&
+  getLawncareFitPlanIds(draft).has("groundskeeper-custom-quote-deposit");
+
+const getEligibleCombos = (draft: BookingDraft) => {
+  const selectedServiceIds = new Set(draft.services);
+  const selectedCombos = comboSubscriptions.filter((combo) =>
+    combo.requiredServices.every((serviceId) =>
+      selectedServiceIds.has(serviceId)
+    )
+  );
+
+  const pricedCombos = isCustomLawncareDraft(draft)
+    ? selectedCombos.filter(
+        (combo) => !combo.requiredServices.includes("lawncare")
+      )
+    : selectedCombos;
+
+  return draft.services.length === 3
+    ? pricedCombos.filter((combo) => combo.requiredServices.length === 3)
+    : pricedCombos.filter(
+        (combo) => combo.requiredServices.length === draft.services.length
+      );
+};
 
 const isSubscriptionValidForDraft = (draft: BookingDraft) => {
   if (!draft.subscriptionId || draft.subscriptionId === "one_time") {
@@ -3556,6 +3583,12 @@ const BookingWizard = (props: BookingWizardProps) => {
           number="04"
           title="Choose products"
         >
+          {isSubscriptionOnlyMarket(draft) ? (
+            <p className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+              This address is outside Arkansas. Recurring service plans and the
+              applicable travel fee are available for this service area.
+            </p>
+          ) : null}
           <div className="space-y-3">
             {draft.services.map((serviceId) => (
               <ProductAccordion

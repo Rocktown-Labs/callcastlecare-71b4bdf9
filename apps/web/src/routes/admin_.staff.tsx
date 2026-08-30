@@ -76,7 +76,7 @@ const mockApplicants: WorkerRecord[] = [
     firstName: "Sarah",
     id: 2,
     lastName: "Jenkins",
-    onboardingStatus: "active",
+    onboardingStatus: "approved",
     phone: "(501) 555-0188",
     serviceRadiusMiles: 15,
     servicesOffered: ["laundry"],
@@ -93,7 +93,7 @@ const AdminStaffRoute = () => {
 
     const loadStaff = async () => {
       const response = await fetch(
-        new URL("/api/v1/admin/summary", getServerUrl()),
+        new URL("/api/v1/admin/workers", getServerUrl()),
         { credentials: "include" }
       );
       if (!(active && response.ok)) {
@@ -114,13 +114,27 @@ const AdminStaffRoute = () => {
     };
   }, []);
 
-  const approveWorker = (workerId: number) => {
+  const approveWorker = async (workerId: number) => {
+    const response = await fetch(
+      new URL(`/api/v1/admin/workers/${workerId}/approve`, getServerUrl()),
+      {
+        credentials: "include",
+        method: "POST",
+      }
+    );
+    if (!response.ok) {
+      toast.error("Provider approval could not be saved.");
+      return;
+    }
+
     setWorkers((prev) =>
-      prev.map((w) =>
-        w.id === workerId ? { ...w, onboardingStatus: "active" } : w
+      prev.map((worker) =>
+        worker.id === workerId
+          ? { ...worker, onboardingStatus: "approved" }
+          : worker
       )
     );
-    toast.success("Provider approved! Activation email dispatched.");
+    toast.success("Provider approved. Connect onboarding is now available.");
   };
 
   return (
@@ -225,12 +239,12 @@ const AdminStaffRoute = () => {
                       <td className="px-4 py-4">
                         <Badge
                           className={
-                            worker.onboardingStatus === "active"
+                            worker.onboardingStatus === "approved"
                               ? "bg-lime-100 text-lime-800"
                               : "bg-amber-100 text-amber-900"
                           }
                         >
-                          {worker.onboardingStatus === "active" ? (
+                          {worker.onboardingStatus === "approved" ? (
                             <CheckCircle2 className="mr-1 size-3" />
                           ) : null}
                           {worker.onboardingStatus.replaceAll("_", " ")}
@@ -240,9 +254,9 @@ const AdminStaffRoute = () => {
                         {new Date(worker.createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-4 text-right">
-                        {worker.onboardingStatus === "active" ? (
+                        {worker.onboardingStatus === "approved" ? (
                           <Badge className="bg-slate-100 text-slate-600 text-xs">
-                            Active Pro
+                            Approved · Connect next
                           </Badge>
                         ) : (
                           <Button

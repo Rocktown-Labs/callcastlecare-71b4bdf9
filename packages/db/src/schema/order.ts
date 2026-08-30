@@ -5,6 +5,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
@@ -61,10 +62,15 @@ export const orders = pgTable(
     scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
     searchRadiusMiles: integer("search_radius_miles").notNull().default(5),
+    serviceSubscriptionId: integer("service_subscription_id"),
     serviceType: serviceTypeEnum("service_type").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     status: orderStatusEnum("status").notNull().default("pending_payment"),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
+    subscriptionPeriodStart: timestamp("subscription_period_start", {
+      withTimezone: true,
+    }),
+    subscriptionUnitIndex: integer("subscription_unit_index"),
     timingType: timingTypeEnum("timing_type").notNull(),
     tipAmountCents: integer("tip_amount_cents").notNull().default(0),
     tipSettledAt: timestamp("tip_settled_at", { withTimezone: true }),
@@ -84,6 +90,12 @@ export const orders = pgTable(
     index("idx_orders_next_wave_status").on(table.nextWaveAt, table.status),
     index("idx_orders_quote_id").on(table.quoteId),
     index("idx_orders_service_type").on(table.serviceType),
+    index("idx_orders_service_subscription").on(table.serviceSubscriptionId),
+    uniqueIndex("idx_orders_subscription_period_unit").on(
+      table.serviceSubscriptionId,
+      table.subscriptionPeriodStart,
+      table.subscriptionUnitIndex
+    ),
     index("idx_orders_status_start").on(table.status, table.scheduledStartAt),
     index("idx_orders_stripe_payment_intent").on(table.stripePaymentIntentId),
   ]

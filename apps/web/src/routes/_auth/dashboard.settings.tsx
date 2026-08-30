@@ -29,6 +29,16 @@ interface CustomerProfile {
   phone?: string | null;
 }
 
+interface ServiceSubscription {
+  billingInterval: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  currentPeriodStart: string | null;
+  id: number;
+  planCode: string;
+  status: string;
+}
+
 interface CustomerAddress {
   city: string;
   country: string;
@@ -42,6 +52,74 @@ interface CustomerAddress {
   street: string;
   zip: string;
 }
+
+const SubscriptionSettingsCard = (props: {
+  isActionPending: boolean;
+  onCancel: (subscriptionId: number) => void;
+  onOpenPortal: () => void;
+  subscriptions: ServiceSubscription[];
+}) => {
+  if (props.subscriptions.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wider text-lime-700">
+            Recurring service plans
+          </p>
+          <h2 className="mt-1 text-2xl font-black">Your subscriptions</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Manage billing in Stripe. Service visits for each paid period are
+            created automatically for operations.
+          </p>
+        </div>
+        <Button
+          className="rounded-full bg-slate-950 text-white hover:bg-slate-800"
+          disabled={props.isActionPending}
+          onClick={props.onOpenPortal}
+          type="button"
+        >
+          Manage billing
+        </Button>
+      </div>
+      <div className="grid gap-3">
+        {props.subscriptions.map((subscription) => (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            key={subscription.id}
+          >
+            <div>
+              <p className="font-black text-slate-950">
+                {subscription.planCode.replaceAll("-", " ")}
+              </p>
+              <p className="mt-1 text-xs font-semibold uppercase text-slate-500">
+                {subscription.status} · billed {subscription.billingInterval}ly
+              </p>
+            </div>
+            {subscription.cancelAtPeriodEnd ? (
+              <span className="text-xs font-bold text-amber-700">
+                Ends {subscription.currentPeriodEnd ?? "this period"}
+              </span>
+            ) : (
+              <Button
+                className="h-9 rounded-full border-amber-300 bg-white text-xs font-bold text-amber-900 hover:bg-amber-50"
+                disabled={props.isActionPending}
+                onClick={() => props.onCancel(subscription.id)}
+                type="button"
+                variant="outline"
+              >
+                Cancel at period end
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
 
 const emptyAddressForm = {
   addressText: "",
@@ -69,6 +147,9 @@ const DashboardSettingsRoute = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSubscriptionActionPending, setIsSubscriptionActionPending] =
+    useState(false);
+  const [subscriptions, setSubscriptions] = useState<ServiceSubscription[]>([]);
 
   const blocker = useBlocker({
     enableBeforeUnload: isDirty,
@@ -133,6 +214,89 @@ const DashboardSettingsRoute = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadSubscriptions = async () => {
+      try {
+        const response = await fetch(
+          new URL("/api/v1/subscriptions", getServerUrl()),
+          { credentials: "include" }
+        );
+        if (active && response.ok) {
+          const payload = (await response.json()) as {
+            subscriptions?: ServiceSubscription[];
+          };
+          setSubscriptions(payload.subscriptions ?? []);
+        }
+      } catch {
+        // Subscription visibility is supplemental to account settings.
+      }
+    };
+    void loadSubscriptions();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const openBillingPortal = async () => {
+    setIsSubscriptionActionPending(true);
+    try {
+      const response = await fetch(
+        new URL("/api/v1/subscriptions/portal", getServerUrl()),
+        { credentials: "include", method: "POST" }
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        url?: string;
+      };
+      if (!response.ok || !payload.url) {
+        throw new Error(payload.error ?? "Billing portal unavailable.");
+      }
+      window.location.href = payload.url;
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Billing portal unavailable."
+      );
+      setIsSubscriptionActionPending(false);
+    }
+  };
+
+  const cancelSubscription = async (subscriptionId: number) => {
+    setIsSubscriptionActionPending(true);
+    try {
+      const response = await fetch(
+        new URL(
+          `/api/v1/subscriptions/${subscriptionId}/cancel`,
+          getServerUrl()
+        ),
+        { credentials: "include", method: "POST" }
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        subscription?: ServiceSubscription | null;
+      };
+      if (!response.ok || !payload.subscription) {
+        throw new Error(payload.error ?? "Subscription could not be updated.");
+      }
+      setSubscriptions((current) =>
+        current.map((subscription) =>
+          subscription.id === subscriptionId
+            ? (payload.subscription ?? subscription)
+            : subscription
+        )
+      );
+      toast.success("Subscription will end after the current billing period.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Subscription could not be updated."
+      );
+    } finally {
+      setIsSubscriptionActionPending(false);
+    }
+  };
 
   const updateProfileField = (
     field: keyof typeof profileForm,
@@ -309,6 +473,13 @@ const DashboardSettingsRoute = () => {
             1-click arrival window bookings.
           </p>
         </section>
+
+        <SubscriptionSettingsCard
+          isActionPending={isSubscriptionActionPending}
+          onCancel={(subscriptionId) => void cancelSubscription(subscriptionId)}
+          onOpenPortal={() => void openBillingPortal()}
+          subscriptions={subscriptions}
+        />
 
         {blocker.status === "blocked" ? (
           <section className="rounded-3xl border border-amber-300 bg-amber-50 p-5 shadow-sm">

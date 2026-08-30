@@ -93,6 +93,7 @@ export const mediaTypeEnum = pgEnum("media_type", [
   "property_right",
   "property_back",
   "property_baseline",
+  "provider_equipment",
   "laundry_front",
   "laundry_pickup",
   "laundry_scan",

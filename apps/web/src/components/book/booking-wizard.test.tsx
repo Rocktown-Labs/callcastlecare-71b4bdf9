@@ -416,7 +416,7 @@ describe("BookingWizard", () => {
     expect(screen.queryByRole("button", { name: /^monthly/iu })).toBeNull();
   });
 
-  it("filters product choices and hides recurring plans", async () => {
+  it("filters product choices and explains monthly trio service units", async () => {
     mockFetch();
     seedBookingProperty(25_000);
 
@@ -478,17 +478,19 @@ describe("BookingWizard", () => {
     ).toBeNull();
 
     expect(await screen.findByText("Subscription options")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: /crown estate trio/iu })
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: /no subscription today/iu,
-      })
-    ).toBeTruthy();
+    const trioButton = screen
+      .getAllByRole("button", { name: /crown estate trio/iu })
+      .find((btn) => !btn.textContent?.includes("Deluxe"));
+    if (!trioButton) {
+      throw new Error("Crown Estate Trio button not found.");
+    }
+    fireEvent.click(trioButton);
     clickFirstContinue();
 
     expect(await screen.findByText("Review and reserve")).toBeTruthy();
+    expect(screen.getAllByText("$525.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("2x Wash & Fold")).toBeTruthy();
+    expect(screen.getByText("1x Window Wash")).toBeTruthy();
     expect(screen.queryByText("Estimated plan savings")).toBeNull();
   });
 

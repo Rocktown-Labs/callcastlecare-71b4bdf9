@@ -5,6 +5,7 @@ import {
   useRouteContext,
   useSearch,
 } from "@tanstack/react-router";
+import { upload } from "@vercel/blob/client";
 import {
   ArrowRight,
   BadgeCheck,
@@ -58,6 +59,10 @@ interface StoredProviderApplication {
   plan?: "free" | "pro";
   serviceRadiusMiles?: string;
   services?: string[];
+  mowerAccess?: string;
+  mowerType?: string;
+  equipmentPhotoName?: string;
+  windowToolsAccess?: string;
   state?: string;
   streetAddress?: string;
   unit?: string;
@@ -81,6 +86,147 @@ const getStoredApplication = () => {
   }
 };
 
+interface ConnectStatus {
+  accountId: string | null;
+  onboardingStatus: string;
+  payoutsEnabled: boolean;
+  status: string;
+  transferCapabilityStatus?: string | null;
+}
+
+const getConnectStatusLabel = (status: string | undefined) => {
+  if (status === "ready") {
+    return "Ready for payouts";
+  }
+  if (status === "pending") {
+    return "Details needed";
+  }
+  return "Unlocks after approval";
+};
+
+const useProviderConnect = () => {
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(
+    null
+  );
+  const [isConnectingStripe, setIsConnectingStripe] = useState(false);
+
+  useEffect(() => {
+    const loadConnectStatus = async () => {
+      try {
+        const response = await fetch(
+          new URL("/api/v1/driver/connect/status", getServerUrl()),
+          {
+            credentials: "include",
+            method: "POST",
+          }
+        );
+        if (response.ok) {
+          setConnectStatus((await response.json()) as ConnectStatus);
+        }
+      } catch {
+        // The holding page remains usable while Connect is being configured.
+      }
+    };
+
+    void loadConnectStatus();
+  }, []);
+
+  const startConnectOnboarding = async () => {
+    setIsConnectingStripe(true);
+    try {
+      const response = await fetch(
+        new URL("/api/v1/driver/connect/account-link", getServerUrl()),
+        {
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        url?: string;
+      };
+      if (!response.ok || !payload.url) {
+        throw new Error(payload.error ?? "Connect onboarding is unavailable.");
+      }
+      window.location.href = payload.url;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Connect onboarding is unavailable."
+      );
+      setIsConnectingStripe(false);
+    }
+  };
+
+  return { connectStatus, isConnectingStripe, startConnectOnboarding };
+};
+
+const useProviderEquipmentUpload = () => {
+  const [isUploadingEquipment, setIsUploadingEquipment] = useState(false);
+
+  const uploadEquipmentPhoto = async (file: File) => {
+    setIsUploadingEquipment(true);
+    try {
+      const uploadUrlResponse = await fetch(
+        new URL("/api/v1/media/upload-url", getServerUrl()),
+        {
+          body: JSON.stringify({
+            contentType: file.type || "image/jpeg",
+            mediaType: "provider_equipment",
+          }),
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }
+      );
+      if (!uploadUrlResponse.ok) {
+        throw new Error("Equipment photo upload is not configured.");
+      }
+
+      const uploadPayload = (await uploadUrlResponse.json()) as {
+        storagePath: string;
+        uploadUrl: string;
+      };
+      const blob = await upload(uploadPayload.storagePath, file, {
+        access: "private",
+        handleUploadUrl: uploadPayload.uploadUrl,
+      });
+      const attachResponse = await fetch(
+        new URL("/api/v1/media/attach", getServerUrl()),
+        {
+          body: JSON.stringify({
+            mediaType: "provider_equipment",
+            metadata: {
+              originalName: file.name,
+              source: "provider_onboarding",
+            },
+            storagePath: blob.pathname ?? uploadPayload.storagePath,
+          }),
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }
+      );
+      if (!attachResponse.ok) {
+        throw new Error("Equipment photo uploaded but could not be saved.");
+      }
+      toast.success("Equipment photo saved for onboarding review.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Equipment photo upload failed."
+      );
+    } finally {
+      setIsUploadingEquipment(false);
+    }
+  };
+
+  return { isUploadingEquipment, uploadEquipmentPhoto };
+};
+
 const PlanBadge = ({ plan }: Readonly<{ plan: "free" | "pro" }>) => {
   const isPro = plan === "pro";
   return (
@@ -91,7 +237,7 @@ const PlanBadge = ({ plan }: Readonly<{ plan: "free" | "pro" }>) => {
       )}
     >
       {isPro ? <Crown className="size-4" /> : <BadgeCheck className="size-4" />}
-      {isPro ? "CastleCare Pro (60/40 ➔ 80/20)" : "Standard Provider"}
+      {isPro ? "CastleCare Pro (60/40 payout)" : "Standard Provider"}
     </span>
   );
 };
@@ -143,10 +289,169 @@ const ApplicantInfoCard = ({
   </div>
 );
 
+const ProviderStatusTracker = ({
+  connectStatus,
+}: Readonly<{ connectStatus: ConnectStatus | null }>) => (
+  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="flex items-start gap-3">
+      <span className="flex size-10 items-center justify-center rounded-full bg-lime-100 text-lime-800">
+        <ShieldCheck className="size-5" />
+      </span>
+      <div>
+        <h2 className="text-xl font-black">Same-Day Screening Status</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          CastleCare admins review your background check, driving record (MVR),
+          vehicle specs, and ZIP code service radius.
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="text-xs font-black uppercase text-emerald-800">
+          $50 Setup Fee
+        </p>
+        <p className="mt-1 flex items-center gap-1 font-black text-emerald-900">
+          <CheckCircle2 className="size-4 text-emerald-600" />
+          Authorized
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <p className="text-xs font-black uppercase text-amber-800">
+          Background Check
+        </p>
+        <p className="mt-1 flex items-center gap-1 font-black text-amber-900">
+          <Clock className="size-4 text-amber-600" />
+          In Progress
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Stripe Connect
+        </p>
+        <p className="mt-1 font-black text-slate-500">
+          {getConnectStatusLabel(connectStatus?.status)}
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+const ProviderConnectBanner = (props: {
+  connectStatus: ConnectStatus | null;
+  isConnectingStripe: boolean;
+  isUploadingEquipment: boolean;
+  onConnect: () => void;
+  onEquipmentPhoto: (file: File) => void;
+}) => (
+  <section className="rounded-3xl border border-lime-300/60 bg-lime-100/50 p-6 shadow-sm">
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="max-w-2xl">
+        <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-lime-900">
+          <CreditCard className="size-4" />
+          Stripe Connect Payout Integration
+        </p>
+        <h2 className="mt-2 text-2xl font-black text-slate-950">
+          Automated 60/40 Direct Deposits
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-700">
+          Once background screening is approved by CastleCare admin, your
+          <strong> Stripe Connect</strong> onboarding button will unlock right
+          here to link your bank account for job payouts.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {props.connectStatus?.onboardingStatus === "approved" &&
+        props.connectStatus.status !== "ready" ? (
+          <button
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 hover:bg-lime-200 disabled:opacity-60"
+            disabled={props.isConnectingStripe}
+            onClick={props.onConnect}
+            type="button"
+          >
+            <CreditCard className="size-4" />
+            {props.isConnectingStripe
+              ? "Opening Stripe..."
+              : "Connect payout account"}
+          </button>
+        ) : null}
+        <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-5 text-sm font-bold text-slate-950 hover:bg-slate-50">
+          <input
+            accept="image/jpeg,image/png,image/webp,image/heic"
+            className="sr-only"
+            disabled={props.isUploadingEquipment}
+            onChange={(event) => {
+              const [file] = event.currentTarget.files ?? [];
+              if (file) {
+                props.onEquipmentPhoto(file);
+              }
+              event.currentTarget.value = "";
+            }}
+            type="file"
+          />
+          {props.isUploadingEquipment
+            ? "Uploading photo..."
+            : "Add equipment photo"}
+        </label>
+        <Link
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-bold text-white hover:bg-slate-800"
+          to="/dashboard/help"
+        >
+          <HelpCircle className="size-4 text-lime-400" />
+          Contact Onboarding Support
+          <ArrowRight className="size-4" />
+        </Link>
+      </div>
+    </div>
+  </section>
+);
+
+const ProviderEquipmentGuide = () => (
+  <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div>
+      <p className="text-xs font-black uppercase tracking-wider text-lime-700">
+        Starter equipment guide
+      </p>
+      <h2 className="mt-1 text-2xl font-black text-slate-950">
+        Prepare for your first route
+      </h2>
+    </div>
+    <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="font-black text-slate-950">Lawn Care</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Push, riding, or commercial mower, string trimmer, blower, fuel, and
+          basic safety gear.
+        </p>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="font-black text-slate-950">Laundry</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          A reliable car is preferred. CastleCare provides the pickup bags and
+          route instructions.
+        </p>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="font-black text-slate-950">Window Washing</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Squeegee, extension pole, bucket, towels, and a safe ladder. We will
+          send a recommended kit before dispatch.
+        </p>
+      </div>
+    </div>
+  </section>
+);
+
 const ProviderStatusRoute = () => {
   const { session } = useRouteContext({ from: "/_auth/dashboard" });
   const { plan } = useSearch({ from: "/_auth/dashboard/provider" });
   const application = useMemo(() => getStoredApplication(), []);
+  const { connectStatus, isConnectingStripe, startConnectOnboarding } =
+    useProviderConnect();
+  const { isUploadingEquipment, uploadEquipmentPhoto } =
+    useProviderEquipmentUpload();
   const [isProfileSaved, setIsProfileSaved] = useState(false);
 
   useEffect(() => {
@@ -169,6 +474,12 @@ const ProviderStatusRoute = () => {
               paymentStatus: "paid_express_50",
             },
             email: application.email,
+            equipmentJson: {
+              equipmentPhotoName: application.equipmentPhotoName ?? null,
+              mowerAccess: application.mowerAccess ?? null,
+              mowerType: application.mowerType ?? null,
+              windowToolsAccess: application.windowToolsAccess ?? null,
+            },
             firstName: application.firstName,
             lastName: application.lastName,
             phone: application.phone ?? "",
@@ -234,53 +545,7 @@ const ProviderStatusRoute = () => {
 
           {/* Status Tracker */}
           <section className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-start gap-3">
-                <span className="flex size-10 items-center justify-center rounded-full bg-lime-100 text-lime-800">
-                  <ShieldCheck className="size-5" />
-                </span>
-                <div>
-                  <h2 className="text-xl font-black">
-                    Same-Day Screening Status
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    CastleCare admins review your background check, driving
-                    record (MVR), vehicle specs, and ZIP code service radius.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-xs font-black uppercase text-emerald-800">
-                    $50 Setup Fee
-                  </p>
-                  <p className="mt-1 flex items-center gap-1 font-black text-emerald-900">
-                    <CheckCircle2 className="size-4 text-emerald-600" />
-                    Authorized
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <p className="text-xs font-black uppercase text-amber-800">
-                    Background Check
-                  </p>
-                  <p className="mt-1 flex items-center gap-1 font-black text-amber-900">
-                    <Clock className="size-4 text-amber-600" />
-                    In Progress
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-black uppercase text-slate-400">
-                    Stripe Connect
-                  </p>
-                  <p className="mt-1 font-black text-slate-500">Unlocks Next</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Applicant Info Card */}
+            <ProviderStatusTracker connectStatus={connectStatus} />
             <ApplicantInfoCard
               addressParts={addressParts}
               application={application}
@@ -289,34 +554,14 @@ const ProviderStatusRoute = () => {
             />
           </section>
 
-          {/* Stripe Connect Payout Unlocking Banner */}
-          <section className="rounded-3xl border border-lime-300/60 bg-lime-100/50 p-6 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="max-w-2xl">
-                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-lime-900">
-                  <CreditCard className="size-4" />
-                  Stripe Connect Payout Integration
-                </p>
-                <h2 className="mt-2 text-2xl font-black text-slate-950">
-                  Automated 60/40 ➔ 80/20 Direct Deposits
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  Once background screening is approved by CastleCare admin,
-                  your <strong>Stripe Connect</strong> onboarding button will
-                  unlock right here to link your bank account for instant job
-                  payouts!
-                </p>
-              </div>
-              <Link
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-bold text-white hover:bg-slate-800"
-                to="/dashboard/help"
-              >
-                <HelpCircle className="size-4 text-lime-400" />
-                Contact Onboarding Support
-                <ArrowRight className="size-4" />
-              </Link>
-            </div>
-          </section>
+          <ProviderConnectBanner
+            connectStatus={connectStatus}
+            isConnectingStripe={isConnectingStripe}
+            isUploadingEquipment={isUploadingEquipment}
+            onConnect={() => void startConnectOnboarding()}
+            onEquipmentPhoto={(file) => void uploadEquipmentPhoto(file)}
+          />
+          <ProviderEquipmentGuide />
         </div>
       </main>
     </AppShell>
