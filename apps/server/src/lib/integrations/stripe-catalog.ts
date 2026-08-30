@@ -338,7 +338,7 @@ export const ensureStripeWebhookEndpoints = async (stripe: Stripe) => {
               },
               url,
             },
-            getStripeRequestOptions("webhook-endpoint", definition.kind)
+            getStripeRequestOptions("webhook-endpoint", definition.kind, url)
           );
           return {
             connect: definition.connect,
