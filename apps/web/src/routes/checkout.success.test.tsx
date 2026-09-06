@@ -56,7 +56,7 @@ describe("CheckoutSuccessPage", () => {
     expect(screen.getByRole("list")).toBeTruthy();
     expect(
       screen
-        .getByRole("link", { name: /claim your account/iu })
+        .getByRole("link", { name: /get dashboard access/iu })
         .getAttribute("href")
     ).toBe("/claim-account");
     expect(

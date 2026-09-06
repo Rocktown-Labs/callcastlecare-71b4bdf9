@@ -27,22 +27,22 @@ const RouteComponent = () => {
           <div className="max-w-xl">
             <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-sm text-white/85 shadow-2xl shadow-black/20 backdrop-blur">
               <Sparkles aria-hidden="true" className="size-4" />
-              Customer dashboard access
+              Secure dashboard access
             </p>
             <h1 className="max-w-2xl text-5xl font-semibold leading-tight tracking-normal">
-              Claim the account tied to your booking.
+              Access the dashboard tied to your booking.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-white/78">
-              Use the same email from checkout to view appointment status,
-              invoices, service photos, and follow-up notes.
+              Use the same email from checkout. We’ll send a one-time code to
+              verify your inbox before opening your dashboard.
             </p>
           </div>
 
           <div className="grid gap-3">
             {[
-              "No password required for first access",
-              "Your booking email becomes your customer login",
-              "Dashboard access is ready for future service history",
+              "No password required",
+              "Use the email from your booking",
+              "One-time code, then dashboard access",
             ].map((highlight) => (
               <div
                 className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white/85 shadow-xl shadow-black/10 backdrop-blur"
@@ -74,13 +74,13 @@ const RouteComponent = () => {
             <div className="mb-6">
               <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1 text-sm font-medium text-lime-200">
                 <ShieldCheck aria-hidden="true" className="size-4" />
-                Secure claim
+                One-time email code
               </p>
               <h1 className="text-3xl font-semibold tracking-normal text-white">
-                Access your CastleCare account
+                Get dashboard access
               </h1>
               <p className="mt-3 text-sm leading-6 text-white/64">
-                We will send a one-time code to verify this is your inbox.
+                We’ll email a one-time code to verify your booking email.
               </p>
             </div>
 
@@ -88,7 +88,7 @@ const RouteComponent = () => {
               className="max-w-[25rem] rounded-[2rem] border border-white/10 bg-white/[0.055] shadow-2xl shadow-black/35 backdrop-blur"
               description="Use the email from checkout to continue into your customer dashboard."
               email={search.email}
-              title="Claim with email code"
+              title="Email me a sign-in code"
             />
           </div>
         </div>
@@ -102,11 +102,11 @@ export const Route = createFileRoute("/claim-account")({
   head: () => ({
     meta: [
       {
-        title: "Claim Account | CastleCare",
+        title: "Dashboard Access | CastleCare",
       },
       {
         content:
-          "Claim your CastleCare customer account with a one-time email code after checkout.",
+          "Access your CastleCare customer dashboard with a one-time email code after checkout.",
         name: "description",
       },
     ],

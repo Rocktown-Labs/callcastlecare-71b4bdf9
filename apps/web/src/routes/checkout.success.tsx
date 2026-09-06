@@ -39,9 +39,9 @@ const customerSteps = [
   },
   {
     description:
-      "Claim your account to view status, invoices, and follow-up details anytime.",
+      "Use your checkout email to receive a one-time code and open your dashboard.",
     icon: UserRoundCheck,
-    title: "Manage everything in one place",
+    title: "Get dashboard access",
   },
 ] as const;
 
@@ -196,7 +196,7 @@ export const CheckoutSuccessPage = () => {
                       className={`${actionLinkClassName} bg-lime-300 text-slate-950 hover:bg-lime-200`}
                       to="/claim-account"
                     >
-                      Claim your account
+                      Get dashboard access
                       <ArrowRight aria-hidden="true" className="size-4" />
                     </Link>
                   )}
@@ -227,7 +227,7 @@ export const Route = createFileRoute("/checkout/success")({
       },
       {
         content:
-          "Your CastleCare checkout is complete. Claim your account to view booking status and service details.",
+          "Your CastleCare checkout is complete. Get dashboard access with a one-time email code.",
         name: "description",
       },
     ],
