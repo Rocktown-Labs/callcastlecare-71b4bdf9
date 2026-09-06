@@ -1,16 +1,69 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { Image } from "@unpic/react";
 import { CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import { EmailOtpSignIn } from "@/components/auth/email-otp-sign-in";
 
 const searchSchema = z.object({
+  accessToken: z.string().min(1).optional(),
   email: z.string().email().optional(),
 });
 
 const RouteComponent = () => {
   const search = useSearch({ from: "/claim-account" });
+  const [email, setEmail] = useState(search.email ?? "");
+  const [isResolvingEmail, setIsResolvingEmail] = useState(
+    Boolean(search.accessToken && !search.email)
+  );
+  const [resolveError, setResolveError] = useState(false);
+
+  useEffect(() => {
+    if (!search.accessToken || search.email) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let isActive = true;
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/checkout/access-token/resolve?token=${encodeURIComponent(search.accessToken)}`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          throw new Error("Checkout email could not be resolved");
+        }
+        const payload = (await response.json()) as { email?: string };
+        if (!isActive) {
+          return;
+        }
+        if (payload.email) {
+          setEmail(payload.email);
+        } else {
+          setResolveError(true);
+        }
+      } catch (error: unknown) {
+        if (
+          isActive &&
+          !(error instanceof DOMException && error.name === "AbortError")
+        ) {
+          setResolveError(true);
+        }
+      } finally {
+        if (isActive) {
+          setIsResolvingEmail(false);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [search.accessToken, search.email]);
 
   return (
     <main className="grid min-h-svh bg-[#070b13] text-foreground lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)]">
@@ -82,12 +135,26 @@ const RouteComponent = () => {
               <p className="mt-3 text-sm leading-6 text-white/64">
                 We’ll email a one-time code to verify your booking email.
               </p>
+              {isResolvingEmail && (
+                <output
+                  aria-live="polite"
+                  className="mt-3 block text-sm text-lime-200"
+                >
+                  Loading your checkout email…
+                </output>
+              )}
+              {resolveError && (
+                <p className="mt-3 text-sm text-amber-200">
+                  Enter your checkout email below to continue.
+                </p>
+              )}
             </div>
 
             <EmailOtpSignIn
               className="max-w-[25rem] rounded-[2rem] border border-white/10 bg-white/[0.055] shadow-2xl shadow-black/35 backdrop-blur"
               description="Use the email from checkout to continue into your customer dashboard."
-              email={search.email}
+              email={email}
+              key={email || "checkout-email"}
               title="Email me a sign-in code"
             />
           </div>

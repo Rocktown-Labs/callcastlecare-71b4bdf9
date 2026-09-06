@@ -14,6 +14,7 @@ import {
   UserRoundCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import MarketingLayout from "@/components/home/marketing-layout";
@@ -104,8 +105,44 @@ const SuccessStep = ({
 export const CheckoutSuccessPage = () => {
   const search = useSearch({ from: "/checkout/success" });
   const navigate = useNavigate();
+  const [checkoutAccessToken, setCheckoutAccessToken] = useState<string | null>(
+    null
+  );
 
   const isProviderFlow = search.type === "provider";
+
+  useEffect(() => {
+    if (isProviderFlow || !search.session_id) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/checkout/access-token?session_id=${encodeURIComponent(search.session_id)}`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as {
+          accessToken?: string;
+        };
+        if (payload.accessToken) {
+          setCheckoutAccessToken(payload.accessToken);
+        }
+      } catch {
+        // The email form remains available as a safe fallback.
+      }
+    })();
+
+    return () => controller.abort();
+  }, [isProviderFlow, search.session_id]);
+
+  const claimAccountSearch = checkoutAccessToken
+    ? { accessToken: checkoutAccessToken }
+    : {};
 
   const handleProviderVerification = () => {
     void navigate({
@@ -194,6 +231,7 @@ export const CheckoutSuccessPage = () => {
                   ) : (
                     <Link
                       className={`${actionLinkClassName} bg-lime-300 text-slate-950 hover:bg-lime-200`}
+                      search={claimAccountSearch}
                       to="/claim-account"
                     >
                       Get dashboard access
