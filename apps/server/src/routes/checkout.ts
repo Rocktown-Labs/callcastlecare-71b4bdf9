@@ -14,6 +14,7 @@ import {
   checkoutDrafts,
   checkoutItems,
   checkoutSessions,
+  customers,
   homePreorders,
   homeQuotes,
   orderDisputes,
@@ -37,6 +38,10 @@ import {
   requireUser,
   getOrCreateCustomerForUser,
 } from "../lib/auth";
+import {
+  createCheckoutAccessToken,
+  readCheckoutAccessToken,
+} from "../lib/checkout-access";
 import { getCheckoutSettings } from "../lib/checkout-settings";
 import {
   computeCheckoutPreview,
@@ -57,6 +62,7 @@ import {
   createStripeCheckoutSession,
   getOrCreateStripeCustomer,
   parseStripeWebhookEvent,
+  retrieveStripeCheckoutSession,
   retrieveStripeSubscription,
 } from "../lib/integrations/stripe-payments";
 import type {
@@ -1686,6 +1692,82 @@ export const checkoutRoutes = new Hono<AppEnv>()
   .get("/settings", async (c) => {
     const settings = await getCheckoutSettings();
     return c.json(settings, 200);
+  })
+  .get("/access-token", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const stripeCheckoutSessionId = c.req.query("session_id");
+    if (!stripeCheckoutSessionId?.startsWith("cs_")) {
+      return c.json({ error: "Invalid checkout session" }, 400);
+    }
+
+    const checkoutSession = await db.query.checkoutSessions.findFirst({
+      columns: {
+        id: true,
+      },
+      where: eq(
+        checkoutSessions.stripeCheckoutSessionId,
+        stripeCheckoutSessionId
+      ),
+    });
+    if (!checkoutSession) {
+      return c.json({ error: "Checkout session not found" }, 404);
+    }
+
+    const stripeCheckoutSession = await retrieveStripeCheckoutSession(
+      stripeCheckoutSessionId
+    );
+    if (!stripeCheckoutSession) {
+      return c.json({ error: "Checkout access is unavailable" }, 503);
+    }
+
+    const paymentComplete =
+      stripeCheckoutSession.status === "complete" &&
+      (stripeCheckoutSession.payment_status === "paid" ||
+        stripeCheckoutSession.payment_status === "no_payment_required");
+    if (!paymentComplete) {
+      return c.json({ error: "Checkout payment is not complete" }, 409);
+    }
+
+    return c.json(
+      {
+        accessToken: createCheckoutAccessToken(checkoutSession.id),
+      },
+      200
+    );
+  })
+  .get("/access-token/resolve", async (c) => {
+    c.header("Cache-Control", "no-store");
+    const token = c.req.query("token");
+    if (!token) {
+      return c.json({ error: "Invalid checkout access token" }, 400);
+    }
+
+    const claims = readCheckoutAccessToken(token);
+    if (!claims) {
+      return c.json({ error: "Invalid checkout access token" }, 401);
+    }
+
+    const checkoutSession = await db.query.checkoutSessions.findFirst({
+      columns: {
+        customerId: true,
+      },
+      where: eq(checkoutSessions.id, claims.checkoutSessionId),
+    });
+    if (!checkoutSession) {
+      return c.json({ error: "Checkout session not found" }, 404);
+    }
+
+    const customer = await db.query.customers.findFirst({
+      columns: {
+        email: true,
+      },
+      where: eq(customers.id, checkoutSession.customerId),
+    });
+    if (!customer) {
+      return c.json({ error: "Checkout customer not found" }, 404);
+    }
+
+    return c.json({ email: customer.email }, 200);
   })
   .post("/provider", async (c) => {
     const body = await c.req.json();

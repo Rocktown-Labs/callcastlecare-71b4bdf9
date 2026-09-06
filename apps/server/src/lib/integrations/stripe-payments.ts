@@ -137,6 +137,14 @@ export const getOrCreateStripeCustomer = async (input: {
   return customer.id;
 };
 
+export const retrieveStripeCheckoutSession = (checkoutSessionId: string) => {
+  const stripeClient = getStripeClient();
+  if (!stripeClient) {
+    return null;
+  }
+  return stripeClient.checkout.sessions.retrieve(checkoutSessionId);
+};
+
 export const retrieveStripeSubscription = (subscriptionId: string) => {
   const stripeClient = getStripeClient();
   if (!stripeClient) {
