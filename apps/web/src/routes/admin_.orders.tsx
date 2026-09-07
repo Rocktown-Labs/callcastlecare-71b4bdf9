@@ -42,16 +42,16 @@ interface AdminOrderSummary {
   order: {
     assignedWorkerId?: number | null;
     createdAt: string;
-    groupStatus: string;
-    groupStatusLabel: string;
+    groupStatus?: string;
+    groupStatusLabel?: string;
     id: number;
     orderIds: number[];
     scheduledStartAt?: string | null;
-    serviceCount: number;
-    serviceLabel: string;
-    serviceLabels: string[];
+    serviceCount?: number;
+    serviceLabel?: string;
+    serviceLabels?: string[];
     status: string;
-    statusLabel: string;
+    statusLabel?: string;
     totalPriceCents: number;
   };
 }
@@ -79,6 +79,13 @@ const formatDateTime = (value?: string | null) =>
         timeStyle: "short",
       }).format(new Date(value))
     : "Not scheduled";
+
+const getOrderServiceLabels = (order: AdminOrderSummary["order"]) => {
+  if (Array.isArray(order.serviceLabels)) {
+    return order.serviceLabels;
+  }
+  return order.serviceLabel ? [order.serviceLabel] : [];
+};
 
 const getStatusTone = (status: string) => {
   if (status === "in_progress" || status === "arrived") {
@@ -186,68 +193,73 @@ const AdminOrdersRoute = () => {
                 </Link>
               </div>
             ) : null}
-            {orders.map(({ address, customer, order }) => (
-              <Link
-                className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 text-slate-950 shadow-sm transition-all hover:-translate-y-0.5 hover:border-lime-400 hover:shadow-md lg:grid-cols-[1fr_auto]"
-                key={order.id}
-                params={{ orderId: String(order.id) }}
-                to="/admin/orders/$orderId"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
-                      {order.serviceLabel}
-                    </span>
-                    <Badge className={getStatusTone(order.groupStatus)}>
-                      {order.groupStatusLabel}
-                    </Badge>
-                    <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500">
-                      <ShieldCheck className="size-3.5" /> Ticket
-                    </span>
-                  </div>
-                  <h2 className="mt-3 text-2xl font-black">
-                    Order #{order.id}
-                  </h2>
-                  <p className="mt-1 text-sm font-semibold text-slate-600">
-                    {customer
-                      ? `${customer.firstName} ${customer.lastName} · ${customer.email}`
-                      : "Customer"}
-                  </p>
-                  <p className="mt-1 flex items-start gap-2 text-sm text-slate-500">
-                    <MapPin className="mt-0.5 size-4 shrink-0 text-lime-600" />
-                    <span>{address?.formattedAddress ?? "No address"}</span>
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {order.serviceLabels.map((label) => (
-                      <span
-                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize text-slate-700"
-                        key={label}
-                      >
-                        {label}
+            {orders.map(({ address, customer, order }) => {
+              const labels = getOrderServiceLabels(order);
+              const status = order.groupStatus ?? order.status;
+              return (
+                <Link
+                  className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 text-slate-950 shadow-sm transition-all hover:-translate-y-0.5 hover:border-lime-400 hover:shadow-md lg:grid-cols-[1fr_auto]"
+                  key={order.id}
+                  params={{ orderId: String(order.id) }}
+                  to="/admin/orders/$orderId"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
+                        {order.serviceLabel ??
+                          (labels.join(" · ") || "Service")}
                       </span>
-                    ))}
-                    <span className="rounded-lg bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
-                      {order.serviceCount} services
-                    </span>
-                  </div>
-                </div>
-                <div className="grid content-between gap-4 text-sm font-semibold text-slate-600 lg:min-w-52 lg:text-right">
-                  <p className="inline-flex items-center gap-2 lg:justify-end">
-                    <CalendarDays className="size-4 text-lime-600" />
-                    {formatDateTime(order.scheduledStartAt)}
-                  </p>
-                  <div>
-                    <p className="text-2xl font-black text-lime-700">
-                      {formatCents(order.totalPriceCents)}
+                      <Badge className={getStatusTone(status)}>
+                        {order.groupStatusLabel ?? order.statusLabel ?? status}
+                      </Badge>
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500">
+                        <ShieldCheck className="size-3.5" /> Ticket
+                      </span>
+                    </div>
+                    <h2 className="mt-3 text-2xl font-black">
+                      Order #{order.id}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold text-slate-600">
+                      {customer
+                        ? `${customer.firstName} ${customer.lastName} · ${customer.email}`
+                        : "Customer"}
                     </p>
-                    <span className="mt-2 inline-flex items-center gap-2 text-slate-950">
-                      Open ticket
-                      <ArrowRight className="size-4" />
-                    </span>
+                    <p className="mt-1 flex items-start gap-2 text-sm text-slate-500">
+                      <MapPin className="mt-0.5 size-4 shrink-0 text-lime-600" />
+                      <span>{address?.formattedAddress ?? "No address"}</span>
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {labels.map((label) => (
+                        <span
+                          className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize text-slate-700"
+                          key={label}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                      <span className="rounded-lg bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
+                        {order.serviceCount ?? labels.length} services
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                  <div className="grid content-between gap-4 text-sm font-semibold text-slate-600 lg:min-w-52 lg:text-right">
+                    <p className="inline-flex items-center gap-2 lg:justify-end">
+                      <CalendarDays className="size-4 text-lime-600" />
+                      {formatDateTime(order.scheduledStartAt)}
+                    </p>
+                    <div>
+                      <p className="text-2xl font-black text-lime-700">
+                        {formatCents(order.totalPriceCents)}
+                      </p>
+                      <span className="mt-2 inline-flex items-center gap-2 text-slate-950">
+                        Open ticket
+                        <ArrowRight className="size-4" />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </section>
         </div>
       </main>
