@@ -7,6 +7,7 @@ import {
 import { and, db, desc, eq, inArray } from "@callcastlecare/db";
 import {
   addresses,
+  checkoutItems,
   customers,
   dispatchOffers,
   mediaAssets,
@@ -17,16 +18,25 @@ import {
   notifications,
   stripeCatalogItems,
   stripeCoupons,
+  routeStops,
   stripeSyncRuns,
   supportRequests,
   user as authUsers,
+  workerRoutes,
   workers,
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 
-import { getOrderGroupKey } from "../lib/admin-order-groups";
+import {
+  getGroupStatus,
+  getOrderGroupKey,
+  getOrderGroupMembers,
+  serviceLabels,
+  statusLabels,
+} from "../lib/admin-order-groups";
+import type { AdminOrderStatus } from "../lib/admin-order-groups";
 import {
   getCheckoutSettings,
   updateCheckoutSettings,
@@ -130,27 +140,6 @@ const activeOrderStatuses = [
   "in_progress",
 ] as const;
 
-const serviceLabels = {
-  laundry: "Laundry",
-  lawncare: "Lawn Care",
-  window_washing: "Window Washing",
-} as const;
-
-const statusLabels = {
-  arrived: "Arrived",
-  assigned: "Confirmed",
-  cancelled: "Cancelled",
-  completed: "Completed",
-  dispatching: "Ready to dispatch",
-  draft: "Draft",
-  en_route: "On the way",
-  failed: "Failed",
-  in_progress: "In progress",
-  paid: "Paid",
-  pending_payment: "Awaiting payment",
-  quoted: "Quoted",
-} as const satisfies Record<OrderStatus, string>;
-
 const orderStatusTimestampPatch = (
   status: "arrived" | "in_progress" | "completed"
 ) => {
@@ -188,6 +177,30 @@ const hasBeforeMedia = (mediaTypes: Set<string>) =>
 const hasAfterMedia = (mediaTypes: Set<string>) =>
   mediaTypes.has("service_after") || mediaTypes.has("lawncare_after");
 
+const getCheckoutMetadata = (
+  items: { metadataJson: unknown }[],
+  serviceType: string
+) => {
+  for (const item of items) {
+    const metadata =
+      item.metadataJson && typeof item.metadataJson === "object"
+        ? (item.metadataJson as Record<string, unknown>)
+        : {};
+    const comboServiceTypes = Array.isArray(metadata.comboServiceTypes)
+      ? metadata.comboServiceTypes
+      : [];
+    if (
+      metadata.serviceType === serviceType ||
+      (metadata.serviceType === "combo" &&
+        comboServiceTypes.includes(serviceType))
+    ) {
+      return metadata;
+    }
+  }
+
+  return null;
+};
+
 const getAdminOrderDetail = async (orderId: number) => {
   const order = await db.query.orders.findFirst({
     where: eq(orders.id, orderId),
@@ -197,46 +210,145 @@ const getAdminOrderDetail = async (orderId: number) => {
     return null;
   }
 
-  const [customer, address, items, statusHistory, mediaLinks] =
-    await Promise.all([
-      db.query.customers.findFirst({
-        where: eq(customers.id, order.customerId),
-      }),
-      db.query.addresses.findFirst({
-        where: eq(addresses.id, order.addressId),
-      }),
-      db.query.orderItems.findMany({
-        orderBy: (table, { asc }) => [asc(table.id)],
-        where: eq(orderItems.orderId, order.id),
-      }),
-      db.query.orderStatusHistory.findMany({
-        orderBy: desc(orderStatusHistory.changedAt),
-        where: eq(orderStatusHistory.orderId, order.id),
-      }),
-      db.query.orderMediaLinks.findMany({
-        orderBy: desc(orderMediaLinks.createdAt),
-        where: eq(orderMediaLinks.orderId, order.id),
-      }),
-    ]);
+  const members = (await getOrderGroupMembers(orderId)) ?? [order];
+  const [customer, address, checkoutSessionItems] = await Promise.all([
+    db.query.customers.findFirst({
+      where: eq(customers.id, order.customerId),
+    }),
+    db.query.addresses.findFirst({
+      where: eq(addresses.id, order.addressId),
+    }),
+    order.checkoutSessionId
+      ? db.query.checkoutItems.findMany({
+          where: eq(checkoutItems.checkoutSessionId, order.checkoutSessionId),
+        })
+      : Promise.resolve([]),
+  ]);
 
-  const mediaIds = mediaLinks.map((link) => link.mediaAssetId);
-  const media =
-    mediaIds.length === 0
-      ? []
-      : await db.query.mediaAssets.findMany({
-          where: inArray(mediaAssets.id, mediaIds),
-        });
-  const mediaById = new Map(media.map((asset) => [asset.id, asset]));
+  const services = await Promise.all(
+    members.map(async (member) => {
+      const [items, statusHistory, mediaLinks, offers, stops] =
+        await Promise.all([
+          db.query.orderItems.findMany({
+            orderBy: (table, { asc }) => [asc(table.id)],
+            where: eq(orderItems.orderId, member.id),
+          }),
+          db.query.orderStatusHistory.findMany({
+            orderBy: desc(orderStatusHistory.changedAt),
+            where: eq(orderStatusHistory.orderId, member.id),
+          }),
+          db.query.orderMediaLinks.findMany({
+            orderBy: desc(orderMediaLinks.createdAt),
+            where: eq(orderMediaLinks.orderId, member.id),
+          }),
+          db.query.dispatchOffers.findMany({
+            orderBy: desc(dispatchOffers.createdAt),
+            where: eq(dispatchOffers.orderId, member.id),
+          }),
+          db.query.routeStops.findMany({
+            orderBy: (table, { asc }) => [asc(table.sequence)],
+            where: eq(routeStops.orderId, member.id),
+          }),
+        ]);
+
+      const mediaIds = mediaLinks.map((link) => link.mediaAssetId);
+      const media =
+        mediaIds.length === 0
+          ? []
+          : await db.query.mediaAssets.findMany({
+              where: inArray(mediaAssets.id, mediaIds),
+            });
+      const mediaById = new Map(media.map((asset) => [asset.id, asset]));
+
+      const workerIds = [
+        ...new Set(
+          [
+            member.assignedWorkerId,
+            ...offers.map((offer) => offer.workerId),
+          ].filter((workerId): workerId is number => workerId !== null)
+        ),
+      ];
+      const offeredWorkers =
+        workerIds.length === 0
+          ? []
+          : await db.query.workers.findMany({
+              where: inArray(workers.id, workerIds),
+            });
+      const workerById = new Map(
+        offeredWorkers.map((worker) => [worker.id, worker])
+      );
+
+      const routeIds = [...new Set(stops.map((stop) => stop.routeId))];
+      const routes =
+        routeIds.length === 0
+          ? []
+          : await db.query.workerRoutes.findMany({
+              where: inArray(workerRoutes.id, routeIds),
+            });
+      const routeById = new Map(routes.map((route) => [route.id, route]));
+
+      return {
+        assignedWorkerId: member.assignedWorkerId,
+        checkoutMetadata: getCheckoutMetadata(
+          checkoutSessionItems,
+          member.serviceType
+        ),
+        id: member.id,
+        items,
+        media: mediaLinks.map((link) => ({
+          ...link,
+          asset: mediaById.get(link.mediaAssetId) ?? null,
+        })),
+        offers: offers.map((offer) => ({
+          ...offer,
+          worker: workerById.get(offer.workerId) ?? null,
+        })),
+        scheduledEndAt: member.scheduledEndAt,
+        scheduledStartAt: member.scheduledStartAt,
+        serviceLabel:
+          serviceLabels[member.serviceType as keyof typeof serviceLabels] ??
+          member.serviceType,
+        serviceType: member.serviceType,
+        status: member.status,
+        statusHistory,
+        stops: stops.map((stop) => ({
+          ...stop,
+          address: address
+            ? { formattedAddress: address.formattedAddress }
+            : null,
+          route: routeById.get(stop.routeId) ?? null,
+        })),
+        totalPriceCents: member.totalPriceCents,
+      };
+    })
+  );
+
+  const statuses = members.map((member) => member.status as AdminOrderStatus);
+  const groupStatus = getGroupStatus(statuses);
+  const groupStatusLabel = statusLabels[groupStatus];
+  const serviceIds = members.map((member) => member.id);
+  const media = services.flatMap((service) => service.media);
+  const items = services.flatMap((service) => service.items);
+  const statusHistory = services.flatMap((service) =>
+    service.statusHistory.map((entry) => ({ ...entry, orderId: service.id }))
+  );
 
   return {
     address,
     customer,
     items,
-    media: mediaLinks.map((link) => ({
-      ...link,
-      asset: mediaById.get(link.mediaAssetId) ?? null,
-    })),
-    order,
+    media,
+    order: {
+      ...order,
+      groupStatus,
+      groupStatusLabel,
+      orderIds: serviceIds,
+      totalPriceCents: members.reduce(
+        (total, member) => total + member.totalPriceCents,
+        0
+      ),
+    },
+    services,
     statusHistory,
   };
 };
@@ -493,24 +605,68 @@ export const adminRoutes = new Hono<AppEnv>()
       .from(orders)
       .leftJoin(customers, eq(customers.id, orders.customerId))
       .leftJoin(addresses, eq(addresses.id, orders.addressId))
+      .where(inArray(orders.status, activeOrderStatuses))
       .orderBy(desc(orders.createdAt))
       .limit(100);
 
+    const groups = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = getOrderGroupKey(row.order);
+      const group = groups.get(key);
+      if (group) {
+        group.push(row);
+      } else {
+        groups.set(key, [row]);
+      }
+    }
+
     return c.json(
       {
-        orders: rows.map((row) => ({
-          address: row.address,
-          customer: row.customer,
-          order: {
-            ...row.order,
-            serviceLabel:
-              serviceLabels[
-                row.order.serviceType as keyof typeof serviceLabels
-              ] ?? row.order.serviceType,
-            statusLabel:
-              statusLabels[row.order.status as OrderStatus] ?? row.order.status,
-          },
-        })),
+        orders: [...groups.values()].map((group) => {
+          const sortedGroup = group.toSorted(
+            (first, second) => first.order.id - second.order.id
+          );
+          const [anchor] = sortedGroup;
+          if (!anchor) {
+            throw new Error("Admin order group has no anchor order");
+          }
+
+          const labels = [
+            ...new Set(
+              sortedGroup.map(
+                (row) =>
+                  serviceLabels[
+                    row.order.serviceType as keyof typeof serviceLabels
+                  ] ?? row.order.serviceType
+              )
+            ),
+          ];
+          const groupStatus = getGroupStatus(
+            sortedGroup.map((row) => row.order.status as AdminOrderStatus)
+          );
+
+          return {
+            address: anchor.address,
+            customer: anchor.customer,
+            order: {
+              ...anchor.order,
+              groupStatus,
+              groupStatusLabel: statusLabels[groupStatus],
+              orderIds: sortedGroup.map((row) => row.order.id),
+              serviceCount: sortedGroup.length,
+              serviceLabel:
+                labels.length === 1 ? labels[0] : "Multiple services",
+              serviceLabels: labels,
+              statusLabel:
+                statusLabels[anchor.order.status as OrderStatus] ??
+                anchor.order.status,
+              totalPriceCents: sortedGroup.reduce(
+                (total, row) => total + row.order.totalPriceCents,
+                0
+              ),
+            },
+          };
+        }),
       },
       200
     );
