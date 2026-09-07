@@ -10,6 +10,7 @@ export interface BookingReceivedEmailProps {
   customerName: string;
   dashboardUrl?: string;
   depositCents: number;
+  orderLabel?: string;
   paymentChoice: string;
   services: string[];
   totalCents: number;
@@ -22,13 +23,18 @@ export const BookingReceivedEmail = Object.assign(
     customerName = "there",
     dashboardUrl = castleCareUrl("/dashboard"),
     depositCents = 0,
+    orderLabel,
     paymentChoice = "Payment choice pending",
     services = [],
     totalCents = 0,
   }: BookingReceivedEmailProps) => (
     <EmailShell
-      preview="We received your CastleCare booking details and are preparing your service."
-      title="Your CastleCare request is in"
+      preview={`We received your CastleCare booking details${orderLabel ? ` for ${orderLabel}` : ""} and are preparing your service.`}
+      title={
+        orderLabel
+          ? `Booking Confirmed (${orderLabel})`
+          : "Your CastleCare request is in"
+      }
     >
       <Section className="px-7 pb-7">
         <Text className="m-0 mb-5 text-[15px] leading-[1.7] text-muted">
@@ -37,6 +43,7 @@ export const BookingReceivedEmail = Object.assign(
           needs a quote check before your appointment is confirmed.
         </Text>
         <Section className="rounded border border-solid border-border bg-soft px-5 py-2">
+          {orderLabel ? <InfoRow label="Order" value={orderLabel} /> : null}
           <InfoRow label="Services" value={services.join(", ")} />
           <InfoRow label="Address" value={address} />
           <InfoRow label="Appointment window" value={appointmentWindow} />

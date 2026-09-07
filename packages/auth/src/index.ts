@@ -9,7 +9,12 @@ import { admin } from "better-auth/plugins/admin";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import StripeSdk from "stripe";
 
-import { sendAuthEmail, sendAuthOtpEmail } from "./email";
+import {
+  sendAdminSignupNotification,
+  sendAuthEmail,
+  sendAuthOtpEmail,
+  sendWelcomeAuthEmail,
+} from "./email";
 
 type AuthOtpType =
   | "change-email"
@@ -113,6 +118,33 @@ export const createAuth = () => {
 
       schema,
     }),
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            if (user.email) {
+              try {
+                await sendWelcomeAuthEmail({
+                  customerName: user.name,
+                  to: user.email,
+                });
+              } catch {
+                // Non-blocking welcome email delivery failure
+              }
+
+              try {
+                await sendAdminSignupNotification({
+                  customerEmail: user.email,
+                  customerName: user.name,
+                });
+              } catch {
+                // Non-blocking admin alert delivery failure
+              }
+            }
+          },
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,

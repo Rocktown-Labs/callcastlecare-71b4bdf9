@@ -15,9 +15,10 @@ export const enqueueMessage = async <TPayload>(
   topic: QueueTopic,
   payload: TPayload,
   options?: SendOptions
-) => {
+): Promise<boolean> => {
   try {
     await send(topic, payload, options);
+    return true;
   } catch (error) {
     logger.error(
       {
@@ -28,5 +29,6 @@ export const enqueueMessage = async <TPayload>(
       },
       "queue:enqueue:failed"
     );
+    return false;
   }
 };

@@ -4,6 +4,7 @@ import {
   addresses,
   checkoutItems,
   checkoutSessions,
+  customers,
   homePreorders,
   orderItems,
   orders,
@@ -11,10 +12,17 @@ import {
   serviceLegs,
   serviceSubscriptions,
 } from "@callcastlecare/db/schema/index";
+import {
+  castleCareUrl,
+  renderAdminBookingAlertEmail,
+  renderBookingReceivedEmail,
+} from "@callcastlecare/email";
+import { env } from "@callcastlecare/env/server";
 
 import { dispatchOrder } from "./dispatch";
 import { getComboServiceTypes } from "./domain/checkout";
 import type { CheckoutServiceType } from "./domain/checkout";
+import { sendEmail } from "./integrations/email";
 import { logger } from "./logger";
 import { publishOutboxEvent } from "./outbox";
 
@@ -323,6 +331,38 @@ export const setOrderStatus = async (input: {
   });
 };
 
+export const formatAppointmentWindow = (
+  start: Date | string | null,
+  end: Date | string | null
+) => {
+  if (!start) {
+    return "Appointment window pending";
+  }
+  const startDate = typeof start === "string" ? new Date(start) : start;
+  const endDate = typeof end === "string" ? new Date(end) : end;
+  const dateStr = startDate.toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+    timeZone: "America/Chicago",
+    weekday: "short",
+  });
+  const startTime = startDate.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Chicago",
+  });
+  const endTime = endDate
+    ? endDate.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/Chicago",
+      })
+    : "";
+  return endTime
+    ? `${dateStr}, ${startTime} – ${endTime}`
+    : `${dateStr}, ${startTime}`;
+};
+
 export const finalizeCheckoutPayment = async (input: {
   checkoutSessionId: number;
   stripePaymentIntentId?: string;
@@ -552,11 +592,102 @@ export const finalizeCheckoutPayment = async (input: {
       };
     });
 
+  const primaryOrderId = createdOrderIds[0] ?? null;
+
+  try {
+    const customer = await db.query.customers.findFirst({
+      where: eq(customers.id, existingSession.customerId),
+    });
+    const address = await db.query.addresses.findFirst({
+      where: eq(addresses.id, existingSession.addressId),
+    });
+    const items = await db.query.checkoutItems.findMany({
+      where: eq(checkoutItems.checkoutSessionId, existingSession.id),
+    });
+
+    const serviceLabels = items.map((item) => item.label).filter(Boolean);
+    const primaryStart = items[0]?.scheduledStartAt ?? null;
+    const primaryEnd = items[0]?.scheduledEndAt ?? null;
+    const appointmentWindow = formatAppointmentWindow(primaryStart, primaryEnd);
+
+    const formattedAddress = address
+      ? (address.formattedAddress ??
+        buildFormattedAddress({
+          city: address.city,
+          country: address.country,
+          state: address.state,
+          street: address.street,
+          zip: address.zip,
+        }))
+      : "Address on file";
+
+    const totalCents = existingSession.totalCents;
+    const depositCents = Math.min(5000, totalCents);
+    const isPaidInFull =
+      existingSession.mode === "payment" && totalCents <= 5000;
+    const paymentChoice = isPaidInFull
+      ? "Paid in full"
+      : "Deposit paid today, remaining balance invoiced upon completion";
+
+    if (customer && primaryOrderId) {
+      const customerEmailHtml = await renderBookingReceivedEmail({
+        address: formattedAddress,
+        appointmentWindow,
+        customerName: customer.firstName,
+        dashboardUrl: castleCareUrl(`/dashboard/orders/${primaryOrderId}`),
+        depositCents,
+        orderLabel: `Order #${primaryOrderId}`,
+        paymentChoice,
+        services:
+          serviceLabels.length > 0 ? serviceLabels : ["CastleCare Service"],
+        totalCents,
+      });
+
+      await sendEmail({
+        html: customerEmailHtml.html,
+        idempotencyKey: `checkout-confirmation/${existingSession.id}/customer`,
+        subject: `Your CastleCare Booking is Confirmed (Order #${primaryOrderId})`,
+        text: customerEmailHtml.text,
+        to: customer.email,
+      });
+
+      const adminEmail = env.ADMIN_EMAIL;
+      if (adminEmail) {
+        const adminEmailHtml = await renderAdminBookingAlertEmail({
+          address: formattedAddress,
+          adminUrl: castleCareUrl(`/admin/orders/${primaryOrderId}`),
+          amountDueCents: depositCents,
+          appointmentWindow,
+          customerEmail: customer.email,
+          customerName: `${customer.firstName} ${customer.lastName}`.trim(),
+          customerPhone: customer.phone,
+          services:
+            serviceLabels.length > 0 ? serviceLabels : ["CastleCare Service"],
+        });
+
+        await sendEmail({
+          html: adminEmailHtml.html,
+          idempotencyKey: `checkout-confirmation/${existingSession.id}/admin`,
+          subject:
+            `New Booking: Order #${primaryOrderId} - ${customer.firstName} ${customer.lastName}`.trim(),
+          text: adminEmailHtml.text,
+          to: adminEmail,
+        });
+      }
+    }
+  } catch (emailError) {
+    logger.error(
+      { checkoutSessionId: existingSession.id, err: emailError },
+      "checkout:emails:failed"
+    );
+  }
+
   await publishOutboxEvent({
     eventName: "checkout_confirmed",
     payload: {
       checkoutSessionId: existingSession.id,
       customerId: existingSession.customerId,
+      ...(primaryOrderId ? { orderId: primaryOrderId } : {}),
     },
   });
 

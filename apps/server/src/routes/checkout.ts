@@ -70,7 +70,11 @@ import type {
   StripeWebhookEvent,
 } from "../lib/integrations/stripe-payments";
 import { logger } from "../lib/logger";
-import { createAddressRecord, finalizeCheckoutPayment } from "../lib/orders";
+import {
+  createAddressRecord,
+  finalizeCheckoutPayment,
+  formatAppointmentWindow,
+} from "../lib/orders";
 import { releasePendingWorkerPayouts } from "../lib/payouts";
 import {
   materializeSubscriptionPeriodOrders,
@@ -1688,6 +1692,93 @@ const handleCheckoutConfirm = async (c: HonoContext) => {
   );
 };
 
+const formatCustomerAddress = (
+  address: typeof addresses.$inferSelect | null | undefined
+) => {
+  if (address?.formattedAddress) {
+    return address.formattedAddress;
+  }
+  if (address) {
+    return `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
+  }
+  return "Address on file";
+};
+
+const formatCustomerProfile = (
+  customer: typeof customers.$inferSelect | null | undefined
+) => {
+  if (!customer) {
+    return null;
+  }
+  return {
+    email: customer.email,
+    name: `${customer.firstName} ${customer.lastName}`.trim(),
+    phone: customer.phone,
+  };
+};
+
+const buildCheckoutAccessTokenPayload = async (
+  checkoutSession: typeof checkoutSessions.$inferSelect,
+  currentUserId: string | null | undefined
+) => {
+  const [customer, address, relatedOrders, items] = await Promise.all([
+    db.query.customers.findFirst({
+      where: eq(customers.id, checkoutSession.customerId),
+    }),
+    db.query.addresses.findFirst({
+      where: eq(addresses.id, checkoutSession.addressId),
+    }),
+    db.query.orders.findMany({
+      where: eq(orders.checkoutSessionId, checkoutSession.id),
+    }),
+    db.query.checkoutItems.findMany({
+      where: eq(checkoutItems.checkoutSessionId, checkoutSession.id),
+    }),
+  ]);
+
+  const primaryOrder = relatedOrders[0] ?? null;
+  const orderId = primaryOrder?.id ?? null;
+  const orderIds = relatedOrders.map((entry) => entry.id);
+
+  const isAuthenticated = Boolean(
+    currentUserId && customer && currentUserId === customer.userId
+  );
+
+  const serviceLabels = items.map((item) => item.label).filter(Boolean);
+  const [firstItem] = items;
+  const scheduledStart =
+    primaryOrder?.scheduledStartAt ?? firstItem?.scheduledStartAt ?? null;
+  const scheduledEnd =
+    primaryOrder?.scheduledEndAt ?? firstItem?.scheduledEndAt ?? null;
+  const appointmentWindow = formatAppointmentWindow(
+    scheduledStart,
+    scheduledEnd
+  );
+
+  const { totalCents } = checkoutSession;
+  const depositAmountCents = Math.min(depositCents, totalCents);
+  const isPaidInFull =
+    checkoutSession.mode === "payment" && totalCents <= depositCents;
+
+  return {
+    accessToken: createCheckoutAccessToken(checkoutSession.id),
+    appointmentWindow,
+    customer: formatCustomerProfile(customer),
+    formattedAddress: formatCustomerAddress(address),
+    isAuthenticated,
+    orderId,
+    orderIds,
+    orderNumber: orderId ? String(orderId) : null,
+    payment: {
+      amountPaidCents: depositAmountCents,
+      isPaidInFull,
+      paymentOption: isPaidInFull ? "pay_full" : "deposit_invoice",
+      totalCents,
+    },
+    services: serviceLabels.length > 0 ? serviceLabels : ["CastleCare Service"],
+  };
+};
+
 export const checkoutRoutes = new Hono<AppEnv>()
   .get("/settings", async (c) => {
     const settings = await getCheckoutSettings();
@@ -1701,9 +1792,6 @@ export const checkoutRoutes = new Hono<AppEnv>()
     }
 
     const checkoutSession = await db.query.checkoutSessions.findFirst({
-      columns: {
-        id: true,
-      },
       where: eq(
         checkoutSessions.stripeCheckoutSessionId,
         stripeCheckoutSessionId
@@ -1728,12 +1816,67 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: "Checkout payment is not complete" }, 409);
     }
 
-    return c.json(
-      {
-        accessToken: createCheckoutAccessToken(checkoutSession.id),
-      },
-      200
+    const currentUser = c.get("user");
+    const payload = await buildCheckoutAccessTokenPayload(
+      checkoutSession,
+      currentUser?.id
     );
+    return c.json(payload, 200);
+  })
+  .post("/send-login-code", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      sessionId?: string;
+      token?: string;
+    };
+    const stripeCheckoutSessionId =
+      typeof body.sessionId === "string" ? body.sessionId : null;
+    const token = typeof body.token === "string" ? body.token : null;
+
+    let checkoutSessionId: number | null = null;
+    if (token) {
+      const claims = readCheckoutAccessToken(token);
+      checkoutSessionId = claims?.checkoutSessionId ?? null;
+    }
+
+    if (!checkoutSessionId && stripeCheckoutSessionId?.startsWith("cs_")) {
+      const session = await db.query.checkoutSessions.findFirst({
+        columns: { id: true },
+        where: eq(
+          checkoutSessions.stripeCheckoutSessionId,
+          stripeCheckoutSessionId
+        ),
+      });
+      if (session) {
+        checkoutSessionId = session.id;
+      }
+    }
+
+    if (!checkoutSessionId) {
+      return c.json({ error: "Invalid checkout session" }, 400);
+    }
+
+    const checkoutSession = await db.query.checkoutSessions.findFirst({
+      where: eq(checkoutSessions.id, checkoutSessionId),
+    });
+    if (!checkoutSession) {
+      return c.json({ error: "Checkout session not found" }, 404);
+    }
+
+    const customer = await db.query.customers.findFirst({
+      where: eq(customers.id, checkoutSession.customerId),
+    });
+    if (!customer) {
+      return c.json({ error: "Customer not found" }, 404);
+    }
+
+    await auth.api.sendVerificationOTP({
+      body: {
+        email: customer.email,
+        type: "sign-in",
+      },
+    });
+
+    return c.json({ email: customer.email, success: true }, 200);
   })
   .get("/access-token/resolve", async (c) => {
     c.header("Cache-Control", "no-store");

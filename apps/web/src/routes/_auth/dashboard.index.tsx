@@ -648,7 +648,11 @@ export const AdminDashboard = ({ userEmail }: { userEmail: string }) => {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      toast.error(payload?.error ?? "Stripe sync failed");
+      toast.error(
+        typeof payload?.error === "string"
+          ? payload.error
+          : "Stripe sync failed"
+      );
       return;
     }
 

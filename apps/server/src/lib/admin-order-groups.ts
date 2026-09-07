@@ -107,7 +107,8 @@ export const getOrderGroupMembers = async (orderId: number) => {
   );
   return [
     anchor,
-    ...[...members.filter((order) => order.id !== anchor.id)]
+    ...members
+      .filter((order) => order.id !== anchor.id)
       .toSorted((first, second) => first.id - second.id),
   ];
 };
