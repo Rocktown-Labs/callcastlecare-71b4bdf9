@@ -1,3 +1,4 @@
+import { Badge } from "@callcastlecare/ui/components/badge";
 import { Button } from "@callcastlecare/ui/components/button";
 import {
   Link,
@@ -11,7 +12,9 @@ import {
   ArrowRight,
   CalendarDays,
   ClipboardCheck,
+  MapPin,
   ReceiptText,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -37,10 +40,16 @@ interface AdminOrderSummary {
     lastName: string;
   } | null;
   order: {
+    assignedWorkerId?: number | null;
     createdAt: string;
+    groupStatus: string;
+    groupStatusLabel: string;
     id: number;
+    orderIds: number[];
     scheduledStartAt?: string | null;
+    serviceCount: number;
     serviceLabel: string;
+    serviceLabels: string[];
     status: string;
     statusLabel: string;
     totalPriceCents: number;
@@ -51,11 +60,9 @@ const getAdminSession = async () => {
   const response = await fetch(new URL("/api/v1/me", getServerUrl()), {
     credentials: "include",
   });
-
   if (!response.ok) {
     return null;
   }
-
   return (await response.json()) as SessionPayload;
 };
 
@@ -73,6 +80,16 @@ const formatDateTime = (value?: string | null) =>
       }).format(new Date(value))
     : "Not scheduled";
 
+const getStatusTone = (status: string) => {
+  if (status === "in_progress" || status === "arrived") {
+    return "bg-lime-100 text-lime-800";
+  }
+  if (status === "assigned" || status === "en_route") {
+    return "bg-sky-100 text-sky-800";
+  }
+  return "bg-slate-100 text-slate-700";
+};
+
 const AdminOrdersRoute = () => {
   const { session } = useRouteContext({ from: "/admin_/orders" });
   const pathname = useRouterState({
@@ -87,41 +104,31 @@ const AdminOrdersRoute = () => {
     }
 
     let active = true;
-
     const loadOrders = async () => {
       setIsLoading(true);
-      const response = await fetch(
-        new URL("/api/v1/admin/orders", getServerUrl()),
-        {
-          credentials: "include",
-        }
-      );
-
-      if (!active) {
-        return;
-      }
-
-      if (response.ok) {
-        const payload = (await response.json()) as {
-          orders?: AdminOrderSummary[];
-        };
-        setOrders(payload.orders ?? []);
-      }
-
-      setIsLoading(false);
-    };
-
-    const runLoadOrders = async () => {
       try {
-        await loadOrders();
+        const response = await fetch(
+          new URL("/api/v1/admin/orders", getServerUrl()),
+          { credentials: "include" }
+        );
+        if (active && response.ok) {
+          const payload = (await response.json()) as {
+            orders?: AdminOrderSummary[];
+          };
+          setOrders(payload.orders ?? []);
+        }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Orders failed");
-        setIsLoading(false);
+        if (active) {
+          toast.error(error instanceof Error ? error.message : "Orders failed");
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
       }
     };
 
-    void runLoadOrders();
-
+    void loadOrders();
     return () => {
       active = false;
     };
@@ -139,34 +146,34 @@ const AdminOrdersRoute = () => {
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-lime-300 bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
                 <ReceiptText className="size-4" />
-                Admin orders
+                Admin operations
               </div>
               <h1 className="text-3xl font-black tracking-tight md:text-5xl">
                 Job queue
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                Open an order to confirm it, move it through field statuses, add
-                notes, and upload before or after photos.
+                One ticket per booking window. Expand a ticket to see every
+                service, worker offer, field photo, route stop, and timestamp.
               </p>
             </div>
             <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
-              {orders.length} orders
+              {orders.length} open {orders.length === 1 ? "ticket" : "tickets"}
             </div>
           </section>
 
-          <section className="grid gap-3">
+          <section className="grid gap-4">
             {isLoading ? (
               <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center font-bold text-slate-500">
-                Loading orders...
+                Loading tickets...
               </div>
             ) : null}
             {!isLoading && orders.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center">
                 <ClipboardCheck className="mx-auto size-8 text-lime-600" />
-                <h2 className="mt-3 text-xl font-black">No jobs yet</h2>
+                <h2 className="mt-3 text-xl font-black">No open tickets</h2>
                 <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-                  Paid bookings will land here with the field action workflow
-                  ready to use.
+                  Paid bookings will land here as one cohesive ticket, even when
+                  the work is split between several workers.
                 </p>
                 <Link to="/admin/catalog">
                   <Button
@@ -181,42 +188,63 @@ const AdminOrdersRoute = () => {
             ) : null}
             {orders.map(({ address, customer, order }) => (
               <Link
-                className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-5 text-slate-950 shadow-sm transition-colors hover:border-lime-300 lg:grid-cols-[1fr_auto]"
+                className="grid gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 text-slate-950 shadow-sm transition-all hover:-translate-y-0.5 hover:border-lime-400 hover:shadow-md lg:grid-cols-[1fr_auto]"
                 key={order.id}
                 params={{ orderId: String(order.id) }}
                 to="/admin/orders/$orderId"
               >
-                <div>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase text-lime-800">
                       {order.serviceLabel}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                      {order.statusLabel}
+                    <Badge className={getStatusTone(order.groupStatus)}>
+                      {order.groupStatusLabel}
+                    </Badge>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500">
+                      <ShieldCheck className="size-3.5" /> Ticket
                     </span>
                   </div>
-                  <h2 className="mt-3 text-lg font-black">Order #{order.id}</h2>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <h2 className="mt-3 text-2xl font-black">
+                    Order #{order.id}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">
                     {customer
                       ? `${customer.firstName} ${customer.lastName} · ${customer.email}`
                       : "Customer"}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {address?.formattedAddress ?? "No address"}
+                  <p className="mt-1 flex items-start gap-2 text-sm text-slate-500">
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-lime-600" />
+                    <span>{address?.formattedAddress ?? "No address"}</span>
                   </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {order.serviceLabels.map((label) => (
+                      <span
+                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize text-slate-700"
+                        key={label}
+                      >
+                        {label}
+                      </span>
+                    ))}
+                    <span className="rounded-lg bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
+                      {order.serviceCount} services
+                    </span>
+                  </div>
                 </div>
-                <div className="grid gap-2 text-sm font-semibold text-slate-600 lg:text-right">
+                <div className="grid content-between gap-4 text-sm font-semibold text-slate-600 lg:min-w-52 lg:text-right">
                   <p className="inline-flex items-center gap-2 lg:justify-end">
                     <CalendarDays className="size-4 text-lime-600" />
                     {formatDateTime(order.scheduledStartAt)}
                   </p>
-                  <p className="text-lg font-black text-lime-700">
-                    {formatCents(order.totalPriceCents)}
-                  </p>
-                  <span className="inline-flex items-center gap-2 text-slate-950 lg:justify-end">
-                    Field actions
-                    <ArrowRight className="size-4" />
-                  </span>
+                  <div>
+                    <p className="text-2xl font-black text-lime-700">
+                      {formatCents(order.totalPriceCents)}
+                    </p>
+                    <span className="mt-2 inline-flex items-center gap-2 text-slate-950">
+                      Open ticket
+                      <ArrowRight className="size-4" />
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}
@@ -239,9 +267,7 @@ export const Route = createFileRoute("/admin_/orders")({
 
     const adminSession = await getAdminSession();
     if (!adminSession?.isAdmin) {
-      throw redirect({
-        to: "/dashboard",
-      });
+      throw redirect({ to: "/dashboard" });
     }
 
     return { session: adminSession };

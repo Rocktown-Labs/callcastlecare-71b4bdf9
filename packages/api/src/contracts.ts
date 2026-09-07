@@ -64,6 +64,27 @@ export interface CheckoutPreviewItemInput {
   cleanScreens?: boolean;
   propertyType?: "residential" | "commercial";
   paneCount?: number;
+  grassHeight?: "low" | "medium" | "tall";
+  hasPets?: "yes" | "no";
+  obstacles?: string;
+  bedding?: "none" | "with-bedding";
+  pickupMode?: "outside" | "knock";
+  serviceDetails?: {
+    laundry?: {
+      bedding?: "none" | "with-bedding";
+      pickupMode?: "outside" | "knock";
+    };
+    lawncare?: {
+      grassHeight?: "low" | "medium" | "tall";
+      hasPets?: "yes" | "no";
+      obstacles?: string;
+    };
+    window_washing?: {
+      cleaningScope?: "exterior" | "both";
+      windowEstimate?: string;
+    };
+  };
+  siteNotes?: string;
   isSubscription?: boolean;
   frequency?: "one_time" | "bi_weekly" | "weekly" | "monthly";
 }

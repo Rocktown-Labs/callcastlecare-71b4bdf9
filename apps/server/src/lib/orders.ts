@@ -5,6 +5,7 @@ import {
   checkoutItems,
   checkoutSessions,
   homePreorders,
+  orderItems,
   orders,
   orderStatusHistory,
   serviceLegs,
@@ -110,6 +111,12 @@ const getServiceOrderTypes = (
         spacingDays: 0,
       }))
     : [];
+};
+
+const SERVICE_LABELS: Record<CheckoutServiceType, string> = {
+  laundry: "Laundry",
+  lawncare: "Lawn Care",
+  window_washing: "Window Washing",
 };
 
 const getScheduledComponentDate = (
@@ -463,6 +470,17 @@ export const finalizeCheckoutPayment = async (input: {
 
             orderIds.push(createdOrder.id);
             newlyCreatedOrderIds.push(createdOrder.id);
+
+            await tx.insert(orderItems).values({
+              amountCents: allocateCents(
+                item.totalPriceCents,
+                componentIndex,
+                componentCount
+              ),
+              key: `${createdOrder.serviceType}-${componentIndex + 1}`,
+              label: SERVICE_LABELS[createdOrder.serviceType],
+              orderId: createdOrder.id,
+            });
 
             if (createdOrder.serviceType === "laundry") {
               await tx.insert(serviceLegs).values(

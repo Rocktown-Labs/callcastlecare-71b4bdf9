@@ -73,28 +73,62 @@ const orderStatusTimestampPatch = (
   return { completedAt: new Date() };
 };
 
-const hasOrderMediaType = async (orderId: number, mediaType: MediaType) => {
-  const links = await db.query.orderMediaLinks.findMany({
-    columns: {
-      mediaAssetId: true,
-    },
-    where: eq(orderMediaLinks.orderId, orderId),
-  });
+const propertyPhotoTypes = [
+  "property_front",
+  "property_back",
+  "property_left",
+  "property_right",
+] as const;
 
+const hasRequiredOrderPhaseMedia = async (input: {
+  orderId: number;
+  phase: "after" | "before";
+  serviceType: string;
+}) => {
+  const links = await db.query.orderMediaLinks.findMany({
+    columns: { mediaAssetId: true },
+    where: eq(orderMediaLinks.orderId, input.orderId),
+  });
   const mediaIds = links.map((link) => link.mediaAssetId);
   if (mediaIds.length === 0) {
     return false;
   }
-
   const assets = await db.query.mediaAssets.findMany({
-    columns: {
-      id: true,
-      mediaType: true,
-    },
+    columns: { mediaType: true, metadataJson: true },
     where: inArray(mediaAssets.id, mediaIds),
   });
+  const hasPhaseMedia = (asset: (typeof assets)[number]) => {
+    const metadata =
+      asset.metadataJson && typeof asset.metadataJson === "object"
+        ? (asset.metadataJson as Record<string, unknown>)
+        : {};
+    const assetPhase =
+      metadata.phase ??
+      (asset.mediaType.endsWith("_after") ? "after" : "before");
+    return assetPhase === input.phase;
+  };
 
-  return assets.some((asset) => asset.mediaType === mediaType);
+  if (input.serviceType === "lawncare" || input.serviceType === "laundry") {
+    const propertySlotsComplete = propertyPhotoTypes.every((mediaType) =>
+      assets.some(
+        (asset) => asset.mediaType === mediaType && hasPhaseMedia(asset)
+      )
+    );
+    if (propertySlotsComplete) {
+      return true;
+    }
+    const legacyMediaType =
+      input.phase === "before" ? "lawncare_before" : "lawncare_after";
+    return assets.some(
+      (asset) => asset.mediaType === legacyMediaType && hasPhaseMedia(asset)
+    );
+  }
+
+  const mediaType =
+    input.phase === "before" ? "service_before" : "service_after";
+  return assets.some(
+    (asset) => asset.mediaType === mediaType && hasPhaseMedia(asset)
+  );
 };
 
 const hasLegMediaType = async (legId: number, mediaType: MediaType) => {
@@ -770,13 +804,14 @@ export const driverRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order cannot start from current state" }, 409);
     }
 
-    if (order.serviceType === "lawncare") {
-      const hasBeforePhoto = await hasOrderMediaType(
-        order.id,
-        "lawncare_before"
-      );
+    if (order.serviceType === "lawncare" || order.serviceType === "laundry") {
+      const hasBeforePhoto = await hasRequiredOrderPhaseMedia({
+        orderId: order.id,
+        phase: "before",
+        serviceType: order.serviceType,
+      });
       if (!hasBeforePhoto) {
-        return c.json({ error: "Before photo is required" }, 409);
+        return c.json({ error: "Before property photos are required" }, 409);
       }
     }
 
@@ -827,10 +862,17 @@ export const driverRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order cannot stop from current state" }, 409);
     }
 
-    if (order.serviceType === "lawncare") {
-      const hasAfterPhoto = await hasOrderMediaType(order.id, "lawncare_after");
+    if (order.serviceType === "lawncare" || order.serviceType === "laundry") {
+      const hasAfterPhoto = await hasRequiredOrderPhaseMedia({
+        orderId: order.id,
+        phase: "after",
+        serviceType: order.serviceType,
+      });
       if (!hasAfterPhoto) {
-        return c.json({ error: "After photo is required before stop" }, 409);
+        return c.json(
+          { error: "After property photos are required before stop" },
+          409
+        );
       }
     }
 
@@ -867,11 +909,15 @@ export const driverRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order cannot complete from current state" }, 409);
     }
 
-    if (order.serviceType === "lawncare") {
-      const hasAfterPhoto = await hasOrderMediaType(order.id, "lawncare_after");
+    if (order.serviceType === "lawncare" || order.serviceType === "laundry") {
+      const hasAfterPhoto = await hasRequiredOrderPhaseMedia({
+        orderId: order.id,
+        phase: "after",
+        serviceType: order.serviceType,
+      });
       if (!hasAfterPhoto) {
         return c.json(
-          { error: "After photo is required before completion" },
+          { error: "After property photos are required before completion" },
           409
         );
       }

@@ -175,3 +175,21 @@ export const homePreorderStatusEnum = pgEnum("home_preorder_status", [
   "cancelled",
   "failed",
 ]);
+
+export const routeStatusEnum = pgEnum("route_status", [
+  "draft",
+  "published",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
+
+export const routeStopStatusEnum = pgEnum("route_stop_status", [
+  "planned",
+  "en_route",
+  "arrived",
+  "in_progress",
+  "completed",
+  "skipped",
+  "cancelled",
+]);

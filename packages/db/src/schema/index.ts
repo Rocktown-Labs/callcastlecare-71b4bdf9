@@ -17,6 +17,7 @@ export * from "./orchestration";
 export * from "./order";
 export * from "./payout";
 export * from "./quote";
+export * from "./routes";
 export * from "./stripe";
 export * from "./support";
 export * from "./tracking";

@@ -437,6 +437,7 @@ interface BookingDraft {
     };
   };
   services: ServiceId[];
+  siteNotes: string;
   subscriptionId: string;
   timeSlot: string;
   tipCustomPercent: string;
@@ -524,6 +525,7 @@ const emptyDraft = ({
     },
   },
   services: sortServiceIds(initialServices),
+  siteNotes: "",
   subscriptionId: "",
   timeSlot: initialTimeSlot,
   tipCustomPercent: "",
@@ -1210,6 +1212,23 @@ const getComboPlanId = (draft: BookingDraft) => {
 };
 
 const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
+  const serviceDetails = {
+    laundry: {
+      bedding: draft.serviceDetails.laundry.bedding || undefined,
+      pickupMode: draft.serviceDetails.laundry.pickupMode || undefined,
+    },
+    lawncare: {
+      grassHeight: draft.serviceDetails.lawncare.grassHeight || undefined,
+      hasPets: draft.serviceDetails.lawncare.hasPets || undefined,
+      obstacles: draft.serviceDetails.lawncare.obstacles || undefined,
+    },
+    window_washing: {
+      cleaningScope:
+        draft.serviceDetails["window-washing"].cleaningScope || undefined,
+      windowEstimate:
+        draft.serviceDetails["window-washing"].windowEstimate || undefined,
+    },
+  } as const;
   const scheduledWindow = getScheduledWindowForSlot(
     draft.date,
     draft.timeSlot as (typeof bookingTimeSlots)[number]
@@ -1223,6 +1242,8 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
         isSubscription: true,
         itemKind: CheckoutItemKind.Lawncare,
         planId: comboPlanId,
+        serviceDetails,
+        siteNotes: draft.siteNotes || undefined,
         timingType: "scheduled" as const,
       },
     ];
@@ -1259,6 +1280,8 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
             : parsePositiveCount(details.windowEstimate) || undefined,
           planId: selectedProductId,
           propertyType: "residential" as const,
+          serviceDetails: { window_washing: serviceDetails.window_washing },
+          siteNotes: draft.siteNotes || undefined,
           stories: Number(details.stories) || 1,
         },
       ];
@@ -1273,6 +1296,11 @@ const getCheckoutItems = (draft: BookingDraft): CheckoutPreviewItemInput[] => {
             ? CheckoutItemKind.Lawncare
             : CheckoutItemKind.Laundry,
         planId: selectedProductId,
+        serviceDetails:
+          serviceId === "lawncare"
+            ? { lawncare: serviceDetails.lawncare }
+            : { laundry: serviceDetails.laundry },
+        siteNotes: draft.siteNotes || undefined,
       },
     ];
   });
@@ -3568,6 +3596,20 @@ const BookingWizard = (props: BookingWizardProps) => {
                 </div>
               </QuestionAccordion>
             ) : null}
+
+            <label className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <span className="font-semibold text-slate-950">
+                Anything the field team should know? (optional)
+              </span>
+              <textarea
+                className="min-h-24 rounded-2xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-lime-500"
+                onChange={(event) =>
+                  setDraftValue("siteNotes", event.target.value)
+                }
+                placeholder="Dogs, gates, parking, access instructions, or anything else..."
+                value={draft.siteNotes}
+              />
+            </label>
 
             <StepActions onBack={() => goToStep(1)}>
               <StepButton onClick={() => void continueFromStep(2)} />
