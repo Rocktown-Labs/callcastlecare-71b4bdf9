@@ -1,4 +1,8 @@
 /* eslint-disable complexity, eslint/no-await-in-loop, eslint/prefer-destructuring, eslint/require-await, eslint/require-unicode-regexp, oxc/branches-sharing-code, unicorn/prefer-ternary -- Legacy checkout/order finalization logic predates the current lint profile; keep this waiver narrow to this file until dispatch is redesigned. */
+import {
+  STANDARD_DEPOSIT_CENTS,
+  getCheckoutDepositCents,
+} from "@callcastlecare/api";
 import { db, and, eq, sql } from "@callcastlecare/db";
 import {
   addresses,
@@ -41,7 +45,7 @@ const LAUNDRY_LEG_SEQUENCE = [
 const normalizeAddressComponent = (value: string) =>
   value.trim().replaceAll(/\s+/g, " ").toLowerCase();
 
-const buildFormattedAddress = (input: {
+export const buildFormattedAddress = (input: {
   city: string;
   country: string;
   state: string;
@@ -622,9 +626,10 @@ export const finalizeCheckoutPayment = async (input: {
       : "Address on file";
 
     const totalCents = existingSession.totalCents;
-    const depositCents = Math.min(5000, totalCents);
+    const depositCents = getCheckoutDepositCents(totalCents);
     const isPaidInFull =
-      existingSession.mode === "payment" && totalCents <= 5000;
+      existingSession.mode === "payment" &&
+      totalCents <= STANDARD_DEPOSIT_CENTS;
     const paymentChoice = isPaidInFull
       ? "Paid in full"
       : "Deposit paid today, remaining balance invoiced upon completion";
@@ -690,6 +695,21 @@ export const finalizeCheckoutPayment = async (input: {
       ...(primaryOrderId ? { orderId: primaryOrderId } : {}),
     },
   });
+
+  // First paid order per customer only: the eventKey dedups repeat bookings,
+  // and abandoned (unpaid) checkouts never reach finalization, so neither the
+  // welcome email nor the admin signup alert can fire pre-payment.
+  if (dispatchOrderIds.length > 0) {
+    await publishOutboxEvent({
+      eventKey: `customer-welcome:${existingSession.customerId}`,
+      eventName: "customer_welcome",
+      payload: {
+        checkoutSessionId: existingSession.id,
+        customerId: existingSession.customerId,
+        ...(primaryOrderId ? { orderId: primaryOrderId } : {}),
+      },
+    });
+  }
 
   if (hasPaidHomePreorder) {
     await publishOutboxEvent({

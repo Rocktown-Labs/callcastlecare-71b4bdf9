@@ -11,6 +11,7 @@ import {
   checkoutPreviewItemSchema,
   checkoutPreviewRequestSchema,
   publicQuoteRequestSchema,
+  sendLoginCodeRequestSchema,
   supportRequestSchema,
 } from "./schemas";
 
@@ -256,6 +257,31 @@ describe("admin dispatch and route schemas", () => {
     ).toBe(true);
     expect(
       adminRouteStatusRequestSchema.safeParse({ status: "flying" }).success
+    ).toBe(false);
+  });
+});
+
+describe("send login code schema", () => {
+  it("accepts a Stripe session id", () => {
+    const result = sendLoginCodeRequestSchema.safeParse({
+      sessionId: "cs_test_123",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a checkout access token", () => {
+    const result = sendLoginCodeRequestSchema.safeParse({
+      token: "v1.iv.tag.ciphertext",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects empty payloads", () => {
+    expect(sendLoginCodeRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      sendLoginCodeRequestSchema.safeParse({ sessionId: "", token: "" }).success
     ).toBe(false);
   });
 });

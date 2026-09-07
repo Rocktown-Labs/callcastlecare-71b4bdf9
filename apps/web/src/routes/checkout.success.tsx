@@ -45,17 +45,13 @@ interface CheckoutOrderPayload {
   address?: string | null;
   appointmentWindow?: string | null;
   customerEmail?: string | null;
-  customerId?: number | null;
-  customerName?: string | null;
-  hasAccountPassword?: boolean;
   isAuthenticated?: boolean;
+  maskedEmail?: string | null;
   orderId?: number | null;
-  orderIds?: number[];
   orderNumber?: string | null;
   payment?: {
     depositCents: number;
     isPaidInFull: boolean;
-    paymentChoice: string;
     totalCents: number;
   } | null;
   services?: string[];
@@ -176,7 +172,8 @@ const CheckoutOtpForm = ({
             className="mb-2 block text-xs font-semibold text-slate-300"
             htmlFor="checkout-otp-input"
           >
-            Enter the 6-digit code sent to {orderData.customerEmail}:
+            Enter the 6-digit code sent to{" "}
+            {orderData.maskedEmail ?? orderData.customerEmail}:
           </label>
           <InputOTP
             containerClassName="justify-start"
@@ -341,7 +338,7 @@ const AccountConnectionCard = ({
           We created your customer account with this booking. Sign in with a
           secure one-time code sent to{" "}
           <span className="font-semibold text-white">
-            {orderData.customerEmail}
+            {orderData.maskedEmail ?? orderData.customerEmail}
           </span>{" "}
           — no password needed.
         </p>
@@ -679,7 +676,7 @@ export const CheckoutSuccessPage = () => {
                   <p className="mt-5 max-w-2xl text-pretty text-base leading-7 text-slate-300 sm:text-lg">
                     {isProviderFlow
                       ? "Your $50 background check and MVR authorization payment was accepted. Verify your email to finish setting up your provider account."
-                      : `Your payment was accepted, and we’re preparing your service details. We’ve sent your confirmation receipt to ${orderData?.customerEmail ?? "the email used at checkout"}.`}
+                      : `Your payment was accepted, and we’re preparing your service details. We’ve sent your confirmation receipt to ${orderData?.maskedEmail ?? orderData?.customerEmail ?? "the email used at checkout"}.`}
                   </p>
                 </div>
 

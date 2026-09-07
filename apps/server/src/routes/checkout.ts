@@ -2,12 +2,18 @@ import {
   bookingTimeSlots,
   buildTravelEstimate,
   getBookingZoneDate,
+  getCheckoutDepositCents,
   getLawncareLotTier,
   getLawncarePlanId,
   getScheduledWindowForSlot,
+  STANDARD_DEPOSIT_CENTS,
 } from "@callcastlecare/api";
 import type { CheckoutPreviewRequest } from "@callcastlecare/api";
 import { auth } from "@callcastlecare/auth";
+import {
+  getOtpEmailContent,
+  sendAuthOtpEmail,
+} from "@callcastlecare/auth/email";
 import { and, db, eq, gt, inArray, lt, sql } from "@callcastlecare/db";
 import {
   addresses,
@@ -71,6 +77,7 @@ import type {
 } from "../lib/integrations/stripe-payments";
 import { logger } from "../lib/logger";
 import {
+  buildFormattedAddress,
   createAddressRecord,
   finalizeCheckoutPayment,
   formatAppointmentWindow,
@@ -87,6 +94,7 @@ import {
   checkoutConfirmRequestSchema,
   checkoutPreviewRequestSchema,
   publicQuoteRequestSchema,
+  sendLoginCodeRequestSchema,
 } from "./schemas";
 
 const parsePositiveId = (value: string) => {
@@ -107,7 +115,6 @@ const parseScheduledDate = (value: string | undefined) => {
   return parsed;
 };
 
-const depositCents = 5000;
 const SQFT_PER_ACRE = 43_560;
 const CHECKOUT_SLOT_LOCK_KEY = 7_318_204;
 const CHECKOUT_SLOT_HOLD_MS = 30 * 60 * 1000;
@@ -189,7 +196,7 @@ const getAmountDueCents = (input: {
 }) =>
   input.paymentOption === "pay_full"
     ? input.totalCents
-    : Math.min(depositCents, input.totalCents);
+    : getCheckoutDepositCents(input.totalCents);
 
 const applyCatalogPriceOverrides = (
   preview: ReturnType<typeof computeCheckoutPreview>,
@@ -1692,6 +1699,20 @@ const handleCheckoutConfirm = async (c: HonoContext) => {
   );
 };
 
+/**
+ * Minimal PII exposure for unauthenticated post-checkout surfaces. Shows the
+ * first character plus the top-level domain so customers can recognize their
+ * inbox without leaking the full address to bearer-token holders.
+ */
+const maskEmail = (email: string) => {
+  const [localPart, domain = ""] = email.split("@");
+  if (!localPart || !domain.includes(".")) {
+    return "***";
+  }
+  const topLevelDomain = domain.slice(domain.lastIndexOf(".") + 1);
+  return `${localPart.slice(0, 1)}***@***.${topLevelDomain}`;
+};
+
 const formatCustomerAddress = (
   address: typeof addresses.$inferSelect | null | undefined
 ) => {
@@ -1699,22 +1720,15 @@ const formatCustomerAddress = (
     return address.formattedAddress;
   }
   if (address) {
-    return `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
+    return buildFormattedAddress({
+      city: address.city,
+      country: address.country,
+      state: address.state,
+      street: address.street,
+      zip: address.zip,
+    });
   }
   return "Address on file";
-};
-
-const formatCustomerProfile = (
-  customer: typeof customers.$inferSelect | null | undefined
-) => {
-  if (!customer) {
-    return null;
-  }
-  return {
-    email: customer.email,
-    name: `${customer.firstName} ${customer.lastName}`.trim(),
-    phone: customer.phone,
-  };
 };
 
 const buildCheckoutAccessTokenPayload = async (
@@ -1738,7 +1752,6 @@ const buildCheckoutAccessTokenPayload = async (
 
   const primaryOrder = relatedOrders[0] ?? null;
   const orderId = primaryOrder?.id ?? null;
-  const orderIds = relatedOrders.map((entry) => entry.id);
 
   const isAuthenticated = Boolean(
     currentUserId && customer && currentUserId === customer.userId
@@ -1756,27 +1769,62 @@ const buildCheckoutAccessTokenPayload = async (
   );
 
   const { totalCents } = checkoutSession;
-  const depositAmountCents = Math.min(depositCents, totalCents);
+  const depositAmountCents = getCheckoutDepositCents(totalCents);
   const isPaidInFull =
-    checkoutSession.mode === "payment" && totalCents <= depositCents;
+    checkoutSession.mode === "payment" && totalCents <= STANDARD_DEPOSIT_CENTS;
 
+  // Deliberately minimal for unauthenticated bearer use (Stripe cs_ id):
+  // the success page needs the service address, receipt amounts, and the
+  // claim email — customer name, phone, and payment-choice internals stay
+  // server-side until the customer authenticates.
   return {
     accessToken: createCheckoutAccessToken(checkoutSession.id),
+    address: formatCustomerAddress(address),
     appointmentWindow,
-    customer: formatCustomerProfile(customer),
-    formattedAddress: formatCustomerAddress(address),
+    customerEmail: customer?.email ?? null,
     isAuthenticated,
+    maskedEmail: customer ? maskEmail(customer.email) : null,
     orderId,
-    orderIds,
     orderNumber: orderId ? String(orderId) : null,
     payment: {
-      amountPaidCents: depositAmountCents,
+      depositCents: depositAmountCents,
       isPaidInFull,
-      paymentOption: isPaidInFull ? "pay_full" : "deposit_invoice",
       totalCents,
     },
     services: serviceLabels.length > 0 ? serviceLabels : ["CastleCare Service"],
   };
+};
+
+/**
+ * Shared payment gate for unauthenticated post-checkout surfaces.
+ * A Stripe checkout-session id is only a lookup key; completed payment is
+ * verified live with Stripe before any customer data or OTP leaves the API.
+ */
+const requireCompleteStripePayment = async (
+  stripeCheckoutSessionId: string
+) => {
+  const stripeCheckoutSession = await retrieveStripeCheckoutSession(
+    stripeCheckoutSessionId
+  );
+  if (!stripeCheckoutSession) {
+    return {
+      error: "Checkout access is unavailable" as const,
+      status: 503 as const,
+    };
+  }
+
+  const paymentComplete =
+    stripeCheckoutSession.status === "complete" &&
+    (stripeCheckoutSession.payment_status === "paid" ||
+      stripeCheckoutSession.payment_status === "no_payment_required");
+  if (!paymentComplete) {
+    return {
+      error: "Checkout payment is not complete" as const,
+      status: 409 as const,
+    };
+  }
+
+  return { session: stripeCheckoutSession };
 };
 
 export const checkoutRoutes = new Hono<AppEnv>()
@@ -1784,6 +1832,17 @@ export const checkoutRoutes = new Hono<AppEnv>()
     const settings = await getCheckoutSettings();
     return c.json(settings, 200);
   })
+  /**
+   * GET /checkout/access-token?session_id=cs_...
+   *
+   * Unauthenticated post-payment receipt for the success page. The Stripe
+   * session id is an unguessable lookup key, NOT an auth credential: payment
+   * is re-verified live with Stripe on every call, responses are `no-store`,
+   * and the payload is the minimal set the success page renders (receipt
+   * amounts, service address, appointment window, order id, claim email).
+   * Customer name, phone, and payment internals are never included; the
+   * email is also returned masked for display.
+   */
   .get("/access-token", async (c) => {
     c.header("Cache-Control", "no-store");
     const stripeCheckoutSessionId = c.req.query("session_id");
@@ -1801,19 +1860,11 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: "Checkout session not found" }, 404);
     }
 
-    const stripeCheckoutSession = await retrieveStripeCheckoutSession(
+    const paymentGate = await requireCompleteStripePayment(
       stripeCheckoutSessionId
     );
-    if (!stripeCheckoutSession) {
-      return c.json({ error: "Checkout access is unavailable" }, 503);
-    }
-
-    const paymentComplete =
-      stripeCheckoutSession.status === "complete" &&
-      (stripeCheckoutSession.payment_status === "paid" ||
-        stripeCheckoutSession.payment_status === "no_payment_required");
-    if (!paymentComplete) {
-      return c.json({ error: "Checkout payment is not complete" }, 409);
+    if ("error" in paymentGate) {
+      return c.json({ error: paymentGate.error }, paymentGate.status);
     }
 
     const currentUser = c.get("user");
@@ -1823,14 +1874,25 @@ export const checkoutRoutes = new Hono<AppEnv>()
     );
     return c.json(payload, 200);
   })
+  /**
+   * POST /checkout/send-login-code { sessionId?: cs_..., token?: accessToken }
+   *
+   * Mints an email-OTP sign-in code for post-checkout account claiming.
+   * Gated on completed payment: token callers present the short-lived
+   * server-minted access token (issued only post-payment); raw cs_ callers
+   * are re-verified live with Stripe. Never auto-provisions: the auth user
+   * must already exist (checkout provisioning creates it), otherwise a 404
+   * is returned instead of letting email-OTP signup create one. Email
+   * delivery failures surface as 5xx — never `{ success: true }`.
+   */
   .post("/send-login-code", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      sessionId?: string;
-      token?: string;
-    };
-    const stripeCheckoutSessionId =
-      typeof body.sessionId === "string" ? body.sessionId : null;
-    const token = typeof body.token === "string" ? body.token : null;
+    const parsed = sendLoginCodeRequestSchema.safeParse(
+      await c.req.json().catch(() => ({}))
+    );
+    if (!parsed.success) {
+      return c.json({ error: "Invalid checkout session" }, 400);
+    }
+    const { sessionId: stripeCheckoutSessionId, token } = parsed.data;
 
     let checkoutSessionId: number | null = null;
     if (token) {
@@ -1839,6 +1901,12 @@ export const checkoutRoutes = new Hono<AppEnv>()
     }
 
     if (!checkoutSessionId && stripeCheckoutSessionId?.startsWith("cs_")) {
+      const paymentGate = await requireCompleteStripePayment(
+        stripeCheckoutSessionId
+      );
+      if ("error" in paymentGate) {
+        return c.json({ error: paymentGate.error }, paymentGate.status);
+      }
       const session = await db.query.checkoutSessions.findFirst({
         columns: { id: true },
         where: eq(
@@ -1869,14 +1937,71 @@ export const checkoutRoutes = new Hono<AppEnv>()
       return c.json({ error: "Customer not found" }, 404);
     }
 
-    await auth.api.sendVerificationOTP({
-      body: {
-        email: customer.email,
-        type: "sign-in",
-      },
+    // Account claiming only: never let an OTP request conjure a new login.
+    const existingUser = await db.query.user.findFirst({
+      where: eq(authUsers.email, customer.email),
     });
+    if (!existingUser) {
+      return c.json({ error: "Account not found for this booking" }, 404);
+    }
 
-    return c.json({ email: customer.email, success: true }, 200);
+    if (!env.RESEND_API_KEY) {
+      logger.warn(
+        { checkoutSessionId: checkoutSession.id },
+        "checkout:login_code_unavailable"
+      );
+      return c.json({ error: "Sign-in codes are unavailable right now" }, 503);
+    }
+
+    // Mint the OTP directly instead of sendVerificationOTP: better-auth
+    // swallows sender failures into its own logger, which would turn a
+    // failed Resend call into a false `{ success: true }`. Minting never
+    // creates users, and the existing-user check above already closed the
+    // signup auto-provisioning path.
+    let otp: string;
+    try {
+      otp = await auth.api.createVerificationOTP({
+        body: {
+          email: customer.email,
+          type: "sign-in",
+        },
+      });
+    } catch (error) {
+      logger.error(
+        {
+          checkoutSessionId: checkoutSession.id,
+          err: error,
+        },
+        "checkout:login_code_mint_failed"
+      );
+      return c.json({ error: "Sign-in code could not be sent" }, 502);
+    }
+
+    try {
+      const content = getOtpEmailContent("sign-in");
+      const sent = await sendAuthOtpEmail({
+        ...content,
+        otp,
+        to: customer.email,
+      });
+      if (!sent.sent) {
+        throw new Error(`OTP email not sent: ${sent.reason ?? "unknown"}`);
+      }
+    } catch (error) {
+      logger.error(
+        {
+          checkoutSessionId: checkoutSession.id,
+          err: error,
+        },
+        "checkout:login_code_send_failed"
+      );
+      return c.json({ error: "Sign-in code could not be sent" }, 502);
+    }
+
+    return c.json(
+      { maskedEmail: maskEmail(customer.email), success: true },
+      200
+    );
   })
   .get("/access-token/resolve", async (c) => {
     c.header("Cache-Control", "no-store");
