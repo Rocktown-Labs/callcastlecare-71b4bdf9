@@ -8,8 +8,12 @@ import { AdminBookingAlertEmail } from "./templates/admin-booking-alert";
 import type { AdminBookingAlertEmailProps } from "./templates/admin-booking-alert";
 import { BalanceInvoiceEmail } from "./templates/balance-invoice";
 import type { BalanceInvoiceEmailProps } from "./templates/balance-invoice";
+import { BookingReceivedEmail } from "./templates/booking-received";
+import type { BookingReceivedEmailProps } from "./templates/booking-received";
 import { OtpEmail } from "./templates/otp-email";
 import type { OtpEmailProps } from "./templates/otp-email";
+import { PaymentReceiptEmail } from "./templates/payment-receipt";
+import type { PaymentReceiptEmailProps } from "./templates/payment-receipt";
 import { ProviderApplicationReceivedEmail } from "./templates/provider-application-received";
 import type { ProviderApplicationReceivedEmailProps } from "./templates/provider-application-received";
 import { QuoteReviewNeededEmail } from "./templates/quote-review-needed";
@@ -24,6 +28,8 @@ import { SubscriptionStartedEmail } from "./templates/subscription-started";
 import type { SubscriptionStartedEmailProps } from "./templates/subscription-started";
 import { TipRequestEmail } from "./templates/tip-request";
 import type { TipRequestEmailProps } from "./templates/tip-request";
+import { WelcomeEmail } from "./templates/welcome";
+import type { WelcomeEmailProps } from "./templates/welcome";
 
 interface RenderedEmail {
   html: string;
@@ -51,8 +57,14 @@ export const renderAdminBookingAlertEmail = (
 export const renderBalanceInvoiceEmail = (props: BalanceInvoiceEmailProps) =>
   renderEmail(<BalanceInvoiceEmail {...props} />);
 
+export const renderBookingReceivedEmail = (props: BookingReceivedEmailProps) =>
+  renderEmail(<BookingReceivedEmail {...props} />);
+
 export const renderOtpEmail = (props: OtpEmailProps) =>
   renderEmail(<OtpEmail {...props} />);
+
+export const renderPaymentReceiptEmail = (props: PaymentReceiptEmailProps) =>
+  renderEmail(<PaymentReceiptEmail {...props} />);
 
 export const renderProviderApplicationReceivedEmail = (
   props: ProviderApplicationReceivedEmailProps
@@ -79,3 +91,6 @@ export const renderSubscriptionStartedEmail = (
 
 export const renderTipRequestEmail = (props: TipRequestEmailProps) =>
   renderEmail(<TipRequestEmail {...props} />);
+
+export const renderWelcomeEmail = (props: WelcomeEmailProps) =>
+  renderEmail(<WelcomeEmail {...props} />);

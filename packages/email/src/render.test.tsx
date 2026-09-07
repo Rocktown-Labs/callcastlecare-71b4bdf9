@@ -8,13 +8,16 @@ import {
   renderActionEmail,
   renderAdminBookingAlertEmail,
   renderBalanceInvoiceEmail,
+  renderBookingReceivedEmail,
   renderOtpEmail,
+  renderPaymentReceiptEmail,
   renderProviderApplicationReceivedEmail,
   renderQuoteReviewNeededEmail,
   renderQuoteSavedEmail,
   renderServiceCompletedEmail,
   renderServiceStatusUpdateEmail,
   renderSubscriptionStartedEmail,
+  renderWelcomeEmail,
 } from "./index";
 
 describe("email rendering", () => {
@@ -119,6 +122,50 @@ describe("email rendering", () => {
     expect(adminAlert.text).toContain("NEW BOOKING TO REVIEW");
     expect(subscription.text).toContain("Crown Estate Trio");
     expect(providerApplication.text).toContain("Your application is in");
+  });
+
+  it("renders booking received, payment receipt, and welcome emails", async () => {
+    const [bookingReceived, paymentReceipt, welcome] = await Promise.all([
+      renderBookingReceivedEmail({
+        address: "1200 Main Street, Little Rock, AR",
+        appointmentWindow: "Friday, August 7, 10:00 AM-12:00 PM",
+        customerName: "Jordan",
+        dashboardUrl: castleCareUrl("/dashboard/orders/1042"),
+        depositCents: 5000,
+        orderLabel: "Order #1042",
+        paymentChoice: "Deposit today, invoice later",
+        services: ["Groundskeeper Lawncare"],
+        totalCents: 18_500,
+      }),
+      renderPaymentReceiptEmail({
+        amountPaidCents: 5000,
+        customerName: "Jordan",
+        dashboardUrl: castleCareUrl("/dashboard/orders/1042"),
+        paymentChoice: "Deposit today, invoice later",
+        receiptLabel: "CastleCare deposit",
+        remainingBalanceCents: 13_500,
+        services: ["Groundskeeper Lawncare"],
+        totalCents: 18_500,
+      }),
+      renderWelcomeEmail({
+        customerName: "Jordan",
+        dashboardUrl: castleCareUrl("/dashboard"),
+        services: ["Lawn Care", "Laundry Pickup", "Window Washing"],
+      }),
+    ]);
+
+    expect(bookingReceived.text).toContain("BOOKING CONFIRMED (ORDER #1042)");
+    expect(bookingReceived.text).toContain("Order #1042");
+    expect(bookingReceived.text).toContain("1200 Main Street");
+    expect(bookingReceived.text).toContain("$50.00");
+
+    expect(paymentReceipt.text).toContain("PAYMENT RECEIVED");
+    expect(paymentReceipt.text).toContain("$50.00");
+    expect(paymentReceipt.text).toContain("$135.00");
+
+    expect(welcome.text).toContain("WELCOME TO CASTLECARE");
+    expect(welcome.text).toContain("welcome to CastleCare!");
+    expect(welcome.text).toContain("https://www.callcastlecare.com/dashboard");
   });
 
   it("keeps template links on existing customer and operator routes", async () => {

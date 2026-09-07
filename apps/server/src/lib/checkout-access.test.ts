@@ -19,7 +19,7 @@ describe("checkout access tokens", () => {
 
   it("rejects tampered and expired tokens", () => {
     const token = createCheckoutAccessToken(42, secret);
-    const tamperedToken = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
+    const tamperedToken = `${token.slice(0, 10)}${token[10] === "a" ? "b" : "a"}${token.slice(11)}`;
 
     expect(readCheckoutAccessToken(tamperedToken, secret)).toBeNull();
 

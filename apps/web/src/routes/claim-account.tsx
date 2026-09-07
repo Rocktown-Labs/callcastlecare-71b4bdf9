@@ -13,14 +13,15 @@ const searchSchema = z.object({
 
 const RouteComponent = () => {
   const search = useSearch({ from: "/claim-account" });
-  const [email, setEmail] = useState(search.email ?? "");
+  const { accessToken: searchAccessToken, email: initialEmail } = search;
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [isResolvingEmail, setIsResolvingEmail] = useState(
-    Boolean(search.accessToken && !search.email)
+    Boolean(searchAccessToken && !initialEmail)
   );
   const [resolveError, setResolveError] = useState(false);
 
   useEffect(() => {
-    if (!search.accessToken || search.email) {
+    if (!searchAccessToken || initialEmail) {
       return;
     }
 
@@ -30,7 +31,7 @@ const RouteComponent = () => {
     void (async () => {
       try {
         const response = await fetch(
-          `/api/v1/checkout/access-token/resolve?token=${encodeURIComponent(search.accessToken)}`,
+          `/api/v1/checkout/access-token/resolve?token=${encodeURIComponent(searchAccessToken)}`,
           { signal: controller.signal }
         );
         if (!response.ok) {
@@ -63,7 +64,7 @@ const RouteComponent = () => {
       isActive = false;
       controller.abort();
     };
-  }, [search.accessToken, search.email]);
+  }, [initialEmail, searchAccessToken]);
 
   return (
     <main className="grid min-h-svh bg-[#070b13] text-foreground lg:grid-cols-[minmax(0,1fr)_minmax(440px,540px)]">

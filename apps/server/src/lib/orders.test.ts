@@ -1,19 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  addresses: {},
   and: vi.fn(),
   checkoutItems: {},
   checkoutSessions: {},
+  customers: {},
+  dbQueryAddress: vi.fn(),
+  dbQueryCheckoutItems: vi.fn(),
   dbQueryCheckoutSession: vi.fn(),
+  dbQueryCustomer: vi.fn(),
   dbTransaction: vi.fn(),
   dispatchOrder: vi.fn(),
   eq: vi.fn(),
   execute: vi.fn(),
-  logger: { info: vi.fn() },
+  logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
   orderInsertReturning: vi.fn(),
-  orderItems: {},
   orders: {},
   publishOutboxEvent: vi.fn(),
+  sendEmail: vi.fn(),
   serviceLegs: {},
   txInsert: vi.fn(),
   txOrdersFindMany: vi.fn(),
@@ -25,8 +30,17 @@ vi.mock("@callcastlecare/db", () => ({
   and: mocks.and,
   db: {
     query: {
+      addresses: {
+        findFirst: mocks.dbQueryAddress,
+      },
+      checkoutItems: {
+        findMany: mocks.dbQueryCheckoutItems,
+      },
       checkoutSessions: {
         findFirst: mocks.dbQueryCheckoutSession,
+      },
+      customers: {
+        findFirst: mocks.dbQueryCustomer,
       },
     },
     transaction: mocks.dbTransaction,
@@ -36,14 +50,16 @@ vi.mock("@callcastlecare/db", () => ({
 }));
 
 vi.mock("@callcastlecare/db/schema/index", () => ({
-  addresses: {},
+  addresses: mocks.addresses,
   checkoutItems: mocks.checkoutItems,
   checkoutSessions: mocks.checkoutSessions,
+  customers: mocks.customers,
   homePreorders: {},
-  orderItems: mocks.orderItems,
+  orderItems: {},
   orderStatusHistory: {},
   orders: mocks.orders,
   serviceLegs: mocks.serviceLegs,
+  serviceSubscriptions: {},
 }));
 
 vi.mock("./dispatch", () => ({
@@ -52,6 +68,33 @@ vi.mock("./dispatch", () => ({
 
 vi.mock("./domain/checkout", () => ({
   getComboServiceTypes: vi.fn(),
+}));
+
+vi.mock("./integrations/email", () => ({
+  sendEmail: mocks.sendEmail,
+}));
+
+vi.mock("@callcastlecare/email", () => ({
+  castleCareUrl: vi.fn((path: string) => `https://callcastlecare.com${path}`),
+  renderAdminBookingAlertEmail: vi.fn(() =>
+    Promise.resolve({
+      html: "<p>admin alert</p>",
+      text: "admin alert",
+    })
+  ),
+  renderBookingReceivedEmail: vi.fn(() =>
+    Promise.resolve({
+      html: "<p>booking received</p>",
+      text: "booking received",
+    })
+  ),
+}));
+
+vi.mock("@callcastlecare/env/server", () => ({
+  env: {
+    ADMIN_EMAIL: "admin@callcastlecare.com",
+    BETTER_AUTH_URL: "https://callcastlecare.com",
+  },
 }));
 
 vi.mock("./logger", () => ({
@@ -75,6 +118,30 @@ const checkoutSession = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.dbQueryCheckoutSession.mockResolvedValue(checkoutSession);
+  mocks.dbQueryCustomer.mockResolvedValue({
+    email: "arthur@camelot.test",
+    firstName: "Arthur",
+    id: 22,
+    lastName: "Pendragon",
+    phone: "555-0100",
+  });
+  mocks.dbQueryAddress.mockResolvedValue({
+    city: "Avalon",
+    country: "USA",
+    formattedAddress: "123 Castle Way, Avalon, CA 90210, USA",
+    id: 11,
+    state: "CA",
+    street: "123 Castle Way",
+    zip: "90210",
+  });
+  mocks.dbQueryCheckoutItems.mockResolvedValue([
+    {
+      label: "Lawn Care",
+      scheduledEndAt: new Date("2026-09-01T16:00:00.000Z"),
+      scheduledStartAt: new Date("2026-09-01T14:00:00.000Z"),
+    },
+  ]);
+  mocks.sendEmail.mockImplementation(() => Promise.resolve());
   mocks.txQueryCheckoutItems.mockResolvedValue([
     {
       basePriceCents: 30_000,
@@ -153,8 +220,10 @@ describe("finalizeCheckoutPayment", () => {
       payload: {
         checkoutSessionId: checkoutSession.id,
         customerId: checkoutSession.customerId,
+        orderId: 1,
       },
     });
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(2);
   });
 
   it("materializes recurring service units for the first billing period", async () => {

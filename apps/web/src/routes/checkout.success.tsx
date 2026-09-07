@@ -1,3 +1,11 @@
+import { Button } from "@callcastlecare/ui/components/button";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "@callcastlecare/ui/components/input-otp";
+import { Spinner } from "@callcastlecare/ui/components/spinner";
 import {
   createFileRoute,
   Link,
@@ -7,23 +15,58 @@ import {
 import {
   ArrowRight,
   CalendarClock,
+  Check,
   CheckCircle2,
+  Copy,
   Mail,
+  MapPin,
   ReceiptText,
   ShieldCheck,
+  Sparkles,
+  UserCheck,
   UserRoundCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import MarketingLayout from "@/components/home/marketing-layout";
+import { signInWithEmailOtp } from "@/lib/auth/email-otp";
 
 const searchSchema = z.object({
   plan: z.string().optional(),
   session_id: z.string().optional(),
   type: z.string().optional(),
 });
+
+interface CheckoutOrderPayload {
+  accessToken?: string;
+  address?: string | null;
+  appointmentWindow?: string | null;
+  customerEmail?: string | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  hasAccountPassword?: boolean;
+  isAuthenticated?: boolean;
+  orderId?: number | null;
+  orderIds?: number[];
+  orderNumber?: string | null;
+  payment?: {
+    depositCents: number;
+    isPaidInFull: boolean;
+    paymentChoice: string;
+    totalCents: number;
+  } | null;
+  services?: string[];
+  success?: boolean;
+}
+
+const formatCents = (cents: number) =>
+  new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    style: "currency",
+  }).format(cents / 100);
 
 const customerSteps = [
   {
@@ -102,17 +145,237 @@ const SuccessStep = ({
   </li>
 );
 
-export const CheckoutSuccessPage = () => {
-  const search = useSearch({ from: "/checkout/success" });
-  const navigate = useNavigate();
+const CheckoutOtpForm = ({
+  claimAccountSearch,
+  handleSendLoginCode,
+  handleVerifyOtp,
+  isSendingOtp,
+  isVerifyingOtp,
+  orderData,
+  otp,
+  otpError,
+  otpSent,
+  setOtp,
+}: {
+  claimAccountSearch: { accessToken?: string };
+  handleSendLoginCode: () => void;
+  handleVerifyOtp: () => void;
+  isSendingOtp: boolean;
+  isVerifyingOtp: boolean;
+  orderData: CheckoutOrderPayload;
+  otp: string;
+  otpError: string | null;
+  otpSent: boolean;
+  setOtp: (value: string) => void;
+}) => {
+  if (otpSent) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <label
+            className="mb-2 block text-xs font-semibold text-slate-300"
+            htmlFor="checkout-otp-input"
+          >
+            Enter the 6-digit code sent to {orderData.customerEmail}:
+          </label>
+          <InputOTP
+            containerClassName="justify-start"
+            disabled={isVerifyingOtp}
+            id="checkout-otp-input"
+            maxLength={6}
+            onChange={setOtp}
+            value={otp}
+          >
+            <InputOTPGroup>
+              <InputOTPSlot index={0} />
+              <InputOTPSlot index={1} />
+              <InputOTPSlot index={2} />
+            </InputOTPGroup>
+            <InputOTPSeparator className="text-white/35 [&_svg]:size-4" />
+            <InputOTPGroup>
+              <InputOTPSlot index={3} />
+              <InputOTPSlot index={4} />
+              <InputOTPSlot index={5} />
+            </InputOTPGroup>
+          </InputOTP>
+          {otpError ? (
+            <p className="mt-2 text-xs font-medium text-rose-400">{otpError}</p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            className="h-11 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200"
+            disabled={isVerifyingOtp || otp.length !== 6}
+            onClick={handleVerifyOtp}
+            type="button"
+          >
+            {isVerifyingOtp && <Spinner />} Verify & open dashboard
+          </Button>
+          <Button
+            className="h-10 rounded-full text-slate-300 hover:bg-white/10 hover:text-white"
+            disabled={isSendingOtp || isVerifyingOtp}
+            onClick={handleSendLoginCode}
+            type="button"
+            variant="ghost"
+          >
+            Resend code
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <Button
+        className="h-11 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200"
+        disabled={isSendingOtp}
+        onClick={handleSendLoginCode}
+        type="button"
+      >
+        {isSendingOtp && <Spinner />} Email me a sign-in code
+      </Button>
+      <Link
+        className="text-xs text-slate-400 underline underline-offset-4 hover:text-white"
+        search={claimAccountSearch}
+        to="/claim-account"
+      >
+        Or claim account / set password
+      </Link>
+    </div>
+  );
+};
+
+const AccountConnectionCard = ({
+  claimAccountSearch,
+  handleSendLoginCode,
+  handleVerifyOtp,
+  isProviderFlow,
+  isSendingOtp,
+  isVerifyingOtp,
+  orderData,
+  otp,
+  otpError,
+  otpSent,
+  setOtp,
+  sessionId,
+}: {
+  claimAccountSearch: { accessToken?: string };
+  handleSendLoginCode: () => void;
+  handleVerifyOtp: () => void;
+  isProviderFlow: boolean;
+  isSendingOtp: boolean;
+  isVerifyingOtp: boolean;
+  orderData: CheckoutOrderPayload | null;
+  otp: string;
+  otpError: string | null;
+  otpSent: boolean;
+  setOtp: (value: string) => void;
+  sessionId?: string;
+}) => {
+  if (isProviderFlow) {
+    return null;
+  }
+  if (orderData === null) {
+    return null;
+  }
+
+  if (orderData.isAuthenticated) {
+    return (
+      <div className="mt-8 rounded-2xl border border-lime-300/20 bg-lime-300/[0.06] p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              aria-hidden="true"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-lime-300 text-slate-950"
+            >
+              <UserCheck className="size-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">
+                Signed in as {orderData.customerEmail}
+              </h3>
+              <p className="text-sm text-slate-300">
+                Your booking is linked directly to your customer account.
+              </p>
+            </div>
+          </div>
+          {orderData.orderId ? (
+            <Link
+              className={`${actionLinkClassName} bg-lime-300 text-slate-950 hover:bg-lime-200`}
+              params={{ orderId: String(orderData.orderId) }}
+              to="/dashboard/orders/$orderId"
+            >
+              View Order in Dashboard{" "}
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          ) : (
+            <Link
+              className={`${actionLinkClassName} bg-lime-300 text-slate-950 hover:bg-lime-200`}
+              to="/dashboard"
+            >
+              View Order in Dashboard{" "}
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionId === undefined || !orderData.customerEmail) {
+    return null;
+  }
+
+  return (
+    <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
+      <div className="max-w-xl">
+        <div className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-1 text-xs font-bold text-lime-300">
+          <Sparkles aria-hidden="true" className="size-3.5" /> Instant Dashboard
+          Access
+        </div>
+        <h3 className="mt-3 text-xl font-bold text-white">
+          Connect your booking & track status
+        </h3>
+        <p className="mt-1.5 text-sm leading-6 text-slate-300">
+          We created your customer account with this booking. Sign in with a
+          secure one-time code sent to{" "}
+          <span className="font-semibold text-white">
+            {orderData.customerEmail}
+          </span>{" "}
+          — no password needed.
+        </p>
+      </div>
+      <div className="mt-6 max-w-md">
+        <CheckoutOtpForm
+          claimAccountSearch={claimAccountSearch}
+          handleSendLoginCode={handleSendLoginCode}
+          handleVerifyOtp={handleVerifyOtp}
+          isSendingOtp={isSendingOtp}
+          isVerifyingOtp={isVerifyingOtp}
+          orderData={orderData}
+          otp={otp}
+          otpError={otpError}
+          otpSent={otpSent}
+          setOtp={setOtp}
+        />
+      </div>
+    </div>
+  );
+};
+
+const useCheckoutSuccessPayload = (input: {
+  isProviderFlow: boolean;
+  sessionId?: string;
+}) => {
   const [checkoutAccessToken, setCheckoutAccessToken] = useState<string | null>(
     null
   );
-
-  const isProviderFlow = search.type === "provider";
+  const [orderData, setOrderData] = useState<CheckoutOrderPayload | null>(null);
 
   useEffect(() => {
-    if (isProviderFlow || !search.session_id) {
+    const { sessionId } = input;
+    if (input.isProviderFlow || sessionId === undefined) {
       return;
     }
 
@@ -120,25 +383,141 @@ export const CheckoutSuccessPage = () => {
     void (async () => {
       try {
         const response = await fetch(
-          `/api/v1/checkout/access-token?session_id=${encodeURIComponent(search.session_id)}`,
+          `/api/v1/checkout/access-token?session_id=${encodeURIComponent(sessionId)}`,
           { signal: controller.signal }
         );
         if (!response.ok) {
           return;
         }
-        const payload = (await response.json()) as {
-          accessToken?: string;
-        };
+        const payload = (await response.json()) as CheckoutOrderPayload;
         if (payload.accessToken) {
           setCheckoutAccessToken(payload.accessToken);
         }
+        setOrderData(payload);
       } catch {
         // The email form remains available as a safe fallback.
       }
     })();
 
     return () => controller.abort();
-  }, [isProviderFlow, search.session_id]);
+  }, [input.isProviderFlow, input.sessionId]);
+
+  return { checkoutAccessToken, orderData };
+};
+
+const getPaymentSummary = (payment: CheckoutOrderPayload["payment"]) => {
+  if (!payment) {
+    return "$50.00 deposit paid";
+  }
+  if (payment.isPaidInFull) {
+    return `${formatCents(payment.totalCents)} (Paid in full)`;
+  }
+  return `${formatCents(payment.depositCents)} deposit paid`;
+};
+
+const BookingSummary = ({
+  isProviderFlow,
+  orderData,
+}: {
+  isProviderFlow: boolean;
+  orderData: CheckoutOrderPayload | null;
+}) => {
+  if (isProviderFlow || orderData === null) {
+    return null;
+  }
+  const services = orderData.services ?? [];
+  const hasBalance = orderData.payment?.isPaidInFull === false;
+
+  return (
+    <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+      <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-lime-300">
+        Booking Summary
+      </h2>
+      <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-400">Services</p>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {services.length > 0 ? (
+              services.map((service) => (
+                <span
+                  className="inline-block rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium text-white"
+                  key={service}
+                >
+                  {service}
+                </span>
+              ))
+            ) : (
+              <p className="text-sm font-semibold text-white">
+                CastleCare Service
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-400">
+            Appointment Window
+          </p>
+          <div className="flex items-start gap-2 pt-0.5">
+            <CalendarClock
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-lime-300"
+            />
+            <p className="text-sm font-semibold text-white">
+              {orderData.appointmentWindow ?? "2-hour appointment window"}
+            </p>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-400">Service Address</p>
+          <div className="flex items-start gap-2 pt-0.5">
+            <MapPin
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-lime-300"
+            />
+            <p className="line-clamp-2 text-sm font-semibold text-white">
+              {orderData.address ?? "Address on file"}
+            </p>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-400">
+            Payment Breakdown
+          </p>
+          <div className="pt-0.5">
+            <p className="text-sm font-semibold text-white">
+              {getPaymentSummary(orderData.payment)}
+            </p>
+            {hasBalance ? (
+              <p className="mt-0.5 text-xs text-slate-400">
+                {formatCents(
+                  (orderData.payment?.totalCents ?? 0) -
+                    (orderData.payment?.depositCents ?? 0)
+                )}{" "}
+                balance due upon completion
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const CheckoutSuccessPage = () => {
+  const search = useSearch({ from: "/checkout/success" });
+  const navigate = useNavigate();
+  const isProviderFlow = search.type === "provider";
+  const { checkoutAccessToken, orderData } = useCheckoutSuccessPayload({
+    isProviderFlow,
+    sessionId: search.session_id,
+  });
+  const [copiedOrder, setCopiedOrder] = useState(false);
+
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   const claimAccountSearch = checkoutAccessToken
     ? { accessToken: checkoutAccessToken }
@@ -149,6 +528,90 @@ export const CheckoutSuccessPage = () => {
       search: { redirectTo: "/dashboard/provider" },
       to: "/verify-email",
     });
+  };
+
+  const handleCopyOrder = async () => {
+    const textToCopy =
+      orderData?.orderNumber ??
+      (orderData?.orderId ? `Order #${orderData.orderId}` : "");
+    if (!textToCopy) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedOrder(true);
+      toast.success("Order number copied to clipboard");
+      setTimeout(() => {
+        setCopiedOrder(false);
+      }, 2000);
+    } catch {
+      toast.info(`Order: ${textToCopy}`);
+    }
+  };
+
+  const handleSendLoginCode = async () => {
+    if (!search.session_id) {
+      return;
+    }
+    setOtpError(null);
+    setIsSendingOtp(true);
+    try {
+      const response = await fetch("/api/v1/checkout/send-login-code", {
+        body: JSON.stringify({ sessionId: search.session_id }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        maskedEmail?: string;
+        message?: string;
+        success?: boolean;
+      };
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message ?? data.error ?? "Failed to send sign-in code."
+        );
+      }
+      setOtpSent(true);
+      toast.success(
+        `Sign-in code sent to ${data.maskedEmail ?? orderData?.customerEmail ?? "your email"}`
+      );
+    } catch (error) {
+      setOtpError(
+        error instanceof Error ? error.message : "Failed to send sign-in code."
+      );
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!orderData?.customerEmail || otp.length !== 6) {
+      return;
+    }
+    setOtpError(null);
+    setIsVerifyingOtp(true);
+    try {
+      await signInWithEmailOtp({
+        email: orderData.customerEmail,
+        otp,
+      });
+      toast.success("Signed in successfully!");
+      await navigate(
+        orderData.orderId
+          ? {
+              params: { orderId: String(orderData.orderId) },
+              to: "/dashboard/orders/$orderId",
+            }
+          : { to: "/dashboard" }
+      );
+    } catch (error) {
+      setOtpError(
+        error instanceof Error ? error.message : "Invalid or expired code."
+      );
+    } finally {
+      setIsVerifyingOtp(false);
+    }
   };
 
   const steps = isProviderFlow ? providerSteps : customerSteps;
@@ -168,15 +631,43 @@ export const CheckoutSuccessPage = () => {
             <div className="p-6 sm:p-10 lg:p-12">
               <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
                 <div className="max-w-3xl">
-                  <output
-                    aria-live="polite"
-                    className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/10 px-3.5 py-1.5 text-sm font-bold text-lime-300"
-                  >
-                    <CheckCircle2 aria-hidden="true" className="size-4" />
-                    {isProviderFlow
-                      ? "Authorization payment received"
-                      : "Payment received"}
-                  </output>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <output
+                      aria-live="polite"
+                      className="inline-flex items-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/10 px-3.5 py-1.5 text-sm font-bold text-lime-300"
+                    >
+                      <CheckCircle2 aria-hidden="true" className="size-4" />
+                      {isProviderFlow
+                        ? "Authorization payment received"
+                        : "Payment received"}
+                    </output>
+
+                    {(orderData?.orderNumber ?? orderData?.orderId) && (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-sm font-semibold text-white">
+                        <span>
+                          {orderData.orderNumber ??
+                            `Order #${orderData.orderId}`}
+                        </span>
+                        <button
+                          aria-label="Copy order number"
+                          className="rounded p-0.5 text-slate-300 transition-colors hover:text-lime-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-lime-300"
+                          onClick={handleCopyOrder}
+                          title="Copy order number"
+                          type="button"
+                        >
+                          {copiedOrder ? (
+                            <Check
+                              aria-hidden="true"
+                              className="size-3.5 text-lime-300"
+                            />
+                          ) : (
+                            <Copy aria-hidden="true" className="size-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <h1
                     className="mt-6 max-w-3xl text-balance text-4xl font-extrabold tracking-tight text-white sm:text-5xl"
                     id="checkout-success-title"
@@ -188,7 +679,7 @@ export const CheckoutSuccessPage = () => {
                   <p className="mt-5 max-w-2xl text-pretty text-base leading-7 text-slate-300 sm:text-lg">
                     {isProviderFlow
                       ? "Your $50 background check and MVR authorization payment was accepted. Verify your email to finish setting up your provider account."
-                      : "Your payment was accepted, and we’re preparing your service details. We’ll send your receipt and next updates to the email used at checkout."}
+                      : `Your payment was accepted, and we’re preparing your service details. We’ve sent your confirmation receipt to ${orderData?.customerEmail ?? "the email used at checkout"}.`}
                   </p>
                 </div>
 
@@ -200,6 +691,29 @@ export const CheckoutSuccessPage = () => {
                   Securely processed by Stripe
                 </div>
               </div>
+
+              <BookingSummary
+                isProviderFlow={isProviderFlow}
+                orderData={orderData}
+              />
+
+              <AccountConnectionCard
+                claimAccountSearch={claimAccountSearch}
+                handleSendLoginCode={handleSendLoginCode}
+                handleVerifyOtp={handleVerifyOtp}
+                isProviderFlow={isProviderFlow}
+                isSendingOtp={isSendingOtp}
+                isVerifyingOtp={isVerifyingOtp}
+                orderData={orderData}
+                otp={otp}
+                otpError={otpError}
+                otpSent={otpSent}
+                sessionId={search.session_id}
+                setOtp={(value) => {
+                  setOtp(value);
+                  setOtpError(null);
+                }}
+              />
 
               <div className="mt-10 border-t border-white/10 pt-8">
                 <h2 className="text-sm font-bold uppercase tracking-[0.16em] text-white/60">
@@ -229,22 +743,22 @@ export const CheckoutSuccessPage = () => {
                       <ArrowRight aria-hidden="true" className="size-4" />
                     </button>
                   ) : (
-                    <Link
-                      className={`${actionLinkClassName} bg-lime-300 text-slate-950 hover:bg-lime-200`}
-                      search={claimAccountSearch}
-                      to="/claim-account"
-                    >
-                      Get dashboard access
-                      <ArrowRight aria-hidden="true" className="size-4" />
-                    </Link>
-                  )}
-                  {!isProviderFlow && (
-                    <Link
-                      className={`${actionLinkClassName} border border-white/15 text-white hover:border-white/30 hover:bg-white/10`}
-                      to="/dashboard"
-                    >
-                      Open dashboard
-                    </Link>
+                    <>
+                      <Link
+                        className={`${actionLinkClassName} bg-lime-300 text-slate-950 hover:bg-lime-200`}
+                        search={claimAccountSearch}
+                        to="/claim-account"
+                      >
+                        Get dashboard access
+                        <ArrowRight aria-hidden="true" className="size-4" />
+                      </Link>
+                      <Link
+                        className={`${actionLinkClassName} border border-white/15 text-white hover:border-white/30 hover:bg-white/10`}
+                        to="/dashboard"
+                      >
+                        Open dashboard
+                      </Link>
+                    </>
                   )}
                 </div>
               </div>

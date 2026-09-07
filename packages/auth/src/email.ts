@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
+  castleCareUrl,
   emailTheme,
   renderActionEmail,
   renderOtpEmail,
+  renderWelcomeEmail,
 } from "@callcastlecare/email";
 import { env } from "@callcastlecare/env/server";
 import { Resend } from "resend";
@@ -35,16 +37,12 @@ const createIdempotencyKey = (prefix: string, parts: string[]) => {
   return `${prefix}/${digest}`;
 };
 
-const requireResendClient = () => {
+export const sendAuthEmail = async (input: AuthEmailInput) => {
   const resendClient = getResendClient();
   if (!resendClient) {
-    throw new Error("RESEND_API_KEY is required to send auth email.");
+    return;
   }
-  return resendClient;
-};
 
-export const sendAuthEmail = async (input: AuthEmailInput) => {
-  const resendClient = requireResendClient();
   const rendered = await renderActionEmail(input);
   const result = await resendClient.emails.send(
     {
@@ -72,7 +70,11 @@ export const sendAuthEmail = async (input: AuthEmailInput) => {
 };
 
 export const sendAuthOtpEmail = async (input: AuthOtpEmailInput) => {
-  const resendClient = requireResendClient();
+  const resendClient = getResendClient();
+  if (!resendClient) {
+    return;
+  }
+
   const rendered = await renderOtpEmail({
     body: input.body,
     code: input.otp,
@@ -102,4 +104,69 @@ export const sendAuthOtpEmail = async (input: AuthOtpEmailInput) => {
       cause: result.error,
     });
   }
+};
+
+export const sendWelcomeAuthEmail = async (input: {
+  customerName?: string;
+  dashboardUrl?: string;
+  to: string;
+}) => {
+  const resendClient = getResendClient();
+  if (!resendClient) {
+    return;
+  }
+
+  const rendered = await renderWelcomeEmail(input);
+  await resendClient.emails.send(
+    {
+      from: emailTheme.from,
+      html: rendered.html,
+      replyTo: emailTheme.replyTo,
+      subject: "Welcome to CastleCare",
+      text: rendered.text,
+      to: input.to,
+    },
+    {
+      idempotencyKey: createIdempotencyKey("auth-welcome", [
+        "Welcome to CastleCare",
+        input.to,
+      ]),
+    }
+  );
+};
+
+export const sendAdminSignupNotification = async (input: {
+  customerEmail: string;
+  customerName: string;
+}) => {
+  const resendClient = getResendClient();
+  const adminEmail = env.ADMIN_EMAIL;
+  if (!resendClient || !adminEmail) {
+    return;
+  }
+
+  const rendered = await renderActionEmail({
+    body: `A new customer account was created for ${input.customerName} (${input.customerEmail}).`,
+    buttonLabel: "Open Admin Dashboard",
+    preview: `New customer signup: ${input.customerName}`,
+    title: "New Customer Signup",
+    url: castleCareUrl("/admin"),
+  });
+
+  await resendClient.emails.send(
+    {
+      from: emailTheme.from,
+      html: rendered.html,
+      replyTo: emailTheme.replyTo,
+      subject: `New Customer Signup: ${input.customerName}`,
+      text: rendered.text,
+      to: adminEmail,
+    },
+    {
+      idempotencyKey: createIdempotencyKey("admin-signup-alert", [
+        adminEmail,
+        input.customerEmail,
+      ]),
+    }
+  );
 };

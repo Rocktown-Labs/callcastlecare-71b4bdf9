@@ -8,14 +8,17 @@ export {
   renderActionEmail,
   renderAdminBookingAlertEmail,
   renderBalanceInvoiceEmail,
+  renderBookingReceivedEmail,
   renderEmail,
   renderOtpEmail,
+  renderPaymentReceiptEmail,
   renderProviderApplicationReceivedEmail,
   renderQuoteReviewNeededEmail,
   renderQuoteSavedEmail,
   renderServiceCompletedEmail,
   renderServiceStatusUpdateEmail,
   renderSubscriptionStartedEmail,
+  renderWelcomeEmail,
 } from "./render";
 export { castleCareUrl, emailTheme, formatCents } from "./theme";
 export type { CastleCareEmailKey, EmailCatalogEntry } from "./catalog";
@@ -32,3 +35,4 @@ export type { QuoteSavedEmailProps } from "./templates/quote-saved";
 export type { ServiceCompletedEmailProps } from "./templates/service-completed";
 export type { ServiceStatusUpdateEmailProps } from "./templates/service-status-update";
 export type { SubscriptionStartedEmailProps } from "./templates/subscription-started";
+export type { WelcomeEmailProps } from "./templates/welcome";
