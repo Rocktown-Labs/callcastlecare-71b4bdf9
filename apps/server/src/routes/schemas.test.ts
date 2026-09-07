@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adminWorkerCreateRequestSchema,
+  adminWorkerStatusRequestSchema,
+  adminWorkerUpdateRequestSchema,
   checkoutPreviewItemSchema,
   checkoutPreviewRequestSchema,
   publicQuoteRequestSchema,
@@ -142,5 +145,69 @@ describe("support request schema", () => {
     if (!result.success) {
       expect(result.error.issues[0]?.path).toEqual(["phone"]);
     }
+  });
+});
+
+describe("admin worker schemas", () => {
+  it("accepts a valid staff creation payload with city and state", () => {
+    const result = adminWorkerCreateRequestSchema.safeParse({
+      city: "Little Rock",
+      email: "pro@example.com",
+      firstName: "Marcus",
+      lastName: "Vance",
+      phone: "(501) 555-0144",
+      serviceRadiusMiles: 20,
+      servicesOffered: ["lawncare", "window_washing"],
+      state: "AR",
+      streetAddress: "123 Main St",
+      zip: "72201",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("normalizes hyphenated window-washing service values", () => {
+    const result = adminWorkerCreateRequestSchema.safeParse({
+      email: "pro@example.com",
+      firstName: "Sarah",
+      lastName: "Jenkins",
+      phone: "5015550188",
+      servicesOffered: ["window-washing"],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.servicesOffered).toEqual(["window_washing"]);
+    }
+  });
+
+  it("rejects staff creation without services", () => {
+    const result = adminWorkerCreateRequestSchema.safeParse({
+      email: "pro@example.com",
+      firstName: "Marcus",
+      lastName: "Vance",
+      phone: "(501) 555-0144",
+      servicesOffered: [],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid status transitions", () => {
+    const result = adminWorkerStatusRequestSchema.safeParse({
+      status: "on_leave",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts partial staff updates", () => {
+    const result = adminWorkerUpdateRequestSchema.safeParse({
+      city: "Fayetteville",
+      serviceRadiusMiles: 30,
+      state: "AR",
+    });
+
+    expect(result.success).toBe(true);
   });
 });

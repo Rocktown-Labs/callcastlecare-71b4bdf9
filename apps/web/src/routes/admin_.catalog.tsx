@@ -11,7 +11,7 @@ import {
   redirect,
   useRouteContext,
 } from "@tanstack/react-router";
-import { RefreshCw, Save, ShoppingBag, Tag } from "lucide-react";
+import { ChevronDown, RefreshCw, Save, ShoppingBag, Tag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -104,6 +104,18 @@ const normalizeInterval = (value: string): CatalogItem["interval"] => {
   }
 
   return "one_time";
+};
+
+const getPriceRangeLabel = (amounts: number[]) => {
+  if (amounts.length === 0) {
+    return "No prices";
+  }
+  const minCents = Math.min(...amounts);
+  const maxCents = Math.max(...amounts);
+  if (minCents === maxCents) {
+    return formatCents(minCents);
+  }
+  return `${formatCents(minCents)} – ${formatCents(maxCents)}`;
 };
 
 const groupCatalogItems = (items: CatalogItem[]) => {
@@ -278,6 +290,24 @@ const AdminCatalogRoute = () => {
   }, []);
 
   const catalogGroups = groupCatalogItems(items);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+
+  const toggleGroup = (groupKey: string) => {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  };
+
+  const expandAllGroups = () => {
+    setOpenGroups(new Set(catalogGroups.map(([groupKey]) => groupKey)));
+  };
+  const collapseAllGroups = () => setOpenGroups(new Set());
 
   const updateItem = (index: number, next: Partial<CatalogItem>) => {
     setItems((current) =>
@@ -317,7 +347,11 @@ const AdminCatalogRoute = () => {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      toast.error(payload?.error ?? "Stripe sync failed");
+      toast.error(
+        typeof payload?.error === "string"
+          ? payload.error
+          : "Stripe sync failed"
+      );
       return;
     }
 
@@ -414,126 +448,185 @@ const AdminCatalogRoute = () => {
           </section>
 
           <section className="grid gap-4">
-            {catalogGroups.map(([groupKey, group]) => (
-              <article
-                className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
-                key={groupKey}
-              >
-                <div className="flex flex-col gap-3 border-slate-200 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-black text-slate-950">
-                      {group.name}
-                    </h2>
-                    <p className="mt-1 text-xs font-semibold uppercase text-slate-500">
-                      {group.serviceType.replaceAll("_", " ")} ·{" "}
-                      {group.items.length} price
-                      {group.items.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                    {groupKey}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid gap-3">
-                  {group.items.map(({ item, originalIndex }) => (
-                    <div
-                      className="grid gap-3 rounded-2xl bg-slate-50 p-4 xl:grid-cols-[1.3fr_0.8fr_0.45fr_0.45fr_auto]"
-                      key={originalIndex}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-bold text-slate-500">
+                {isLoading
+                  ? "Loading products..."
+                  : `${catalogGroups.length} product groups · click a card to edit prices`}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  className="h-9 rounded-full px-4 text-xs font-bold"
+                  disabled={isLoading || catalogGroups.length === 0}
+                  onClick={expandAllGroups}
+                  type="button"
+                  variant="outline"
+                >
+                  Expand all
+                </Button>
+                <Button
+                  className="h-9 rounded-full px-4 text-xs font-bold"
+                  disabled={isLoading || openGroups.size === 0}
+                  onClick={collapseAllGroups}
+                  type="button"
+                  variant="outline"
+                >
+                  Collapse all
+                </Button>
+              </div>
+            </div>
+            <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {catalogGroups.map(([groupKey, group]) => {
+                const isOpen = openGroups.has(groupKey);
+                const priceRange = getPriceRangeLabel(
+                  group.items.map(({ item }) => item.amountCents)
+                );
+                return (
+                  <article
+                    className="rounded-3xl border border-slate-200 bg-white shadow-sm"
+                    key={groupKey}
+                  >
+                    <button
+                      aria-controls={`catalog-group-${groupKey}`}
+                      aria-expanded={isOpen}
+                      className="flex w-full items-start justify-between gap-3 p-5 text-left"
+                      onClick={() => toggleGroup(groupKey)}
+                      type="button"
                     >
-                      <div className="grid gap-2">
-                        <Label>Name and description</Label>
-                        <Input
-                          className="rounded-2xl bg-white"
-                          onChange={(event) =>
-                            updateItem(originalIndex, {
-                              name: event.target.value,
-                            })
-                          }
-                          value={item.name}
-                        />
-                        <Input
-                          className="rounded-2xl bg-white"
-                          onChange={(event) =>
-                            updateItem(originalIndex, {
-                              description: event.target.value,
-                            })
-                          }
-                          value={item.description}
-                        />
+                      <span>
+                        <span className="block text-lg font-black text-slate-950">
+                          {group.name}
+                        </span>
+                        <span className="mt-1 block text-xs font-semibold uppercase text-slate-500">
+                          {group.serviceType.replaceAll("_", " ")} ·{" "}
+                          {group.items.length} price
+                          {group.items.length === 1 ? "" : "s"} · {priceRange}
+                        </span>
+                        <span className="mt-2 inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                          {groupKey}
+                        </span>
+                      </span>
+                      <span
+                        className={cn(
+                          "mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 transition-transform",
+                          isOpen ? "rotate-180" : ""
+                        )}
+                      >
+                        <ChevronDown className="size-4" />
+                      </span>
+                    </button>
+
+                    {isOpen ? (
+                      <div
+                        className="grid gap-3 border-slate-200 border-t p-5"
+                        id={`catalog-group-${groupKey}`}
+                      >
+                        {group.items.map(({ item, originalIndex }) => (
+                          <div
+                            className="grid gap-3 rounded-2xl bg-slate-50 p-4"
+                            key={originalIndex}
+                          >
+                            <div className="grid gap-2">
+                              <Label>Name and description</Label>
+                              <Input
+                                className="rounded-2xl bg-white"
+                                onChange={(event) =>
+                                  updateItem(originalIndex, {
+                                    name: event.target.value,
+                                  })
+                                }
+                                value={item.name}
+                              />
+                              <Input
+                                className="rounded-2xl bg-white"
+                                onChange={(event) =>
+                                  updateItem(originalIndex, {
+                                    description: event.target.value,
+                                  })
+                                }
+                                value={item.description}
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Slug</Label>
+                              <Input
+                                className="rounded-2xl bg-white"
+                                onChange={(event) =>
+                                  updateItem(originalIndex, {
+                                    slug: event.target.value,
+                                  })
+                                }
+                                value={item.slug}
+                              />
+                              <p className="truncate text-xs text-slate-500">
+                                {item.stripeProductId ??
+                                  "No Stripe product yet"}
+                              </p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="grid gap-2">
+                                <Label>Price</Label>
+                                <Input
+                                  className="rounded-2xl bg-white"
+                                  min={0}
+                                  onChange={(event) =>
+                                    updateItem(originalIndex, {
+                                      amountCents: Math.round(
+                                        Number(event.target.value) * 100
+                                      ),
+                                    })
+                                  }
+                                  step="0.01"
+                                  type="number"
+                                  value={item.amountCents / 100}
+                                />
+                                <p className="text-xs font-bold text-slate-500">
+                                  {formatCents(item.amountCents)}
+                                </p>
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Interval</Label>
+                                <select
+                                  className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm"
+                                  onChange={(event) =>
+                                    updateItem(originalIndex, {
+                                      interval: normalizeInterval(
+                                        event.target.value
+                                      ),
+                                    })
+                                  }
+                                  value={item.interval}
+                                >
+                                  <option value="one_time">One-time</option>
+                                  <option value="week">Weekly</option>
+                                  <option value="month">Monthly</option>
+                                  <option value="year">Yearly</option>
+                                </select>
+                                <p className="truncate text-xs text-slate-500">
+                                  {item.stripePriceId ?? "No Stripe price yet"}
+                                </p>
+                              </div>
+                            </div>
+                            <label className="flex items-center gap-2 text-sm font-bold">
+                              <input
+                                checked={item.active}
+                                onChange={(event) =>
+                                  updateItem(originalIndex, {
+                                    active: event.target.checked,
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              Active
+                            </label>
+                          </div>
+                        ))}
                       </div>
-                      <div className="grid gap-2">
-                        <Label>Slug</Label>
-                        <Input
-                          className="rounded-2xl bg-white"
-                          onChange={(event) =>
-                            updateItem(originalIndex, {
-                              slug: event.target.value,
-                            })
-                          }
-                          value={item.slug}
-                        />
-                        <p className="truncate text-xs text-slate-500">
-                          {item.stripeProductId ?? "No Stripe product yet"}
-                        </p>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Price</Label>
-                        <Input
-                          className="rounded-2xl bg-white"
-                          min={0}
-                          onChange={(event) =>
-                            updateItem(originalIndex, {
-                              amountCents: Math.round(
-                                Number(event.target.value) * 100
-                              ),
-                            })
-                          }
-                          step="0.01"
-                          type="number"
-                          value={item.amountCents / 100}
-                        />
-                        <p className="text-xs font-bold text-slate-500">
-                          {formatCents(item.amountCents)}
-                        </p>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Interval</Label>
-                        <select
-                          className="h-10 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm"
-                          onChange={(event) =>
-                            updateItem(originalIndex, {
-                              interval: normalizeInterval(event.target.value),
-                            })
-                          }
-                          value={item.interval}
-                        >
-                          <option value="one_time">One-time</option>
-                          <option value="week">Weekly</option>
-                          <option value="month">Monthly</option>
-                          <option value="year">Yearly</option>
-                        </select>
-                        <p className="truncate text-xs text-slate-500">
-                          {item.stripePriceId ?? "No Stripe price yet"}
-                        </p>
-                      </div>
-                      <label className="flex items-center gap-2 self-center text-sm font-bold">
-                        <input
-                          checked={item.active}
-                          onChange={(event) =>
-                            updateItem(originalIndex, {
-                              active: event.target.checked,
-                            })
-                          }
-                          type="checkbox"
-                        />
-                        Active
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
           </section>
 
           <section className="grid gap-4">
