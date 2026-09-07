@@ -8,6 +8,7 @@ import { and, db, desc, eq, inArray } from "@callcastlecare/db";
 import {
   addresses,
   customers,
+  dispatchOffers,
   mediaAssets,
   orderItems,
   orderMediaLinks,
@@ -18,12 +19,14 @@ import {
   stripeCoupons,
   stripeSyncRuns,
   supportRequests,
+  user as authUsers,
   workers,
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 
+import { getOrderGroupKey } from "../lib/admin-order-groups";
 import {
   getCheckoutSettings,
   updateCheckoutSettings,
@@ -45,6 +48,9 @@ import {
   adminOrderActionRequestSchema,
   adminOrderNoteRequestSchema,
   adminRefundRequestSchema,
+  adminWorkerCreateRequestSchema,
+  adminWorkerStatusRequestSchema,
+  adminWorkerUpdateRequestSchema,
   updateCheckoutSettingsRequestSchema,
 } from "./schemas";
 
@@ -412,7 +418,9 @@ export const adminRoutes = new Hono<AppEnv>()
       await Promise.all([
         db.query.orders.findMany({
           columns: {
+            checkoutSessionId: true,
             id: true,
+            scheduledStartAt: true,
             status: true,
           },
           limit: 100,
@@ -448,11 +456,15 @@ export const adminRoutes = new Hono<AppEnv>()
 
     return c.json(
       {
-        activeOrders: orderRows.filter((order) =>
-          activeOrderStatuses.includes(
-            order.status as (typeof activeOrderStatuses)[number]
-          )
-        ).length,
+        activeOrders: new Set(
+          orderRows
+            .filter((order) =>
+              activeOrderStatuses.includes(
+                order.status as (typeof activeOrderStatuses)[number]
+              )
+            )
+            .map((order) => getOrderGroupKey(order))
+        ).size,
         openSupport: supportRows.filter(
           (request) => request.status !== "closed"
         ).length,
@@ -510,11 +522,293 @@ export const adminRoutes = new Hono<AppEnv>()
     }
 
     const list = await db.query.workers.findMany({
-      limit: 100,
+      limit: 200,
       orderBy: desc(workers.createdAt),
     });
 
     return c.json({ workers: list }, 200);
+  })
+  .post("/workers", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const body = await c.req.json();
+    const parsed = adminWorkerCreateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const normalizedEmail = parsed.data.email.trim().toLowerCase();
+    const existingWorkerByEmail = await db.query.workers.findFirst({
+      where: eq(workers.email, normalizedEmail),
+    });
+    if (existingWorkerByEmail) {
+      return c.json(
+        { error: "A staff record already exists for this email" },
+        409
+      );
+    }
+
+    const { auth } = await import("@callcastlecare/auth");
+    const authContext = await auth.$context;
+    let provisionedUser = await db.query.user.findFirst({
+      where: eq(authUsers.email, normalizedEmail),
+    });
+    if (!provisionedUser) {
+      try {
+        await authContext.internalAdapter.createUser({
+          email: normalizedEmail,
+          emailVerified: false,
+          name: `${parsed.data.firstName} ${parsed.data.lastName}`.trim(),
+        });
+        provisionedUser = await db.query.user.findFirst({
+          where: eq(authUsers.email, normalizedEmail),
+        });
+      } catch (error) {
+        const racedUser = await db.query.user.findFirst({
+          where: eq(authUsers.email, normalizedEmail),
+        });
+        if (!racedUser) {
+          throw error;
+        }
+        provisionedUser = racedUser;
+      }
+    }
+
+    if (!provisionedUser) {
+      return c.json({ error: "Staff login could not be provisioned" }, 500);
+    }
+
+    const existingWorkerForUser = await db.query.workers.findFirst({
+      where: eq(workers.userId, provisionedUser.id),
+    });
+    if (existingWorkerForUser) {
+      return c.json(
+        {
+          error: "This login already has a staff record",
+          worker: existingWorkerForUser,
+        },
+        409
+      );
+    }
+
+    const applicationFormData = {
+      ...parsed.data.applicationFormData,
+      city: parsed.data.city ?? null,
+      source: "admin_created",
+      state: parsed.data.state ?? null,
+      streetAddress: parsed.data.streetAddress ?? null,
+      zip: parsed.data.zip ?? null,
+    };
+
+    const [worker] = await db
+      .insert(workers)
+      .values({
+        applicationFormData,
+        email: normalizedEmail,
+        firstName: parsed.data.firstName.trim(),
+        isActive: false,
+        lastName: parsed.data.lastName.trim(),
+        onboardingStatus: parsed.data.onboardingStatus,
+        phone: parsed.data.phone.trim(),
+        serviceRadiusMiles: parsed.data.serviceRadiusMiles,
+        servicesOffered: parsed.data.servicesOffered,
+        updatedAt: new Date(),
+        userId: provisionedUser.id,
+      })
+      .returning();
+    if (!worker) {
+      return c.json({ error: "Staff record could not be created" }, 500);
+    }
+
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        requestId: c.get("requestId"),
+        userId: provisionedUser.id,
+        workerId: worker.id,
+      },
+      "admin:worker_created"
+    );
+    return c.json({ user: provisionedUser, worker }, 201);
+  })
+  .get("/workers/:workerId", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const workerId = parsePositiveId(c.req.param("workerId"));
+    if (!workerId) {
+      return c.json({ error: "Invalid worker id" }, 400);
+    }
+
+    const worker = await db.query.workers.findFirst({
+      where: eq(workers.id, workerId),
+    });
+    if (!worker) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+
+    const [linkedUser, offers, assignedOrders] = await Promise.all([
+      db.query.user.findFirst({ where: eq(authUsers.id, worker.userId) }),
+      db.query.dispatchOffers.findMany({
+        limit: 20,
+        orderBy: desc(dispatchOffers.createdAt),
+        where: eq(dispatchOffers.workerId, worker.id),
+      }),
+      db.query.orders.findMany({
+        limit: 20,
+        orderBy: desc(orders.createdAt),
+        where: eq(orders.assignedWorkerId, worker.id),
+      }),
+    ]);
+
+    return c.json(
+      {
+        assignedOrders,
+        offers,
+        routes: [],
+        user: linkedUser
+          ? {
+              email: linkedUser.email,
+              emailVerified: linkedUser.emailVerified,
+              id: linkedUser.id,
+              name: linkedUser.name,
+            }
+          : null,
+        worker,
+      },
+      200
+    );
+  })
+  .patch("/workers/:workerId", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const workerId = parsePositiveId(c.req.param("workerId"));
+    if (!workerId) {
+      return c.json({ error: "Invalid worker id" }, 400);
+    }
+
+    const body = await c.req.json();
+    const parsed = adminWorkerUpdateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const existing = await db.query.workers.findFirst({
+      where: eq(workers.id, workerId),
+    });
+    if (!existing) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+
+    const currentFormData =
+      existing.applicationFormData &&
+      typeof existing.applicationFormData === "object"
+        ? (existing.applicationFormData as Record<string, unknown>)
+        : {};
+    const nextFormData = { ...currentFormData };
+    if (parsed.data.city !== undefined) {
+      nextFormData.city = parsed.data.city;
+    }
+    if (parsed.data.state !== undefined) {
+      nextFormData.state = parsed.data.state;
+    }
+    if (parsed.data.streetAddress !== undefined) {
+      nextFormData.streetAddress = parsed.data.streetAddress;
+    }
+    if (parsed.data.zip !== undefined) {
+      nextFormData.zip = parsed.data.zip;
+    }
+
+    const workerPatch: Partial<typeof workers.$inferInsert> = {
+      applicationFormData: nextFormData,
+      updatedAt: new Date(),
+    };
+    if (parsed.data.firstName !== undefined) {
+      workerPatch.firstName = parsed.data.firstName.trim();
+    }
+    if (parsed.data.lastName !== undefined) {
+      workerPatch.lastName = parsed.data.lastName.trim();
+    }
+    if (parsed.data.phone !== undefined) {
+      workerPatch.phone = parsed.data.phone.trim();
+    }
+    if (parsed.data.servicesOffered !== undefined) {
+      workerPatch.servicesOffered = parsed.data.servicesOffered;
+    }
+    if (parsed.data.serviceRadiusMiles !== undefined) {
+      workerPatch.serviceRadiusMiles = parsed.data.serviceRadiusMiles;
+    }
+    if (parsed.data.isActive !== undefined) {
+      workerPatch.isActive = parsed.data.isActive;
+    }
+
+    const [worker] = await db
+      .update(workers)
+      .set(workerPatch)
+      .where(eq(workers.id, workerId))
+      .returning();
+    if (!worker) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        requestId: c.get("requestId"),
+        workerId: worker.id,
+      },
+      "admin:worker_updated"
+    );
+    return c.json({ worker }, 200);
+  })
+  .post("/workers/:workerId/status", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const workerId = parsePositiveId(c.req.param("workerId"));
+    if (!workerId) {
+      return c.json({ error: "Invalid worker id" }, 400);
+    }
+
+    const body = await c.req.json();
+    const parsed = adminWorkerStatusRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const [worker] = await db
+      .update(workers)
+      .set({
+        isActive: false,
+        onboardingStatus: parsed.data.status,
+        updatedAt: new Date(),
+      })
+      .where(eq(workers.id, workerId))
+      .returning();
+    if (!worker) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        requestId: c.get("requestId"),
+        status: parsed.data.status,
+        workerId: worker.id,
+      },
+      "admin:worker_status_changed"
+    );
+    return c.json({ worker }, 200);
   })
   .post("/workers/:workerId/approve", async (c) => {
     const adminError = requireAdmin(c);
