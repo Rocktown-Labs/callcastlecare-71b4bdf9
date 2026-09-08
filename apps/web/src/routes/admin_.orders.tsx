@@ -14,11 +14,16 @@ import {
   ClipboardCheck,
   MapPin,
   ReceiptText,
+  Send,
   ShieldCheck,
+  UsersRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import type { DispatchWorker } from "@/components/admin/dispatch-helpers";
+import { isScheduledToday } from "@/components/admin/dispatch-helpers";
+import { DispatchModal } from "@/components/admin/dispatch-modal";
 import { AppShell } from "@/components/dashboard/app-shell";
 import { authClient } from "@/lib/auth-client";
 import { getServerUrl } from "@/lib/server-url";
@@ -103,7 +108,39 @@ const AdminOrdersRoute = () => {
     select: (state) => state.location.pathname,
   });
   const [orders, setOrders] = useState<AdminOrderSummary[]>([]);
+  const [workers, setWorkers] = useState<DispatchWorker[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dispatchTicket, setDispatchTicket] =
+    useState<AdminOrderSummary | null>(null);
+
+  const loadOrders = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        new URL("/api/v1/admin/orders", getServerUrl()),
+        { credentials: "include" }
+      );
+      if (response.ok) {
+        const payload = (await response.json()) as {
+          orders?: AdminOrderSummary[];
+        };
+        setOrders(payload.orders ?? []);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Orders failed");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (pathname !== "/admin/orders") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => void loadOrders(), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadOrders, pathname]);
 
   useEffect(() => {
     if (pathname !== "/admin/orders") {
@@ -111,31 +148,24 @@ const AdminOrdersRoute = () => {
     }
 
     let active = true;
-    const loadOrders = async () => {
-      setIsLoading(true);
+    const loadWorkers = async () => {
       try {
         const response = await fetch(
-          new URL("/api/v1/admin/orders", getServerUrl()),
+          new URL("/api/v1/admin/workers", getServerUrl()),
           { credentials: "include" }
         );
         if (active && response.ok) {
           const payload = (await response.json()) as {
-            orders?: AdminOrderSummary[];
+            workers?: DispatchWorker[];
           };
-          setOrders(payload.orders ?? []);
+          setWorkers(payload.workers ?? []);
         }
-      } catch (error) {
-        if (active) {
-          toast.error(error instanceof Error ? error.message : "Orders failed");
-        }
-      } finally {
-        if (active) {
-          setIsLoading(false);
-        }
+      } catch {
+        // Dispatch selects simply stay empty; the queue still works.
       }
     };
 
-    void loadOrders();
+    void loadWorkers();
     return () => {
       active = false;
     };
@@ -144,6 +174,10 @@ const AdminOrdersRoute = () => {
   if (pathname !== "/admin/orders") {
     return <Outlet />;
   }
+
+  const todaysTickets = orders.filter((ticket) =>
+    isScheduledToday(ticket.order.scheduledStartAt)
+  );
 
   return (
     <AppShell isAdmin userEmail={session.user?.email ?? ""} variant="admin">
@@ -166,6 +200,77 @@ const AdminOrdersRoute = () => {
             <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
               {orders.length} open {orders.length === 1 ? "ticket" : "tickets"}
             </div>
+          </section>
+
+          <section className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-lime-700">
+                  <UsersRound className="size-4" /> Dispatch desk
+                </p>
+                <h2 className="mt-1 text-xl font-black">
+                  Today tickets · send work to the crew
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                  Dispatch the whole ticket to one worker or split services
+                  across the crew. Workers get the offer ondemand and accept or
+                  decline.
+                </p>
+              </div>
+              <span className="rounded-full bg-lime-100 px-4 py-2 text-sm font-black text-lime-800">
+                {todaysTickets.length} today
+              </span>
+            </div>
+            {todaysTickets.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">
+                {isLoading
+                  ? "Loading today's tickets..."
+                  : "Nothing scheduled for today. New bookings land here."}
+              </p>
+            ) : (
+              <div className="grid gap-2">
+                {todaysTickets.map((ticket) => (
+                  <div
+                    className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                    key={ticket.order.id}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-black">
+                        Order #{ticket.order.id} ·{" "}
+                        {ticket.customer
+                          ? `${ticket.customer.firstName} ${ticket.customer.lastName}`
+                          : "Customer"}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        {formatDateTime(ticket.order.scheduledStartAt)} ·{" "}
+                        {getOrderServiceLabels(ticket.order).join(" · ") ||
+                          "Service"}{" "}
+                        ·{" "}
+                        {ticket.order.groupStatusLabel ??
+                          ticket.order.statusLabel ??
+                          ticket.order.status}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <Button
+                        className="h-10 rounded-xl bg-lime-300 px-4 text-sm font-black text-slate-950 hover:bg-lime-200"
+                        onClick={() => setDispatchTicket(ticket)}
+                        type="button"
+                      >
+                        <Send className="size-4" /> Dispatch
+                      </Button>
+                      <Link
+                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-slate-400"
+                        params={{ orderId: String(ticket.order.id) }}
+                        to="/admin/orders/$orderId"
+                      >
+                        Open ticket <ArrowRight className="size-4" />
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="grid gap-4">
@@ -263,6 +368,14 @@ const AdminOrdersRoute = () => {
           </section>
         </div>
       </main>
+      {dispatchTicket ? (
+        <DispatchModal
+          onClose={() => setDispatchTicket(null)}
+          onDispatched={() => void loadOrders()}
+          orderId={dispatchTicket.order.id}
+          workers={workers}
+        />
+      ) : null}
     </AppShell>
   );
 };

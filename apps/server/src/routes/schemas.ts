@@ -330,6 +330,33 @@ export const adminOrderActionRequestSchema = z.object({
   note: z.string().trim().max(1000).optional().or(z.literal("")),
 });
 
+export const adminOrderDispatchRequestSchema = z.object({
+  workerId: z.number().int().positive(),
+});
+
+export const adminRouteCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  routeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  workerId: z.number().int().positive(),
+});
+
+export const adminRouteStopRequestSchema = z.object({
+  orderId: z.number().int().positive(),
+  plannedEndAt: z.string().datetime().optional().nullable(),
+  plannedStartAt: z.string().datetime().optional().nullable(),
+  sequence: z.number().int().positive().optional(),
+});
+
+export const adminRouteStatusRequestSchema = z.object({
+  status: z.enum([
+    "draft",
+    "published",
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]),
+});
+
 export const adminOrderNoteRequestSchema = z.object({
   note: z.string().trim().min(1).max(1000),
 });
