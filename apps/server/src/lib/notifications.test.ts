@@ -120,6 +120,20 @@ describe("processOutboxEvent customer_welcome", () => {
     expect(mocks.dbInsert).not.toHaveBeenCalled();
   });
 
+  it("marks the event failed when welcome delivery rejects", async () => {
+    mocks.sendEmail.mockRejectedValueOnce(
+      new Error("Email provider rejected the message")
+    );
+
+    await processOutboxEvent(9);
+
+    expect(mocks.dbUpdate).toHaveBeenCalledTimes(2);
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ outboxEventId: 9 }),
+      "outbox:processing_failed"
+    );
+  });
+
   it("marks the event sent even when the customer row is gone", async () => {
     mocks.customerFindFirst.mockResolvedValue(null);
 

@@ -8,6 +8,7 @@ import { getServerUrl } from "@/lib/server-url";
 import type { DispatchWorker } from "./dispatch-helpers";
 import {
   getWorkerAvailability,
+  getWorkerAvailabilityForServices,
   getWorkerDisplayName,
 } from "./dispatch-helpers";
 
@@ -49,12 +50,14 @@ const WorkerSelect = ({
   id,
   onChange,
   serviceType,
+  serviceTypes,
   value,
   workers,
 }: {
   id: string;
   onChange: (value: string) => void;
   serviceType?: string;
+  serviceTypes?: string[];
   value: string;
   workers: DispatchWorker[];
 }) => (
@@ -66,7 +69,9 @@ const WorkerSelect = ({
   >
     <option value="">Choose worker</option>
     {workers.map((worker) => {
-      const availability = getWorkerAvailability(worker, serviceType);
+      const availability = serviceTypes
+        ? getWorkerAvailabilityForServices(worker, serviceTypes)
+        : getWorkerAvailability(worker, serviceType);
       return (
         <option disabled={!availability.ok} key={worker.id} value={worker.id}>
           {getWorkerDisplayName(worker)}
@@ -241,6 +246,9 @@ export const DispatchModal = ({
                 <WorkerSelect
                   id="Whole ticket worker"
                   onChange={setWholeWorkerId}
+                  serviceTypes={[
+                    ...new Set(services.map((service) => service.serviceType)),
+                  ]}
                   value={wholeWorkerId}
                   workers={workers}
                 />

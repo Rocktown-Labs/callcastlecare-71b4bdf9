@@ -53,6 +53,19 @@ export const getWorkerAvailability = (
   return { label: "Available", ok: true };
 };
 
+export const getWorkerAvailabilityForServices = (
+  worker: DispatchWorker,
+  serviceTypes: string[]
+): WorkerAvailability => {
+  for (const serviceType of serviceTypes) {
+    const availability = getWorkerAvailability(worker, serviceType);
+    if (!availability.ok) {
+      return availability;
+    }
+  }
+  return getWorkerAvailability(worker);
+};
+
 export const getWorkerDisplayName = (worker: DispatchWorker) =>
   `${worker.firstName} ${worker.lastName}`.trim() ||
   worker.email ||

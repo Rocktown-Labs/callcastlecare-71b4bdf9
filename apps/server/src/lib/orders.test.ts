@@ -235,7 +235,7 @@ describe("finalizeCheckoutPayment", () => {
     expect(mocks.sendEmail).toHaveBeenCalledTimes(2);
   });
 
-  it("does not re-publish the welcome event when orders already exist", async () => {
+  it("re-publishes the welcome event on retry when orders already exist", async () => {
     mocks.txOrdersFindMany.mockResolvedValue([{ id: 7 }]);
 
     const result = await finalizeCheckoutPayment({
@@ -252,11 +252,15 @@ describe("finalizeCheckoutPayment", () => {
         orderId: 7,
       },
     });
-    const welcomeCalls = mocks.publishOutboxEvent.mock.calls.filter(
-      ([input]) =>
-        (input as { eventName?: string }).eventName === "customer_welcome"
-    );
-    expect(welcomeCalls).toHaveLength(0);
+    expect(mocks.publishOutboxEvent).toHaveBeenCalledWith({
+      eventKey: "customer-welcome:22",
+      eventName: "customer_welcome",
+      payload: {
+        checkoutSessionId: checkoutSession.id,
+        customerId: checkoutSession.customerId,
+        orderId: 7,
+      },
+    });
   });
 
   it("materializes recurring service units for the first billing period", async () => {

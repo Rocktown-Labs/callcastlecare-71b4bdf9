@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   customerFindMany: vi.fn(),
   dbDelete: vi.fn(),
   dbInsert: vi.fn(),
+  dbTransaction: vi.fn(),
   dbUpdate: vi.fn(),
   dispatchOfferFindFirst: vi.fn(),
   env: { ADMIN_EMAIL: "cg@rocktownlabs.com" },
@@ -42,6 +43,7 @@ const mocks = vi.hoisted(() => ({
   routeFindFirst: vi.fn(),
   routeFindMany: vi.fn(),
   routeInsertChain: vi.fn(),
+  routeValues: vi.fn(),
   stopDeleteReturning: vi.fn(),
   stopFindFirst: vi.fn(),
   stopFindMany: vi.fn(),
@@ -79,6 +81,7 @@ vi.mock("@callcastlecare/db", () => ({
         findMany: mocks.workerFindMany,
       },
     },
+    transaction: mocks.dbTransaction,
     update: mocks.dbUpdate,
   },
   desc: vi.fn(),
@@ -183,11 +186,20 @@ beforeEach(() => {
   mocks.dispatchOfferFindFirst.mockResolvedValue(null);
   mocks.dbInsert.mockImplementation((table: unknown) => ({
     onConflictDoUpdate: mocks.routeInsertChain,
-    values: vi.fn(() => ({
-      onConflictDoUpdate: mocks.routeInsertChain,
-      returning: vi.fn().mockResolvedValue(insertedBatchRows(table)),
-    })),
+    values: vi.fn((values: unknown) => {
+      if (table === schemaTables.workerRoutes) {
+        mocks.routeValues(values);
+      }
+      return {
+        onConflictDoUpdate: mocks.routeInsertChain,
+        returning: vi.fn().mockResolvedValue(insertedBatchRows(table)),
+      };
+    }),
   }));
+  mocks.dbTransaction.mockResolvedValue({
+    batch: { id: 11 },
+    offer: { id: 22 },
+  });
   mocks.routeInsertChain.mockImplementation(() => ({
     returning: vi.fn().mockResolvedValue([
       {
@@ -309,6 +321,35 @@ describe("admin routes", () => {
     expect(await response.json()).toMatchObject({
       route: { id: 3, workerId: 7 },
     });
+  });
+
+  it("honors a provided name when a route is upserted", async () => {
+    const response = await app.request("/admin/routes", {
+      body: JSON.stringify({
+        name: "Morning route",
+        routeDate: "2026-09-08",
+        workerId: 7,
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.routeValues).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Morning route" })
+    );
+    expect(mocks.routeInsertChain).toHaveBeenCalledWith(
+      expect.objectContaining({
+        set: expect.objectContaining({ name: "Morning route" }),
+      })
+    );
+  });
+
+  it("rejects an invalid route status filter", async () => {
+    const response = await app.request("/admin/routes?status=flying");
+
+    expect(response.status).toBe(400);
+    expect(mocks.routeFindMany).not.toHaveBeenCalled();
   });
 
   it("lists routes with worker and stop counts", async () => {

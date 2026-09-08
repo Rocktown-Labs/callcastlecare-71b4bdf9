@@ -696,20 +696,18 @@ export const finalizeCheckoutPayment = async (input: {
     },
   });
 
-  // First paid order per customer only: the eventKey dedups repeat bookings,
-  // and abandoned (unpaid) checkouts never reach finalization, so neither the
-  // welcome email nor the admin signup alert can fire pre-payment.
-  if (dispatchOrderIds.length > 0) {
-    await publishOutboxEvent({
-      eventKey: `customer-welcome:${existingSession.customerId}`,
-      eventName: "customer_welcome",
-      payload: {
-        checkoutSessionId: existingSession.id,
-        customerId: existingSession.customerId,
-        ...(primaryOrderId ? { orderId: primaryOrderId } : {}),
-      },
-    });
-  }
+  // First paid order per customer only: the stable eventKey dedups repeat
+  // bookings, while unconditional publishing recovers a first booking if a
+  // webhook retry follows a crash after the transaction commits.
+  await publishOutboxEvent({
+    eventKey: `customer-welcome:${existingSession.customerId}`,
+    eventName: "customer_welcome",
+    payload: {
+      checkoutSessionId: existingSession.id,
+      customerId: existingSession.customerId,
+      ...(primaryOrderId ? { orderId: primaryOrderId } : {}),
+    },
+  });
 
   if (hasPaidHomePreorder) {
     await publishOutboxEvent({
