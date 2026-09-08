@@ -9,18 +9,7 @@ import { admin } from "better-auth/plugins/admin";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import StripeSdk from "stripe";
 
-import {
-  sendAdminSignupNotification,
-  sendAuthEmail,
-  sendAuthOtpEmail,
-  sendWelcomeAuthEmail,
-} from "./email";
-
-type AuthOtpType =
-  | "change-email"
-  | "email-verification"
-  | "forget-password"
-  | "sign-in";
+import { getOtpEmailContent, sendAuthEmail, sendAuthOtpEmail } from "./email";
 
 const createStripePlugin = () => {
   const webhookSecret =
@@ -53,33 +42,6 @@ const createStripePlugin = () => {
     stripeClient,
     stripeWebhookSecret: webhookSecret,
   });
-};
-
-const getOtpEmailContent = (type: AuthOtpType) => {
-  if (type === "sign-in") {
-    return {
-      body: "Use this one-time code to sign in to your CastleCare account.",
-      preview: "Your CastleCare sign-in code.",
-      subject: "Your CastleCare sign-in code",
-      title: "Sign in to CastleCare",
-    };
-  }
-
-  if (type === "email-verification") {
-    return {
-      body: "Use this one-time code to verify your CastleCare email address.",
-      preview: "Your CastleCare verification code.",
-      subject: "Verify your CastleCare email",
-      title: "Verify your email",
-    };
-  }
-
-  return {
-    body: "Use this one-time code to reset your CastleCare password.",
-    preview: "Your CastleCare password reset code.",
-    subject: "Reset your CastleCare password",
-    title: "Reset your password",
-  };
 };
 
 const authAllowedHosts = [
@@ -118,33 +80,6 @@ export const createAuth = () => {
 
       schema,
     }),
-    databaseHooks: {
-      user: {
-        create: {
-          after: async (user) => {
-            if (user.email) {
-              try {
-                await sendWelcomeAuthEmail({
-                  customerName: user.name,
-                  to: user.email,
-                });
-              } catch {
-                // Non-blocking welcome email delivery failure
-              }
-
-              try {
-                await sendAdminSignupNotification({
-                  customerEmail: user.email,
-                  customerName: user.name,
-                });
-              } catch {
-                // Non-blocking admin alert delivery failure
-              }
-            }
-          },
-        },
-      },
-    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,

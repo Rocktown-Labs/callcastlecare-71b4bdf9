@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
 
 import {
-  castleCareUrl,
   emailTheme,
   renderActionEmail,
   renderOtpEmail,
-  renderWelcomeEmail,
 } from "@callcastlecare/email";
 import { env } from "@callcastlecare/env/server";
 import { Resend } from "resend";
@@ -28,6 +26,39 @@ interface AuthOtpEmailInput {
   title: string;
   to: string;
 }
+
+export type AuthOtpType =
+  | "change-email"
+  | "email-verification"
+  | "forget-password"
+  | "sign-in";
+
+export const getOtpEmailContent = (type: AuthOtpType) => {
+  if (type === "sign-in") {
+    return {
+      body: "Use this one-time code to sign in to your CastleCare account.",
+      preview: "Your CastleCare sign-in code.",
+      subject: "Your CastleCare sign-in code",
+      title: "Sign in to CastleCare",
+    };
+  }
+
+  if (type === "email-verification") {
+    return {
+      body: "Use this one-time code to verify your CastleCare email address.",
+      preview: "Your CastleCare verification code.",
+      subject: "Verify your CastleCare email",
+      title: "Verify your email",
+    };
+  }
+
+  return {
+    body: "Use this one-time code to reset your CastleCare password.",
+    preview: "Your CastleCare password reset code.",
+    subject: "Reset your CastleCare password",
+    title: "Reset your password",
+  };
+};
 
 const getResendClient = () =>
   env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
@@ -69,10 +100,14 @@ export const sendAuthEmail = async (input: AuthEmailInput) => {
   }
 };
 
-export const sendAuthOtpEmail = async (input: AuthOtpEmailInput) => {
+export const sendAuthOtpEmail = async (
+  input: AuthOtpEmailInput
+): Promise<{ reason?: string; sent: boolean }> => {
   const resendClient = getResendClient();
   if (!resendClient) {
-    return;
+    // Callers (e.g. /send-login-code) must treat this as a delivery failure,
+    // never as a silent success.
+    return { reason: "missing_resend_api_key", sent: false };
   }
 
   const rendered = await renderOtpEmail({
@@ -104,69 +139,6 @@ export const sendAuthOtpEmail = async (input: AuthOtpEmailInput) => {
       cause: result.error,
     });
   }
-};
 
-export const sendWelcomeAuthEmail = async (input: {
-  customerName?: string;
-  dashboardUrl?: string;
-  to: string;
-}) => {
-  const resendClient = getResendClient();
-  if (!resendClient) {
-    return;
-  }
-
-  const rendered = await renderWelcomeEmail(input);
-  await resendClient.emails.send(
-    {
-      from: emailTheme.from,
-      html: rendered.html,
-      replyTo: emailTheme.replyTo,
-      subject: "Welcome to CastleCare",
-      text: rendered.text,
-      to: input.to,
-    },
-    {
-      idempotencyKey: createIdempotencyKey("auth-welcome", [
-        "Welcome to CastleCare",
-        input.to,
-      ]),
-    }
-  );
-};
-
-export const sendAdminSignupNotification = async (input: {
-  customerEmail: string;
-  customerName: string;
-}) => {
-  const resendClient = getResendClient();
-  const adminEmail = env.ADMIN_EMAIL;
-  if (!resendClient || !adminEmail) {
-    return;
-  }
-
-  const rendered = await renderActionEmail({
-    body: `A new customer account was created for ${input.customerName} (${input.customerEmail}).`,
-    buttonLabel: "Open Admin Dashboard",
-    preview: `New customer signup: ${input.customerName}`,
-    title: "New Customer Signup",
-    url: castleCareUrl("/admin"),
-  });
-
-  await resendClient.emails.send(
-    {
-      from: emailTheme.from,
-      html: rendered.html,
-      replyTo: emailTheme.replyTo,
-      subject: `New Customer Signup: ${input.customerName}`,
-      text: rendered.text,
-      to: adminEmail,
-    },
-    {
-      idempotencyKey: createIdempotencyKey("admin-signup-alert", [
-        adminEmail,
-        input.customerEmail,
-      ]),
-    }
-  );
+  return { sent: true };
 };

@@ -223,7 +223,44 @@ describe("finalizeCheckoutPayment", () => {
         orderId: 1,
       },
     });
+    expect(mocks.publishOutboxEvent).toHaveBeenCalledWith({
+      eventKey: "customer-welcome:22",
+      eventName: "customer_welcome",
+      payload: {
+        checkoutSessionId: checkoutSession.id,
+        customerId: checkoutSession.customerId,
+        orderId: 1,
+      },
+    });
     expect(mocks.sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-publishes the welcome event on retry when orders already exist", async () => {
+    mocks.txOrdersFindMany.mockResolvedValue([{ id: 7 }]);
+
+    const result = await finalizeCheckoutPayment({
+      checkoutSessionId: checkoutSession.id,
+      stripePaymentIntentId: "pi_combo",
+    });
+
+    expect(result.createdOrderIds).toEqual([7]);
+    expect(mocks.publishOutboxEvent).toHaveBeenCalledWith({
+      eventName: "checkout_confirmed",
+      payload: {
+        checkoutSessionId: checkoutSession.id,
+        customerId: checkoutSession.customerId,
+        orderId: 7,
+      },
+    });
+    expect(mocks.publishOutboxEvent).toHaveBeenCalledWith({
+      eventKey: "customer-welcome:22",
+      eventName: "customer_welcome",
+      payload: {
+        checkoutSessionId: checkoutSession.id,
+        customerId: checkoutSession.customerId,
+        orderId: 7,
+      },
+    });
   });
 
   it("materializes recurring service units for the first billing period", async () => {

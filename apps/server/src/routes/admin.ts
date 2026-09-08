@@ -1138,43 +1138,65 @@ export const adminRoutes = new Hono<AppEnv>()
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
-    const [batch] = await db
-      .insert(dispatchBatches)
-      .values({
-        expiresAt,
-        orderId: order.id,
-        radiusMiles: 0,
-        sequence: 1,
-      })
-      .returning();
-    if (!batch) {
-      return c.json({ error: "Dispatch batch could not be created" }, 500);
-    }
+    let dispatchResult: {
+      batch: typeof dispatchBatches.$inferSelect;
+      offer: typeof dispatchOffers.$inferSelect;
+    };
+    try {
+      dispatchResult = await db.transaction(async (tx) => {
+        const [batch] = await tx
+          .insert(dispatchBatches)
+          .values({
+            expiresAt,
+            orderId: order.id,
+            radiusMiles: 0,
+            sequence: 1,
+          })
+          .returning();
+        if (!batch) {
+          throw new Error("Dispatch batch could not be created");
+        }
 
-    const [offer] = await db
-      .insert(dispatchOffers)
-      .values({
-        dispatchBatchId: batch.id,
-        expiresAt,
-        orderId: order.id,
-        status: "pending",
-        workerId: dispatchWorker.id,
-      })
-      .returning();
-    if (!offer) {
+        const [offer] = await tx
+          .insert(dispatchOffers)
+          .values({
+            dispatchBatchId: batch.id,
+            expiresAt,
+            orderId: order.id,
+            status: "pending",
+            workerId: dispatchWorker.id,
+          })
+          .returning();
+        if (!offer) {
+          throw new Error("Dispatch offer could not be created");
+        }
+
+        await tx
+          .update(orders)
+          .set({
+            dispatchStartedAt: order.dispatchStartedAt ?? now,
+            nextWaveAt: null,
+            status: "dispatching",
+            updatedAt: now,
+          })
+          .where(eq(orders.id, order.id));
+
+        return { batch, offer };
+      });
+    } catch (error) {
+      logger.error(
+        {
+          error,
+          orderId: order.id,
+          requestId: c.get("requestId"),
+          workerId: dispatchWorker.id,
+        },
+        "admin:order_dispatch_transaction_failed"
+      );
       return c.json({ error: "Dispatch offer could not be created" }, 500);
     }
 
-    await db
-      .update(orders)
-      .set({
-        dispatchStartedAt: order.dispatchStartedAt ?? now,
-        nextWaveAt: null,
-        status: "dispatching",
-        updatedAt: now,
-      })
-      .where(eq(orders.id, order.id));
-
+    const { offer } = dispatchResult;
     await publishOutboxEvent({
       eventName: "order_dispatched",
       payload: {
@@ -1223,7 +1245,10 @@ export const adminRoutes = new Hono<AppEnv>()
         workerId: worker.id,
       })
       .onConflictDoUpdate({
-        set: { updatedAt: new Date() },
+        set: {
+          ...(parsed.data.name ? { name: parsed.data.name } : {}),
+          updatedAt: new Date(),
+        },
         target: [workerRoutes.workerId, workerRoutes.routeDate],
       })
       .returning();
@@ -1242,6 +1267,12 @@ export const adminRoutes = new Hono<AppEnv>()
     const workerIdParam = c.req.query("workerId") ?? "";
     const routeDate = c.req.query("routeDate") ?? "";
     const statusFilter = c.req.query("status") ?? "";
+    const parsedStatus = statusFilter
+      ? adminRouteStatusRequestSchema.shape.status.safeParse(statusFilter)
+      : null;
+    if (parsedStatus && !parsedStatus.success) {
+      return c.json({ error: parsedStatus.error.flatten() }, 400);
+    }
 
     // Single-route lookup keeps the historic worker+date contract.
     if (workerIdParam || routeDate) {
@@ -1265,13 +1296,8 @@ export const adminRoutes = new Hono<AppEnv>()
     const routeRows = await db.query.workerRoutes.findMany({
       limit: 100,
       orderBy: desc(workerRoutes.routeDate),
-      ...(statusFilter
-        ? {
-            where: eq(
-              workerRoutes.status,
-              statusFilter as typeof workerRoutes.$inferSelect.status
-            ),
-          }
+      ...(parsedStatus?.success
+        ? { where: eq(workerRoutes.status, parsedStatus.data) }
         : {}),
     });
     const workerIds = [...new Set(routeRows.map((row) => row.workerId))];

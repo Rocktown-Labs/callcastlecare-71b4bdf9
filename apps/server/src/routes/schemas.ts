@@ -134,6 +134,21 @@ export const checkoutDraftRequestSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
 });
 
+export const sendLoginCodeRequestSchema = z
+  .object({
+    sessionId: z.string().trim().min(1).optional(),
+    token: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.sessionId && !value.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide a checkout session id or access token.",
+        path: ["sessionId"],
+      });
+    }
+  });
+
 export const quoteRequestStatusSchema = z.enum([
   "draft",
   "contact_captured",
