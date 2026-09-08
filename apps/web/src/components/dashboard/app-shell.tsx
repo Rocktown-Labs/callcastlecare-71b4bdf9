@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogOut,
   ReceiptText,
+  Route as RouteIcon,
   Settings,
   ShoppingBag,
   ShieldCheck,
@@ -109,6 +110,11 @@ const getNavigation = (variant: AppShellVariant, isAdmin: boolean) => {
       href: "/admin/orders",
       icon: ReceiptText,
       label: "Orders",
+    },
+    {
+      href: "/admin/routes",
+      icon: RouteIcon,
+      label: "Routes",
     },
     {
       href: "/admin/catalog",

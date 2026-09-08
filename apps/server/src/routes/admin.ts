@@ -9,6 +9,7 @@ import {
   addresses,
   checkoutItems,
   customers,
+  dispatchBatches,
   dispatchOffers,
   mediaAssets,
   orderItems,
@@ -51,13 +52,18 @@ import {
 import { getStripeMode } from "../lib/integrations/stripe-client";
 import { logger } from "../lib/logger";
 import { setOrderStatus } from "../lib/orders";
+import { publishOutboxEvent } from "../lib/outbox";
 import { createCompletionPayoutRecords } from "../lib/payouts";
 import { createAdminRefund, RefundError } from "../lib/refunds";
 import type { AppEnv } from "../types";
 import {
   adminOrderActionRequestSchema,
+  adminOrderDispatchRequestSchema,
   adminOrderNoteRequestSchema,
   adminRefundRequestSchema,
+  adminRouteCreateRequestSchema,
+  adminRouteStatusRequestSchema,
+  adminRouteStopRequestSchema,
   adminWorkerCreateRequestSchema,
   adminWorkerStatusRequestSchema,
   adminWorkerUpdateRequestSchema,
@@ -350,6 +356,71 @@ const getAdminOrderDetail = async (orderId: number) => {
     },
     services,
     statusHistory,
+  };
+};
+
+const getAdminRouteDetail = async (routeId: number) => {
+  const route = await db.query.workerRoutes.findFirst({
+    where: eq(workerRoutes.id, routeId),
+  });
+  if (!route) {
+    return null;
+  }
+
+  const [worker, stops] = await Promise.all([
+    db.query.workers.findFirst({ where: eq(workers.id, route.workerId) }),
+    db.query.routeStops.findMany({
+      orderBy: (table, { asc }) => [asc(table.sequence)],
+      where: eq(routeStops.routeId, route.id),
+    }),
+  ]);
+
+  const stopOrders =
+    stops.length === 0
+      ? []
+      : await db.query.orders.findMany({
+          where: inArray(
+            orders.id,
+            stops.map((stop) => stop.orderId)
+          ),
+        });
+  const stopCustomers =
+    stopOrders.length === 0
+      ? []
+      : await db.query.customers.findMany({
+          where: inArray(
+            customers.id,
+            stopOrders.map((order) => order.customerId)
+          ),
+        });
+  const stopAddresses =
+    stopOrders.length === 0
+      ? []
+      : await db.query.addresses.findMany({
+          where: inArray(
+            addresses.id,
+            stopOrders.map((order) => order.addressId)
+          ),
+        });
+  const customersById = new Map(
+    stopCustomers.map((customer) => [customer.id, customer])
+  );
+  const addressesById = new Map(
+    stopAddresses.map((address) => [address.id, address])
+  );
+  const ordersById = new Map(stopOrders.map((order) => [order.id, order]));
+
+  return {
+    route,
+    stops: stops.map((stop) => ({
+      ...stop,
+      address: addressesById.get(ordersById.get(stop.orderId)?.addressId ?? 0),
+      customer: customersById.get(
+        ordersById.get(stop.orderId)?.customerId ?? 0
+      ),
+      order: ordersById.get(stop.orderId) ?? null,
+    })),
+    worker,
   };
 };
 
@@ -808,25 +879,31 @@ export const adminRoutes = new Hono<AppEnv>()
       return c.json({ error: "Worker not found" }, 404);
     }
 
-    const [linkedUser, offers, assignedOrders] = await Promise.all([
-      db.query.user.findFirst({ where: eq(authUsers.id, worker.userId) }),
-      db.query.dispatchOffers.findMany({
-        limit: 20,
-        orderBy: desc(dispatchOffers.createdAt),
-        where: eq(dispatchOffers.workerId, worker.id),
-      }),
-      db.query.orders.findMany({
-        limit: 20,
-        orderBy: desc(orders.createdAt),
-        where: eq(orders.assignedWorkerId, worker.id),
-      }),
-    ]);
+    const [linkedUser, offers, assignedOrders, workerRouteRows] =
+      await Promise.all([
+        db.query.user.findFirst({ where: eq(authUsers.id, worker.userId) }),
+        db.query.dispatchOffers.findMany({
+          limit: 20,
+          orderBy: desc(dispatchOffers.createdAt),
+          where: eq(dispatchOffers.workerId, worker.id),
+        }),
+        db.query.orders.findMany({
+          limit: 20,
+          orderBy: desc(orders.createdAt),
+          where: eq(orders.assignedWorkerId, worker.id),
+        }),
+        db.query.workerRoutes.findMany({
+          limit: 20,
+          orderBy: desc(workerRoutes.routeDate),
+          where: eq(workerRoutes.workerId, worker.id),
+        }),
+      ]);
 
     return c.json(
       {
         assignedOrders,
         offers,
-        routes: [],
+        routes: workerRouteRows,
         user: linkedUser
           ? {
               email: linkedUser.email,
@@ -998,6 +1075,369 @@ export const adminRoutes = new Hono<AppEnv>()
       "admin:worker_approved"
     );
     return c.json({ worker }, 200);
+  })
+  .post("/orders/:orderId/dispatch", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const orderId = parsePositiveId(c.req.param("orderId"));
+    if (!orderId) {
+      return c.json({ error: "Invalid order id" }, 400);
+    }
+
+    const parsed = adminOrderDispatchRequestSchema.safeParse(
+      await c.req.json()
+    );
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const [order, dispatchWorker] = await Promise.all([
+      db.query.orders.findFirst({ where: eq(orders.id, orderId) }),
+      db.query.workers.findFirst({
+        where: eq(workers.id, parsed.data.workerId),
+      }),
+    ]);
+    if (!order) {
+      return c.json({ error: "Order not found" }, 404);
+    }
+    if (!dispatchWorker) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+    if (
+      dispatchWorker.onboardingStatus !== "approved" ||
+      !dispatchWorker.isActive
+    ) {
+      return c.json({ error: "Worker is not active for dispatch" }, 409);
+    }
+    if (!dispatchWorker.servicesOffered.includes(order.serviceType)) {
+      return c.json({ error: "Worker does not offer this service" }, 409);
+    }
+    if (["completed", "cancelled", "failed"].includes(order.status)) {
+      return c.json({ error: "Finished orders cannot be dispatched" }, 409);
+    }
+    if (
+      order.assignedWorkerId &&
+      order.assignedWorkerId !== dispatchWorker.id
+    ) {
+      return c.json({ error: "Order is assigned to another worker" }, 409);
+    }
+
+    const existingOffer = await db.query.dispatchOffers.findFirst({
+      where: and(
+        eq(dispatchOffers.orderId, order.id),
+        eq(dispatchOffers.workerId, dispatchWorker.id),
+        eq(dispatchOffers.status, "pending")
+      ),
+    });
+    if (existingOffer) {
+      return c.json({ alreadySent: true, offer: existingOffer }, 200);
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+    const [batch] = await db
+      .insert(dispatchBatches)
+      .values({
+        expiresAt,
+        orderId: order.id,
+        radiusMiles: 0,
+        sequence: 1,
+      })
+      .returning();
+    if (!batch) {
+      return c.json({ error: "Dispatch batch could not be created" }, 500);
+    }
+
+    const [offer] = await db
+      .insert(dispatchOffers)
+      .values({
+        dispatchBatchId: batch.id,
+        expiresAt,
+        orderId: order.id,
+        status: "pending",
+        workerId: dispatchWorker.id,
+      })
+      .returning();
+    if (!offer) {
+      return c.json({ error: "Dispatch offer could not be created" }, 500);
+    }
+
+    await db
+      .update(orders)
+      .set({
+        dispatchStartedAt: order.dispatchStartedAt ?? now,
+        nextWaveAt: null,
+        status: "dispatching",
+        updatedAt: now,
+      })
+      .where(eq(orders.id, order.id));
+
+    await publishOutboxEvent({
+      eventName: "order_dispatched",
+      payload: {
+        adminAssigned: true,
+        orderId: order.id,
+        workerId: dispatchWorker.id,
+      },
+    });
+    logger.info(
+      {
+        adminEmail: c.get("user")?.email ?? null,
+        orderId: order.id,
+        requestId: c.get("requestId"),
+        workerId: dispatchWorker.id,
+      },
+      "admin:order_dispatch_offer_created"
+    );
+
+    return c.json({ offer, worker: dispatchWorker }, 201);
+  })
+  .post("/routes", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const parsed = adminRouteCreateRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const worker = await db.query.workers.findFirst({
+      where: eq(workers.id, parsed.data.workerId),
+    });
+    if (!worker) {
+      return c.json({ error: "Worker not found" }, 404);
+    }
+
+    const user = c.get("user");
+    const [route] = await db
+      .insert(workerRoutes)
+      .values({
+        createdByUserId: user?.id,
+        name: parsed.data.name ?? `${worker.firstName}'s route`,
+        routeDate: parsed.data.routeDate,
+        workerId: worker.id,
+      })
+      .onConflictDoUpdate({
+        set: { updatedAt: new Date() },
+        target: [workerRoutes.workerId, workerRoutes.routeDate],
+      })
+      .returning();
+    if (!route) {
+      return c.json({ error: "Route could not be created" }, 500);
+    }
+
+    return c.json({ route, worker }, 201);
+  })
+  .get("/routes", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const workerIdParam = c.req.query("workerId") ?? "";
+    const routeDate = c.req.query("routeDate") ?? "";
+    const statusFilter = c.req.query("status") ?? "";
+
+    // Single-route lookup keeps the historic worker+date contract.
+    if (workerIdParam || routeDate) {
+      const workerId = parsePositiveId(workerIdParam);
+      if (!workerId || !routeDate) {
+        return c.json({ error: "workerId and routeDate are required" }, 400);
+      }
+      const single = await db.query.workerRoutes.findFirst({
+        where: and(
+          eq(workerRoutes.workerId, workerId),
+          eq(workerRoutes.routeDate, routeDate)
+        ),
+      });
+      if (!single) {
+        return c.json({ route: null, stops: [] }, 200);
+      }
+      const detail = await getAdminRouteDetail(single.id);
+      return c.json(detail ?? { route: null, stops: [] }, 200);
+    }
+
+    const routeRows = await db.query.workerRoutes.findMany({
+      limit: 100,
+      orderBy: desc(workerRoutes.routeDate),
+      ...(statusFilter
+        ? {
+            where: eq(
+              workerRoutes.status,
+              statusFilter as typeof workerRoutes.$inferSelect.status
+            ),
+          }
+        : {}),
+    });
+    const workerIds = [...new Set(routeRows.map((row) => row.workerId))];
+    const [routeWorkers, stopCounts] = await Promise.all([
+      workerIds.length === 0
+        ? []
+        : db.query.workers.findMany({
+            where: inArray(workers.id, workerIds),
+          }),
+      routeRows.length === 0
+        ? []
+        : db.query.routeStops.findMany({
+            columns: { id: true, routeId: true },
+            where: inArray(
+              routeStops.routeId,
+              routeRows.map((row) => row.id)
+            ),
+          }),
+    ]);
+    const workersById = new Map(routeWorkers.map((entry) => [entry.id, entry]));
+    const stopsByRouteId = new Map<number, number>();
+    for (const stop of stopCounts) {
+      stopsByRouteId.set(
+        stop.routeId,
+        (stopsByRouteId.get(stop.routeId) ?? 0) + 1
+      );
+    }
+
+    return c.json(
+      {
+        routes: routeRows.map((route) => ({
+          ...route,
+          stopCount: stopsByRouteId.get(route.id) ?? 0,
+          worker: workersById.get(route.workerId) ?? null,
+        })),
+      },
+      200
+    );
+  })
+  .get("/routes/:routeId", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const routeId = parsePositiveId(c.req.param("routeId"));
+    if (!routeId) {
+      return c.json({ error: "Invalid route id" }, 400);
+    }
+
+    const detail = await getAdminRouteDetail(routeId);
+    if (!detail) {
+      return c.json({ error: "Route not found" }, 404);
+    }
+
+    return c.json(detail, 200);
+  })
+  .post("/routes/:routeId/stops", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const routeId = parsePositiveId(c.req.param("routeId"));
+    if (!routeId) {
+      return c.json({ error: "Invalid route id" }, 400);
+    }
+    const parsed = adminRouteStopRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const [route, order] = await Promise.all([
+      db.query.workerRoutes.findFirst({ where: eq(workerRoutes.id, routeId) }),
+      db.query.orders.findFirst({ where: eq(orders.id, parsed.data.orderId) }),
+    ]);
+    if (!route) {
+      return c.json({ error: "Route not found" }, 404);
+    }
+    if (!order) {
+      return c.json({ error: "Order not found" }, 404);
+    }
+    if (order.assignedWorkerId && order.assignedWorkerId !== route.workerId) {
+      return c.json({ error: "Order is assigned to another worker" }, 409);
+    }
+
+    const existingStop = await db.query.routeStops.findFirst({
+      where: and(
+        eq(routeStops.routeId, route.id),
+        eq(routeStops.orderId, order.id)
+      ),
+    });
+    if (existingStop) {
+      return c.json({ alreadyAdded: true, stop: existingStop }, 200);
+    }
+
+    const existingStops = await db.query.routeStops.findMany({
+      columns: { sequence: true },
+      where: eq(routeStops.routeId, route.id),
+    });
+    const sequence =
+      parsed.data.sequence ??
+      Math.max(0, ...existingStops.map((stop) => stop.sequence)) + 1;
+    const [stop] = await db
+      .insert(routeStops)
+      .values({
+        orderId: order.id,
+        plannedEndAt: parsed.data.plannedEndAt
+          ? new Date(parsed.data.plannedEndAt)
+          : order.scheduledEndAt,
+        plannedStartAt: parsed.data.plannedStartAt
+          ? new Date(parsed.data.plannedStartAt)
+          : order.scheduledStartAt,
+        routeId: route.id,
+        sequence,
+      })
+      .returning();
+    if (!stop) {
+      return c.json({ error: "Stop could not be added" }, 500);
+    }
+
+    return c.json({ stop }, 201);
+  })
+  .delete("/routes/:routeId/stops/:stopId", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const routeId = parsePositiveId(c.req.param("routeId"));
+    const stopId = parsePositiveId(c.req.param("stopId"));
+    if (!routeId || !stopId) {
+      return c.json({ error: "Invalid route or stop id" }, 400);
+    }
+
+    const deleted = await db
+      .delete(routeStops)
+      .where(and(eq(routeStops.id, stopId), eq(routeStops.routeId, routeId)))
+      .returning({ id: routeStops.id });
+    return deleted.length > 0
+      ? c.json({ ok: true }, 200)
+      : c.json({ error: "Stop not found" }, 404);
+  })
+  .patch("/routes/:routeId", async (c) => {
+    const adminError = requireAdmin(c);
+    if (adminError) {
+      return adminError;
+    }
+
+    const routeId = parsePositiveId(c.req.param("routeId"));
+    if (!routeId) {
+      return c.json({ error: "Invalid route id" }, 400);
+    }
+    const parsed = adminRouteStatusRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const [route] = await db
+      .update(workerRoutes)
+      .set({ status: parsed.data.status, updatedAt: new Date() })
+      .where(eq(workerRoutes.id, routeId))
+      .returning();
+    return route
+      ? c.json({ route }, 200)
+      : c.json({ error: "Route not found" }, 404);
   })
   .get("/orders/:orderId", async (c) => {
     const adminError = requireAdmin(c);

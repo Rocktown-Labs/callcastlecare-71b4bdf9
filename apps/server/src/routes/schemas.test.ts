@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adminOrderDispatchRequestSchema,
+  adminRouteCreateRequestSchema,
+  adminRouteStatusRequestSchema,
+  adminRouteStopRequestSchema,
   adminWorkerCreateRequestSchema,
   adminWorkerStatusRequestSchema,
   adminWorkerUpdateRequestSchema,
@@ -209,5 +213,49 @@ describe("admin worker schemas", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe("admin dispatch and route schemas", () => {
+  it("accepts a dispatch request with a worker id", () => {
+    expect(
+      adminOrderDispatchRequestSchema.safeParse({ workerId: 7 }).success
+    ).toBe(true);
+    expect(adminOrderDispatchRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      adminOrderDispatchRequestSchema.safeParse({ workerId: 0 }).success
+    ).toBe(false);
+  });
+
+  it("validates route creation dates", () => {
+    expect(
+      adminRouteCreateRequestSchema.safeParse({
+        routeDate: "2026-09-08",
+        workerId: 7,
+      }).success
+    ).toBe(true);
+    expect(
+      adminRouteCreateRequestSchema.safeParse({
+        routeDate: "09/08/2026",
+        workerId: 7,
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts route stops with optional sequencing", () => {
+    const result = adminRouteStopRequestSchema.safeParse({ orderId: 6 });
+    expect(result.success).toBe(true);
+    expect(adminRouteStopRequestSchema.safeParse({ orderId: -2 }).success).toBe(
+      false
+    );
+  });
+
+  it("restricts route statuses to the lifecycle enum", () => {
+    expect(
+      adminRouteStatusRequestSchema.safeParse({ status: "published" }).success
+    ).toBe(true);
+    expect(
+      adminRouteStatusRequestSchema.safeParse({ status: "flying" }).success
+    ).toBe(false);
   });
 });
