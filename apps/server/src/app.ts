@@ -1,5 +1,10 @@
-import { auth } from "@callcastlecare/auth";
-import { env } from "@callcastlecare/env/server";
+import { configureAuth, getAuth } from "@callcastlecare/auth";
+import type { AuthConfig } from "@callcastlecare/auth";
+import { configureDatabase, db } from "@callcastlecare/db";
+import {
+  env as validatedEnv,
+  setRuntimeEnvSource,
+} from "@callcastlecare/env/server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import notFound from "stoker/middlewares/not-found";
@@ -10,6 +15,7 @@ import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
 import { disputeRoutes } from "./routes/disputes";
+import { driverRoutes } from "./routes/driver";
 import { laundryBagRoutes } from "./routes/laundry-bags";
 import { locationRoutes } from "./routes/locations";
 import { marketRoutes } from "./routes/markets";
@@ -82,29 +88,40 @@ const getErrorLogFields = (error: unknown) => {
 };
 
 app.use(requestLogger());
-app.use(
-  "/*",
-  cors({
-    allowHeaders: ["Content-Type", "Authorization", "Cookie", "x-request-id"],
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    credentials: true,
-    origin: (origin) => {
-      if (!origin || !env.CORS_ORIGIN) {
-        return origin || "*";
-      }
-      if (env.CORS_ORIGIN === "*" || env.CORS_ORIGIN === origin) {
-        return origin;
-      }
-      if (origin.endsWith(".vercel.app") || origin.includes("localhost")) {
-        return origin;
-      }
-      return env.CORS_ORIGIN;
-    },
-  })
-);
+
+// Bind the database and auth stack to the request lifecycle. On Cloudflare
+// Workers the environment arrives via `c.env`; on the local Node dev server it
+// is read from process.env.
+// eslint-disable-next-line require-await
+app.use("/*", async (c, next) => {
+  const runtimeEnv =
+    (c.env as Record<string, string | undefined>) ?? process.env;
+  const databaseUrl = runtimeEnv.DATABASE_URL;
+
+  if (!databaseUrl) {
+    logger.error("DATABASE_URL is not configured in the runtime environment");
+    return c.json({ error: "database_not_configured" }, 500);
+  }
+
+  try {
+    configureDatabase(databaseUrl);
+    configureAuth(runtimeEnv as unknown as AuthConfig, db);
+    setRuntimeEnvSource(runtimeEnv);
+  } catch (error) {
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "auth:configuration_failed"
+    );
+    return c.json({ error: "auth_not_configured" }, 500);
+  }
+
+  return next();
+});
 
 app.use("/*", async (c, next) => {
-  const session = await auth.api.getSession({
+  const session = await getAuth().api.getSession({
     headers: c.req.raw.headers,
   });
 
@@ -119,8 +136,33 @@ app.use("/*", async (c, next) => {
   return await next();
 });
 
+app.use(
+  "/*",
+  cors({
+    allowHeaders: ["Content-Type", "Authorization", "Cookie", "x-request-id"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
+    origin: (origin, c) => {
+      const runtimeCorsOrigin =
+        (c.env as Record<string, string | undefined>)?.CORS_ORIGIN ??
+        validatedEnv.CORS_ORIGIN;
+
+      if (!origin || !runtimeCorsOrigin) {
+        return origin || "*";
+      }
+      if (runtimeCorsOrigin === "*" || runtimeCorsOrigin === origin) {
+        return origin;
+      }
+      if (origin.endsWith(".vercel.app") || origin.includes("localhost")) {
+        return origin;
+      }
+      return runtimeCorsOrigin;
+    },
+  })
+);
+
 app.on(["POST", "GET", "OPTIONS"], ["/api/auth/*", "/auth/*"], (c) =>
-  auth.handler(c.req.raw)
+  getAuth().handler(c.req.raw)
 );
 
 export const apiRoutes = new Hono<AppEnv>()
@@ -135,7 +177,7 @@ export const apiRoutes = new Hono<AppEnv>()
 
     const isAdmin =
       user.role === "admin" ||
-      user.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase();
+      user.email.toLowerCase() === validatedEnv.ADMIN_EMAIL.toLowerCase();
 
     return c.json({ isAdmin, session, user }, 200);
   })
@@ -146,6 +188,7 @@ export const apiRoutes = new Hono<AppEnv>()
   .route("/markets", marketRoutes)
   .route("/laundry-bags", laundryBagRoutes)
   .route("/disputes", disputeRoutes)
+  .route("/driver", driverRoutes)
   .route("/media", mediaRoutes)
   .route("/orders", orderRoutes)
   .route("/notifications", notificationRoutes)

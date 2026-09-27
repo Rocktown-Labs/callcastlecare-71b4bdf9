@@ -6,9 +6,6 @@ import {
   createRootRouteWithContext,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { createMiddleware } from "@tanstack/react-start";
-import { Analytics } from "@vercel/analytics/react";
-import { evlogErrorHandler } from "evlog/nitro/v3";
 
 import Providers from "@/components/providers";
 
@@ -28,7 +25,6 @@ const RootDocument = () => (
         </div>
         <Toaster richColors />
         <TanStackRouterDevtools position="bottom-left" />
-        <Analytics />
         <Scripts />
       </Providers>
     </body>
@@ -93,6 +89,6 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   }),
 
   server: {
-    middleware: [createMiddleware().server(evlogErrorHandler)],
+    middleware: [],
   },
 });

@@ -28,11 +28,11 @@
     "resend": "^6.9.3",
     "stoker": "^2.0.1",
     "stripe": "^22.3.0",
-    "workflow": "latest",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@callcastlecare/config": "workspace:*",
+    "@cloudflare/workers-types": "^4.20241022.0",
     "@types/node": "^22.13.14",
     "tsdown": "^0.22.3",
     "tsx": "catalog:",

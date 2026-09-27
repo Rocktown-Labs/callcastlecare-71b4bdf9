@@ -21,5 +21,16 @@ export interface AppVariables {
 }
 
 export interface AppEnv {
+  Bindings: {
+    BETTER_AUTH_SECRET?: string;
+    BETTER_AUTH_URL?: string;
+    CORS_ORIGIN?: string;
+    DATABASE_URL?: string;
+    LOG_LEVEL?: string;
+    MEDIA_BUCKET?: unknown;
+    NODE_ENV?: string;
+    QUEUE?: unknown;
+    [key: string]: string | undefined | unknown;
+  };
   Variables: AppVariables;
 }

@@ -228,7 +228,7 @@ const getEligibleWorkers = async (input: {
       AND ST_DWithin("location", ${target}, ${maxRadiusMeters})
   `);
 
-  const distanceRows = distanceResult.rows as {
+  const distanceRows = distanceResult as unknown as {
     distance_miles: number | string;
     id: number;
   }[];

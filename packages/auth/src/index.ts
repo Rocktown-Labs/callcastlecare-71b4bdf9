@@ -1,15 +1,20 @@
 import { expo } from "@better-auth/expo";
 import { stripe } from "@better-auth/stripe";
-import { createDb } from "@callcastlecare/db";
+import { configureDatabase, createDb } from "@callcastlecare/db";
+import type { Database } from "@callcastlecare/db";
 import * as schema from "@callcastlecare/db/schema/auth";
-import { env } from "@callcastlecare/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins/admin";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import StripeSdk from "stripe";
 
-import { sendAuthEmail, sendAuthOtpEmail } from "./email";
+import {
+  sendAdminSignupNotification,
+  sendAuthEmail,
+  sendAuthOtpEmail,
+  sendWelcomeAuthEmail,
+} from "./email";
 
 type AuthOtpType =
   | "change-email"
@@ -17,12 +22,31 @@ type AuthOtpType =
   | "forget-password"
   | "sign-in";
 
-const createStripePlugin = () => {
-  if (!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET)) {
+export interface AuthConfig {
+  ADMIN_EMAIL: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+  CORS_ORIGIN: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  STRIPE_BILLING_WEBHOOK_SECRET?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+}
+
+let authInstance: ReturnType<typeof createAuth> | undefined;
+
+const createStripePlugin = (config: AuthConfig) => {
+  const webhookSecret =
+    config.STRIPE_BILLING_WEBHOOK_SECRET ?? config.STRIPE_WEBHOOK_SECRET;
+  if (
+    !(config.STRIPE_SECRET_KEY && webhookSecret) ||
+    config.STRIPE_SECRET_KEY.includes("replace_me")
+  ) {
     return null;
   }
 
-  const stripeClient = new StripeSdk(env.STRIPE_SECRET_KEY, {
+  const stripeClient = new StripeSdk(config.STRIPE_SECRET_KEY, {
     apiVersion: "2026-06-24.dahlia",
   });
 
@@ -34,14 +58,14 @@ const createStripePlugin = () => {
         metadata: {
           betterAuthUserId: user.id,
           castlecareAdmin:
-            user.email.toLowerCase() === env.ADMIN_EMAIL.toLowerCase()
+            user.email.toLowerCase() === config.ADMIN_EMAIL.toLowerCase()
               ? "true"
               : "false",
         },
         name: user.name,
       }),
     stripeClient,
-    stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
+    stripeWebhookSecret: webhookSecret,
   });
 };
 
@@ -82,11 +106,11 @@ const authAllowedHosts = [
   "127.0.0.1:3001",
   "127.0.0.1:5173",
   "*.vercel.app",
+  "*.workers.dev",
 ];
 
-export const createAuth = () => {
-  const db = createDb();
-  const stripePlugin = createStripePlugin();
+const createAuth = (config: AuthConfig, database: Database) => {
+  const stripePlugin = createStripePlugin(config);
 
   return betterAuth({
     advanced: {
@@ -100,14 +124,40 @@ export const createAuth = () => {
     basePath: "/api/auth",
     baseURL: {
       allowedHosts: authAllowedHosts,
-      fallback: env.BETTER_AUTH_URL,
+      fallback: config.BETTER_AUTH_URL,
       protocol: "auto",
     },
-    database: drizzleAdapter(db, {
+    database: drizzleAdapter(database, {
       provider: "pg",
-
       schema,
     }),
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            if (user.email) {
+              try {
+                await sendWelcomeAuthEmail({
+                  customerName: user.name,
+                  to: user.email,
+                });
+              } catch {
+                // Non-blocking welcome email delivery failure
+              }
+
+              try {
+                await sendAdminSignupNotification({
+                  customerEmail: user.email,
+                  customerName: user.name,
+                });
+              } catch {
+                // Non-blocking admin alert delivery failure
+              }
+            }
+          },
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
@@ -158,18 +208,18 @@ export const createAuth = () => {
       }),
       ...(stripePlugin ? [stripePlugin] : []),
     ],
-    secret: env.BETTER_AUTH_SECRET,
+    secret: config.BETTER_AUTH_SECRET,
     socialProviders:
-      env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+      config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET
         ? {
             google: {
-              clientId: env.GOOGLE_CLIENT_ID,
-              clientSecret: env.GOOGLE_CLIENT_SECRET,
+              clientId: config.GOOGLE_CLIENT_ID,
+              clientSecret: config.GOOGLE_CLIENT_SECRET,
             },
           }
         : undefined,
     trustedOrigins: [
-      env.CORS_ORIGIN,
+      config.CORS_ORIGIN,
       "callcastlecare://",
       "exp://",
       "http://localhost:8081",
@@ -177,4 +227,37 @@ export const createAuth = () => {
   });
 };
 
-export const auth = createAuth();
+export const configureAuth = (config: AuthConfig, database: Database): void => {
+  authInstance = createAuth(config, database);
+};
+
+export const configureAuthFromEnv = (
+  config: AuthConfig,
+  databaseUrl: string
+): void => {
+  configureDatabase(databaseUrl);
+  authInstance = createAuth(config, createDb(databaseUrl));
+};
+
+export const getAuth = (): ReturnType<typeof createAuth> => {
+  if (!authInstance) {
+    throw new Error(
+      "Auth is not configured. Call configureAuth() or configureAuthFromEnv() before handling requests."
+    );
+  }
+
+  return authInstance;
+};
+
+export const auth = new Proxy({} as ReturnType<typeof createAuth>, {
+  get(_, property) {
+    const instance = getAuth();
+    const value = (instance as Record<string | symbol, unknown>)[property];
+
+    if (typeof value === "function") {
+      return value.bind(instance);
+    }
+
+    return value;
+  },
+}) as ReturnType<typeof createAuth>;

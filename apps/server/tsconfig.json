@@ -10,5 +10,5 @@
     "jsxImportSource": "hono/jsx",
     "strictNullChecks": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "cloudflare-env.d.ts"]
 }

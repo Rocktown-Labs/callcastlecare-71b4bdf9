@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  castleCareUrl,
   emailTheme,
   renderActionEmail,
   renderOtpEmail,
@@ -102,4 +103,75 @@ export const sendAuthOtpEmail = async (input: AuthOtpEmailInput) => {
       cause: result.error,
     });
   }
+};
+
+export const sendWelcomeAuthEmail = async (input: {
+  customerName?: string;
+  dashboardUrl?: string;
+  to: string;
+}) => {
+  const resendClient = requireResendClient();
+  const rendered = await renderActionEmail({
+    body: `Welcome to CastleCare, ${input.customerName ?? "friend"}! Your account is ready.`,
+    buttonLabel: "Go to Dashboard",
+    preview: "Welcome to CastleCare.",
+    title: "Welcome to CastleCare",
+    url: input.dashboardUrl ?? castleCareUrl("/dashboard"),
+  });
+  const result = await resendClient.emails.send(
+    {
+      from: emailTheme.from,
+      html: rendered.html,
+      replyTo: emailTheme.replyTo,
+      subject: "Welcome to CastleCare",
+      text: rendered.text,
+      to: input.to,
+    },
+    {
+      idempotencyKey: createIdempotencyKey("auth-welcome", [
+        "Welcome to CastleCare",
+        input.to,
+      ]),
+    }
+  );
+
+  if (result.error) {
+    throw new Error("Welcome email send failed.", { cause: result.error });
+  }
+};
+
+export const sendAdminSignupNotification = async (input: {
+  customerEmail: string;
+  customerName: string;
+}) => {
+  const resendClient = requireResendClient();
+  const adminEmail = env.ADMIN_EMAIL;
+  if (!adminEmail) {
+    return;
+  }
+
+  const rendered = await renderActionEmail({
+    body: `A new customer account was created for ${input.customerName} (${input.customerEmail}).`,
+    buttonLabel: "Open Admin Dashboard",
+    preview: `New customer signup: ${input.customerName}`,
+    title: "New Customer Signup",
+    url: "/admin",
+  });
+
+  await resendClient.emails.send(
+    {
+      from: emailTheme.from,
+      html: rendered.html,
+      replyTo: emailTheme.replyTo,
+      subject: `New Customer Signup: ${input.customerName}`,
+      text: rendered.text,
+      to: adminEmail,
+    },
+    {
+      idempotencyKey: createIdempotencyKey("admin-signup-alert", [
+        adminEmail,
+        input.customerEmail,
+      ]),
+    }
+  );
 };
