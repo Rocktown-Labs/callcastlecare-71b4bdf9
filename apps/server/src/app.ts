@@ -11,6 +11,7 @@ import notFound from "stoker/middlewares/not-found";
 import onError from "stoker/middlewares/on-error";
 
 import { requestLogger, logger } from "./lib/logger";
+import { configureQueue } from "./lib/queue";
 import { addressesRoutes } from "./routes/addresses";
 import { adminRoutes } from "./routes/admin";
 import { checkoutRoutes } from "./routes/checkout";
@@ -106,6 +107,7 @@ app.use("/*", async (c, next) => {
   try {
     configureDatabase(databaseUrl);
     configureAuth(runtimeEnv as unknown as AuthConfig, db);
+    configureQueue(c.env.QUEUE as Queue | undefined);
     setRuntimeEnvSource(runtimeEnv);
   } catch (error) {
     logger.error(
@@ -153,7 +155,7 @@ app.use(
       if (runtimeCorsOrigin === "*" || runtimeCorsOrigin === origin) {
         return origin;
       }
-      if (origin.endsWith(".vercel.app") || origin.includes("localhost")) {
+      if (origin.endsWith(".workers.dev") || origin.includes("localhost")) {
         return origin;
       }
       return runtimeCorsOrigin;

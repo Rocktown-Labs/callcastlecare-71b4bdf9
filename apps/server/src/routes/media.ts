@@ -9,14 +9,15 @@ import {
 } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import { Hono } from "hono";
+import type { Context } from "hono";
 
 import { requireUser, requireWorkerForUser } from "../lib/auth";
 import {
   createMediaStoragePath,
   getMediaUploadUrl,
-  getPrivateBlob,
-  handleBlobClientUpload,
+  mediaValidation,
 } from "../lib/integrations/blob";
+import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
 import {
   mediaAttachRequestSchema,
@@ -54,6 +55,14 @@ const toOrderRequiredTransition = (value?: string) =>
 
 const toLegRequiredTransition = (value?: string) =>
   legTransitionMediaStatuses.find((status) => status === value) ?? null;
+
+const getMediaBucket = (c: Context<AppEnv>): R2Bucket | null => {
+  const bucket = c.env.MEDIA_BUCKET;
+  if (!bucket) {
+    return null;
+  }
+  return bucket;
+};
 
 const canReadPrivateMedia = async (input: {
   pathname: string;
@@ -143,18 +152,19 @@ export const mediaRoutes = new Hono<AppEnv>()
       return c.json({ error: "forbidden" }, 403);
     }
 
-    const result = await getPrivateBlob(pathname);
-    if (!result) {
+    const bucket = getMediaBucket(c);
+    if (!bucket) {
+      return c.json({ error: "media_not_configured" }, 503);
+    }
+
+    const r2Object = await bucket.get(pathname);
+    if (!r2Object || !r2Object.body) {
       return c.text("Not found", 404);
     }
 
-    if (result.statusCode === 304) {
-      return c.body(null, 304);
-    }
-
-    return c.body(result.stream, 200, {
+    return c.body(r2Object.body, 200, {
       "Cache-Control": "private, no-cache",
-      "Content-Type": result.blob.contentType,
+      "Content-Type": r2Object.httpMetadata?.contentType ?? "image/jpeg",
       "X-Content-Type-Options": "nosniff",
     });
   })
@@ -164,8 +174,8 @@ export const mediaRoutes = new Hono<AppEnv>()
       return userResult.error;
     }
 
-    if (!env.VERCEL_BLOB_READ_WRITE_TOKEN) {
-      return c.json({ error: "Blob upload is not configured" }, 503);
+    if (!getMediaBucket(c)) {
+      return c.json({ error: "media_not_configured" }, 503);
     }
 
     const body = await c.req.json();
@@ -195,9 +205,43 @@ export const mediaRoutes = new Hono<AppEnv>()
     );
   })
   .post("/client-upload", async (c) => {
-    const body = await c.req.json();
-    const result = await handleBlobClientUpload(c.req.raw, body);
-    return c.json(result, 200);
+    const bucket = getMediaBucket(c);
+    if (!bucket) {
+      return c.json({ error: "media_not_configured" }, 503);
+    }
+
+    const body = await c.req.parseBody();
+    const { storagePath } = body;
+
+    if (typeof storagePath !== "string") {
+      return c.json({ error: "Missing storagePath" }, 400);
+    }
+
+    if (!storagePath.startsWith(mediaValidation.pathnamePrefix)) {
+      logger.warn({ storagePath }, "media:invalid_pathname");
+      return c.json({ error: "invalid_storage_path" }, 400);
+    }
+
+    const { file } = body;
+    if (!(file instanceof File)) {
+      return c.json({ error: "Missing file" }, 400);
+    }
+
+    if (file.size > mediaValidation.maxUploadSizeBytes) {
+      return c.json({ error: "file_too_large" }, 413);
+    }
+
+    if (!mediaValidation.allowedContentTypes.includes(file.type)) {
+      return c.json({ error: "invalid_content_type" }, 415);
+    }
+
+    await bucket.put(storagePath, file, {
+      httpMetadata: { contentType: file.type },
+    });
+
+    logger.info({ storagePath, type: file.type }, "media:upload:completed");
+
+    return c.json({ ok: true, storagePath }, 200);
   })
   .post("/attach", async (c) => {
     const userResult = requireUser(c);

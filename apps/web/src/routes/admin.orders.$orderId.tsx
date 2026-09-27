@@ -9,7 +9,6 @@ import {
   useRouteContext,
 } from "@tanstack/react-router";
 import { Image } from "@unpic/react";
-import { upload } from "@vercel/blob/client";
 import {
   ArrowLeft,
   Camera,
@@ -251,10 +250,30 @@ const MediaUpload = ({
         storagePath: string;
         uploadUrl: string;
       };
-      const blob = await upload(uploadPayload.storagePath, file, {
-        access: "private",
-        handleUploadUrl: uploadPayload.uploadUrl,
-      });
+
+      const formData = new FormData();
+      formData.append("storagePath", uploadPayload.storagePath);
+      formData.append("file", file);
+
+      const uploadResponse = await fetch(
+        new URL(uploadPayload.uploadUrl, getServerUrl()),
+        {
+          body: formData,
+          credentials: "include",
+          method: "POST",
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorPayload = (await uploadResponse
+          .json()
+          .catch(() => ({ error: "Upload failed" }))) as { error?: string };
+        throw new Error(errorPayload.error ?? "Upload failed");
+      }
+
+      const uploadResult = (await uploadResponse.json()) as {
+        storagePath: string;
+      };
 
       const attachResponse = await fetch(
         new URL("/api/v1/media/attach", getServerUrl()),
@@ -268,7 +287,7 @@ const MediaUpload = ({
             orderId: detail.order.id,
             requiredForTransition:
               mediaType === "service_before" ? "in_progress" : "completed",
-            storagePath: blob.pathname ?? uploadPayload.storagePath,
+            storagePath: uploadResult.storagePath,
           }),
           credentials: "include",
           headers: {

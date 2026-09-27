@@ -18,8 +18,6 @@
     "@callcastlecare/env": "workspace:*",
     "@hono/node-server": "^2.0.8",
     "@hono/zod-openapi": "^1.5.1",
-    "@vercel/blob": "^2.3.0",
-    "@vercel/queue": "^0.1.3",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "evlog": "catalog:",

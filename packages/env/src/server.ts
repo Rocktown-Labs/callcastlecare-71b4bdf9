@@ -18,28 +18,9 @@ let envSource: EnvSource =
   typeof process !== "undefined" && process.env ? process.env : {};
 let cachedEnv: Env | undefined;
 
-const getVercelOrigin = (source: EnvSource) => {
-  const vercelUrl =
-    source.VERCEL_ENV === "production"
-      ? (source.VERCEL_PROJECT_PRODUCTION_URL ?? source.VERCEL_URL)
-      : (source.VERCEL_URL ?? source.VERCEL_PROJECT_PRODUCTION_URL);
-  if (!vercelUrl) {
-    return;
-  }
-  return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
-};
-
 const buildEnv = (source: EnvSource) => {
-  const vercelOrigin = getVercelOrigin(source);
-
   const runtimeEnv = {
     ...source,
-    BETTER_AUTH_URL:
-      source.BETTER_AUTH_URL ??
-      (vercelOrigin ? `${vercelOrigin}/api/auth` : undefined),
-    CORS_ORIGIN: source.CORS_ORIGIN ?? vercelOrigin,
-    VERCEL_BLOB_READ_WRITE_TOKEN:
-      source.VERCEL_BLOB_READ_WRITE_TOKEN ?? source.BLOB_READ_WRITE_TOKEN,
   };
 
   return createEnv({
@@ -81,7 +62,6 @@ const buildEnv = (source: EnvSource) => {
       STRIPE_WEBHOOK_BASE_URL: z.url().optional(),
       STRIPE_WEBHOOK_PUBLIC_URL: z.url().optional(),
       STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
-      VERCEL_BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
     },
     skipValidation:
       typeof process !== "undefined" && process.env

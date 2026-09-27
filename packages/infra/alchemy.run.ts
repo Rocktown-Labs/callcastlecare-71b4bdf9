@@ -82,7 +82,7 @@ export const server = Cloudflare.Worker("castlecare-server", {
       Config.withDefault("")
     ),
   },
-  main: "../../apps/server/src/index.ts",
+  main: "../../apps/server/src/worker.ts",
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;

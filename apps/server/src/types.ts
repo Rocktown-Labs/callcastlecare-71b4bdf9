@@ -27,10 +27,10 @@ export interface AppEnv {
     CORS_ORIGIN?: string;
     DATABASE_URL?: string;
     LOG_LEVEL?: string;
-    MEDIA_BUCKET?: unknown;
+    MEDIA_BUCKET?: R2Bucket;
     NODE_ENV?: string;
-    QUEUE?: unknown;
-    [key: string]: string | undefined | unknown;
+    QUEUE?: Queue;
+    [key: string]: string | undefined | R2Bucket | Queue | unknown;
   };
   Variables: AppVariables;
 }

@@ -2,11 +2,12 @@ import type { Context, MiddlewareHandler } from "hono";
 import pino from "pino";
 
 const randomRequestId = () => {
-  const randomSource = globalThis.crypto;
-  if (randomSource && typeof randomSource.randomUUID === "function") {
-    return randomSource.randomUUID();
+  try {
+    // crypto.randomUUID is available in Node, Bun, and Cloudflare Workers.
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
 const getRequestId = (c: Context) =>
@@ -22,7 +23,7 @@ export const logger = pino({
   timestamp: pino.stdTimeFunctions.isoTime,
 });
 
-export const requestLogger = (): MiddlewareHandler => async (c, next) => {
+export const requestLogger = (): MiddlewareHandler => (c, next) => {
   const startedAt = Date.now();
   const requestId = getRequestId(c);
   c.set("requestId", requestId);
@@ -37,9 +38,7 @@ export const requestLogger = (): MiddlewareHandler => async (c, next) => {
     "request:start"
   );
 
-  try {
-    await next();
-  } finally {
+  return next().finally(() => {
     logger.info(
       {
         durationMs: Date.now() - startedAt,
@@ -51,5 +50,5 @@ export const requestLogger = (): MiddlewareHandler => async (c, next) => {
       },
       "request:finish"
     );
-  }
+  });
 };
