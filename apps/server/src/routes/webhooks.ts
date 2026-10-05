@@ -8,7 +8,8 @@ import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
 import { handleStripeWebhook } from "./checkout";
 
-const resend = new Resend(env.RESEND_API_KEY);
+const getResend = () =>
+  env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
 const getResendWebhookHeaders = (request: Request) => {
   const id = request.headers.get("svix-id");
@@ -87,7 +88,12 @@ export const handleResendWebhook = async (c: Context<AppEnv>) => {
   const payload = await c.req.text();
 
   try {
-    const event = resend.webhooks.verify({
+    const resendClient = getResend();
+    if (!resendClient) {
+      return c.json({ error: "resend_not_configured" }, 503);
+    }
+
+    const event = resendClient.webhooks.verify({
       headers,
       payload,
       webhookSecret: env.RESEND_WEBHOOK_SECRET,
