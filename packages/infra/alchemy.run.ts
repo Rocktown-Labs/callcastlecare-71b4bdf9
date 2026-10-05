@@ -83,6 +83,7 @@ export const server = Cloudflare.Worker("castlecare-server", {
     ),
   },
   main: "../../apps/server/src/worker.ts",
+  name: "castlecare-server",
 });
 
 export type ServerEnv = Cloudflare.InferEnv<typeof server>;
@@ -95,7 +96,7 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* callcastlecare() {
     const serverWorker = yield* server;
-    const webWorker = yield* Cloudflare.Website.Vite("castlecare-web", {
+    const webWorker = yield* Cloudflare.Website.Vite("web", {
       compatibility: {
         flags: ["nodejs_compat"],
       },
@@ -105,6 +106,7 @@ export default Alchemy.Stack(
       env: {
         VITE_SERVER_URL: serverWorker.url.as<string>(),
       },
+      name: "castlecare-web",
       rootDir: "../../apps/web",
     });
 
