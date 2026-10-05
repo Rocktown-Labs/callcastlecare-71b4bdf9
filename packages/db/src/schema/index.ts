@@ -2,6 +2,7 @@
 export * from "./auth";
 export * from "./chat";
 export * from "./checkout";
+export * from "./checkout-settings";
 export * from "./customer";
 export * from "./dispatch";
 export * from "./dispute";
@@ -16,6 +17,7 @@ export * from "./orchestration";
 export * from "./order";
 export * from "./payout";
 export * from "./quote";
+export * from "./routes";
 export * from "./stripe";
 export * from "./support";
 export * from "./tracking";

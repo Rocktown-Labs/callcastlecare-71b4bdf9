@@ -4,9 +4,10 @@ import { Hono } from "hono";
 import { Resend } from "resend";
 import type { WebhookEventPayload } from "resend";
 
+import type { StripeWebhookEndpointKind } from "../lib/integrations/stripe-client";
 import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
-import { handleStripeWebhook } from "./checkout";
+import { createStripeWebhookHandler } from "./checkout";
 
 const getResend = () =>
   env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
@@ -74,6 +75,17 @@ export const handleResendWebhook = async (c: Context<AppEnv>) => {
     return c.json({ error: "Resend webhook secret is not configured" }, 503);
   }
 
+  const resend = getResend();
+  if (!resend) {
+    logger.error(
+      {
+        requestId: c.get("requestId"),
+      },
+      "resend_webhook:missing_api_key"
+    );
+    return c.json({ error: "Resend API key is not configured" }, 503);
+  }
+
   const headers = getResendWebhookHeaders(c.req.raw);
   if (!headers) {
     logger.warn(
@@ -93,7 +105,7 @@ export const handleResendWebhook = async (c: Context<AppEnv>) => {
       return c.json({ error: "resend_not_configured" }, 503);
     }
 
-    const event = resendClient.webhooks.verify({
+    const event = resend.webhooks.verify({
       headers,
       payload,
       webhookSecret: env.RESEND_WEBHOOK_SECRET,
@@ -120,6 +132,13 @@ export const handleResendWebhook = async (c: Context<AppEnv>) => {
   }
 };
 
+const makeStripeWebhookHandler =
+  (endpointKind: StripeWebhookEndpointKind) => (c: Context<AppEnv>) =>
+    createStripeWebhookHandler(endpointKind)(c);
+
 export const webhookRoutes = new Hono<AppEnv>()
-  .post("/stripe", handleStripeWebhook)
+  .post("/stripe", makeStripeWebhookHandler("commerce"))
+  .post("/stripe/billing", makeStripeWebhookHandler("billing"))
+  .post("/stripe/commerce", makeStripeWebhookHandler("commerce"))
+  .post("/stripe/connect", makeStripeWebhookHandler("connect"))
   .post("/resend", handleResendWebhook);

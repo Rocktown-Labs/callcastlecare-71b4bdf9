@@ -15,9 +15,10 @@ export const emailTheme = {
     warning: "#92400e",
   },
   from: "CastleCare <noreply@info.callcastlecare.com>",
-  replyTo: "care@callcastlecare.com",
+  replyTo: "help@callcastlecare.com",
   siteUrl: "https://www.callcastlecare.com",
-  supportEmail: "care@callcastlecare.com",
+  supportEmail: "help@callcastlecare.com",
+  supportUrl: "https://www.callcastlecare.com/dashboard/help",
 } as const;
 
 export const formatCents = (amountCents: number) =>

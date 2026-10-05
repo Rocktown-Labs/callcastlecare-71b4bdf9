@@ -8,7 +8,6 @@ import { Input } from "@callcastlecare/ui/components/input";
 import { Label } from "@callcastlecare/ui/components/label";
 import { Textarea } from "@callcastlecare/ui/components/textarea";
 import { cn } from "@callcastlecare/ui/lib/utils";
-import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
@@ -38,7 +37,7 @@ import { z } from "zod";
 import { RadarAddressInput } from "@/components/home/radar-address-input";
 import type { RadarAddressSuggestion } from "@/components/home/use-radar-address-autocomplete";
 import { validateAddress } from "@/components/home/use-radar-address-autocomplete";
-import { authClient } from "@/lib/auth-client";
+import { getServerUrl } from "@/lib/server-url";
 
 const storageKey = "callcastlecare.provider-application.v1";
 const maxVehicleYear = new Date().getFullYear() + 1;
@@ -86,8 +85,8 @@ const steps = [
   { icon: User, id: "contact", label: "Contact" },
   { icon: BriefcaseBusiness, id: "services", label: "Jobs" },
   { icon: Car, id: "vehicle", label: "Vehicle" },
-  { icon: Crown, id: "plan", label: "Plan" },
   { icon: Lock, id: "account", label: "Account" },
+  { icon: Crown, id: "plan", label: "Plan & Checkout" },
 ] as const;
 
 const availabilityDays = [
@@ -103,19 +102,11 @@ const availabilityDays = [
 const planOptions = [
   {
     description:
-      "Join the provider queue, track your review status, and continue setup from the dashboard.",
-    id: "free",
-    label: "Standard Provider",
-    price: "Free",
-    split: "60 / 40",
-  },
-  {
-    description:
-      "One-time provider setup upgrade for priority review, Pro status, and a stronger starting split.",
+      "Express same-day background and MVR screening with priority route access. No recurring monthly membership fees.",
     id: "pro",
-    label: "CastleCare Pro",
+    label: "CastleCare Pro Express Onboarding",
     price: "$50",
-    split: "70 / 30",
+    split: "60/40",
   },
 ] as const;
 
@@ -144,7 +135,11 @@ interface ProviderApplicationDraft {
   services: ProviderServiceId[];
   canDoAllServices: boolean;
   serviceNotes: string;
+  mowerAccess: "" | "no" | "yes";
+  mowerType: "" | "commercial" | "push" | "riding";
+  equipmentPhotoName: string;
   hasVehicle: boolean;
+  windowToolsAccess: "" | "no" | "yes";
   vehicleMake: string;
   vehicleModel: string;
   vehicleYear: string;
@@ -155,6 +150,11 @@ interface ProviderApplicationDraft {
   serviceRadiusMiles: string;
   termsAccepted: boolean;
   plan: ProviderPlan;
+  cardName: string;
+  cardNumber: string;
+  cardExpiry: string;
+  cardCvc: string;
+  cardZip: string;
 }
 
 const initialDraft: ProviderApplicationDraft = {
@@ -163,18 +163,26 @@ const initialDraft: ProviderApplicationDraft = {
   addressValidated: false,
   availableDays: [],
   canDoAllServices: false,
+  cardCvc: "",
+  cardExpiry: "",
+  cardName: "",
+  cardNumber: "",
+  cardZip: "",
   city: "",
   confirmPassword: "",
   dateOfBirth: "",
   email: "",
+  equipmentPhotoName: "",
   firstName: "",
   fullAddress: "",
   hasVehicle: true,
   lastName: "",
   licensePlate: "",
+  mowerAccess: "",
+  mowerType: "",
   password: "",
   phone: "",
-  plan: "free",
+  plan: "pro",
   serviceNotes: "",
   serviceRadiusMiles: "20",
   services: [],
@@ -187,6 +195,7 @@ const initialDraft: ProviderApplicationDraft = {
   vehicleModel: "",
   vehicleYear: "",
   vin: "",
+  windowToolsAccess: "",
   zip: "",
 };
 
@@ -236,10 +245,44 @@ const contactSchema = z.object({
     .regex(/^\d{5}$/u, "Enter a 5-digit ZIP code."),
 });
 
-const servicesSchema = z.object({
-  serviceNotes: z.string().trim().max(600).optional(),
-  services: serviceSchema,
-});
+const servicesSchema = z
+  .object({
+    equipmentPhotoName: z.string().trim().max(160).optional(),
+    mowerAccess: z.enum(["", "no", "yes"]),
+    mowerType: z.enum(["", "commercial", "push", "riding"]),
+    serviceNotes: z.string().trim().max(600).optional(),
+    services: serviceSchema,
+    windowToolsAccess: z.enum(["", "no", "yes"]),
+  })
+  .superRefine((value, context) => {
+    if (value.services.includes("lawncare")) {
+      if (value.mowerAccess === "") {
+        context.addIssue({
+          code: "custom",
+          message: "Tell us whether you own or can access a mower.",
+          path: ["mowerAccess"],
+        });
+      }
+      if (value.mowerAccess === "yes" && value.mowerType === "") {
+        context.addIssue({
+          code: "custom",
+          message: "Choose the mower type you can use.",
+          path: ["mowerType"],
+        });
+      }
+    }
+
+    if (
+      value.services.includes("window-washing") &&
+      value.windowToolsAccess === ""
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Tell us whether you can access a squeegee and ladder.",
+        path: ["windowToolsAccess"],
+      });
+    }
+  });
 
 const vehicleSchema = z
   .object({
@@ -326,7 +369,8 @@ const accountSchema = z
     confirmPassword: z.string().min(8, "Confirm your password."),
     password: z.string().min(8, "Use at least 8 characters."),
     termsAccepted: z.boolean().refine((value) => value, {
-      message: "Agree to the provider terms to continue.",
+      message:
+        "Agree to Provider Terms & 1099 Contractor Agreement to continue.",
     }),
   })
   .refine((value) => value.password === value.confirmPassword, {
@@ -351,13 +395,16 @@ type FieldErrors = Partial<Record<keyof ProviderApplicationDraft, string>>;
 const getStepIndex = (step: StepId) =>
   steps.findIndex((stepItem) => stepItem.id === step);
 
-const getFlattenedErrors = (result: z.SafeParseReturnType<unknown, unknown>) =>
+const getFlattenedErrors = <Output,>(result: z.ZodSafeParseResult<Output>) =>
   result.success
     ? {}
     : Object.fromEntries(
-        Object.entries(result.error.flatten().fieldErrors).map(
-          ([field, messages]) => [field, messages?.[0] ?? "Check this field."]
-        )
+        Object.entries(
+          result.error.flatten().fieldErrors as Record<string, string[]>
+        ).map(([field, messages]) => [
+          field,
+          messages?.[0] ?? "Check this field.",
+        ])
       );
 
 const getStringField = (source: Record<string, unknown>, key: string) =>
@@ -438,9 +485,6 @@ const getParsedAddressParts = (suggestion: RadarAddressSuggestion) => {
     zip: zip || fallback.zip,
   };
 };
-
-const getProviderDashboardPath = (plan: ProviderPlan) =>
-  `/dashboard/provider?plan=${plan}`;
 
 const getStepErrors = (
   step: StepId,
@@ -718,7 +762,6 @@ const VehicleLookup = ({
 // and account creation stay in one place while the provider flow is still new.
 // eslint-disable-next-line complexity
 export default function EarnOnboarding() {
-  const navigate = useNavigate({ from: "/earn" });
   const [activeStep, setActiveStep] = useState<StepId>("contact");
   const [draft, setDraft] = useState<ProviderApplicationDraft>(initialDraft);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -989,39 +1032,50 @@ export default function EarnOnboarding() {
         password: _password,
         ...applicationForStorage
       } = result.data;
-      window.sessionStorage.setItem(
-        storageKey,
-        JSON.stringify(applicationForStorage)
-      );
+      const fullAppData = {
+        ...applicationForStorage,
+        paidAmountCents: 5000,
+        paidAt: new Date().toISOString(),
+        paymentStatus: "paid_express_50",
+        termsAcceptedAt: new Date().toISOString(),
+      };
+      window.sessionStorage.setItem(storageKey, JSON.stringify(fullAppData));
       window.sessionStorage.setItem(
         "better-auth-ui.verify-email",
         result.data.email
       );
     }
 
-    await authClient.signUp.email(
-      {
-        callbackURL: getProviderDashboardPath(result.data.plan),
-        email: result.data.email,
-        name: `${result.data.firstName} ${result.data.lastName}`.trim(),
-        password: result.data.password,
-      },
-      {
-        onError: (error) => {
-          setIsSubmitting(false);
-          toast.error(error.error.message || "Provider account setup failed.");
-        },
-        onSuccess: () => {
-          void navigate({
-            search: {
-              redirectTo: getProviderDashboardPath(result.data.plan),
-            },
-            to: "/verify-email",
-          });
-          toast.success("Check your email to finish the provider account.");
-        },
+    try {
+      const response = await fetch(
+        new URL("/api/v1/checkout/provider", getServerUrl()),
+        {
+          body: JSON.stringify({
+            email: result.data.email,
+            firstName: result.data.firstName,
+            lastName: result.data.lastName,
+            password: result.data.password,
+            plan: result.data.plan,
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to initiate Stripe Hosted Checkout session.");
       }
-    );
+
+      const { url } = (await response.json()) as { url: string };
+      window.location.href = url;
+    } catch (error) {
+      setIsSubmitting(false);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to launch Stripe Checkout."
+      );
+    }
   };
 
   const hasVehicleLookupError =
@@ -1190,7 +1244,7 @@ export default function EarnOnboarding() {
                   inputMode="tel"
                   label="Phone"
                   onChange={updatePhone}
-                  placeholder="(501)-827-1551"
+                  placeholder="(123) 456-7890"
                   value={draft.phone}
                 />
               </div>
@@ -1281,6 +1335,92 @@ export default function EarnOnboarding() {
                   />
                   <FieldError>{errors.serviceNotes}</FieldError>
                 </div>
+
+                {draft.services.includes("lawncare") ? (
+                  <div className="grid gap-3 rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4">
+                    <div>
+                      <Label htmlFor="provider-mower-access">
+                        Do you own or have access to a mower?
+                      </Label>
+                      <select
+                        className="mt-2 h-11 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 text-sm text-white"
+                        id="provider-mower-access"
+                        onChange={(event) =>
+                          updateDraft(
+                            "mowerAccess",
+                            event.target
+                              .value as ProviderApplicationDraft["mowerAccess"]
+                          )
+                        }
+                        value={draft.mowerAccess}
+                      >
+                        <option value="">Choose one</option>
+                        <option value="yes">Yes, I can use a mower</option>
+                        <option value="no">
+                          Not yet, I need equipment guidance
+                        </option>
+                      </select>
+                      <FieldError>{errors.mowerAccess}</FieldError>
+                    </div>
+                    {draft.mowerAccess === "yes" ? (
+                      <div>
+                        <Label htmlFor="provider-mower-type">Mower type</Label>
+                        <select
+                          className="mt-2 h-11 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 text-sm text-white"
+                          id="provider-mower-type"
+                          onChange={(event) =>
+                            updateDraft(
+                              "mowerType",
+                              event.target
+                                .value as ProviderApplicationDraft["mowerType"]
+                            )
+                          }
+                          value={draft.mowerType}
+                        >
+                          <option value="">Choose one</option>
+                          <option value="push">Push mower</option>
+                          <option value="riding">Riding mower</option>
+                          <option value="commercial">Commercial mower</option>
+                        </select>
+                        <FieldError>{errors.mowerType}</FieldError>
+                      </div>
+                    ) : null}
+                    <p className="text-xs leading-5 text-white/60">
+                      You can start with equipment you own or can reliably
+                      access; CastleCare will review fit and local equipment
+                      options.
+                    </p>
+                  </div>
+                ) : null}
+
+                {draft.services.includes("window-washing") ? (
+                  <div className="grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+                    <Label htmlFor="provider-window-tools">
+                      Can you access a squeegee and safe ladder?
+                    </Label>
+                    <select
+                      className="h-11 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 text-sm text-white"
+                      id="provider-window-tools"
+                      onChange={(event) =>
+                        updateDraft(
+                          "windowToolsAccess",
+                          event.target
+                            .value as ProviderApplicationDraft["windowToolsAccess"]
+                        )
+                      }
+                      value={draft.windowToolsAccess}
+                    >
+                      <option value="">Choose one</option>
+                      <option value="yes">Yes, I have access</option>
+                      <option value="no">Not yet, I need guidance</option>
+                    </select>
+                    <FieldError>{errors.windowToolsAccess}</FieldError>
+                    <p className="text-xs leading-5 text-white/60">
+                      We will provide a recommended tool list before your first
+                      window route.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1393,60 +1533,64 @@ export default function EarnOnboarding() {
             ) : null}
 
             {activeStep === "plan" ? (
-              <div className="grid gap-4">
-                <div className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm leading-6 text-lime-100">
-                  <Sparkles
-                    aria-hidden="true"
-                    className="mb-2 size-5 text-lime-300"
-                  />
-                  Your provider dashboard will open with application status,
-                  manual review notes, and the next setup CTAs. Stripe Connect
-                  can come after the account is created.
+              <div className="grid gap-6">
+                <div className="mx-auto max-w-lg text-center">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/30 bg-lime-300/10 px-3.5 py-1 text-xs font-bold tracking-wider text-lime-300 uppercase">
+                    <Sparkles className="size-3.5" />
+                    CastleCare Pro Membership
+                  </div>
+                  <h3 className="mt-3 text-2xl font-extrabold text-white">
+                    Express Onboarding & Guaranteed Route Blocks
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-white/70">
+                    One-time $50 express setup includes same-day background and
+                    MVR screening. Starts at 60/40 payout split on day one with
+                    performance progression up to 80/20.
+                  </p>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="mx-auto w-full max-w-md">
                   {planOptions.map((option) => {
                     const isSelected = draft.plan === option.id;
 
                     return (
                       <button
                         className={cn(
-                          "rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition-colors",
-                          isSelected && "border-lime-300/70 bg-lime-300/10"
+                          "w-full rounded-3xl border border-lime-300/50 bg-slate-900/90 p-6 text-left shadow-xl transition-all duration-200 hover:border-lime-300",
+                          isSelected &&
+                            "border-2 border-lime-300 bg-lime-300/10 ring-2 ring-lime-300/30"
                         )}
                         key={option.id}
                         onClick={() => updateDraft("plan", option.id)}
                         type="button"
                       >
-                        <span className="flex items-start justify-between gap-3">
-                          <span>
-                            <span className="block text-lg font-bold text-white">
+                        <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+                          <div>
+                            <span className="block text-xl font-bold text-white">
                               {option.label}
                             </span>
-                            <span className="mt-1 block text-3xl font-black text-white">
+                            <span className="mt-1 block text-4xl font-black text-white">
                               {option.price}
                             </span>
+                          </div>
+                          <span className="flex size-8 items-center justify-center rounded-full border border-lime-300 bg-lime-300 text-slate-950">
+                            <Check
+                              aria-hidden="true"
+                              className="size-5 font-bold"
+                            />
                           </span>
-                          <span
-                            className={cn(
-                              "flex size-7 items-center justify-center rounded-full border border-white/20 text-slate-950",
-                              isSelected && "border-lime-300 bg-lime-300"
-                            )}
-                          >
-                            {isSelected ? (
-                              <Check aria-hidden="true" className="size-4" />
-                            ) : null}
+                        </div>
+                        <div className="mt-4">
+                          <span className="block text-xs font-semibold tracking-wider text-white/50 uppercase">
+                            Payout Split Progression
                           </span>
-                        </span>
-                        <span className="mt-4 block text-sm text-white/55">
-                          Starting split
-                        </span>
-                        <span className="mt-1 block text-2xl font-bold text-lime-200">
-                          {option.split}
-                        </span>
-                        <span className="mt-3 block text-sm leading-6 text-white/58">
+                          <span className="mt-1 block text-2xl font-extrabold text-lime-300">
+                            {option.split}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-white/70">
                           {option.description}
-                        </span>
+                        </p>
                       </button>
                     );
                   })}
@@ -1458,19 +1602,19 @@ export default function EarnOnboarding() {
             {activeStep === "account" ? (
               <div className="grid gap-5">
                 <div className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm leading-6 text-lime-100">
-                  <ShieldCheck
+                  <Lock
                     aria-hidden="true"
                     className="mb-2 size-5 text-lime-300"
                   />
-                  We will create this provider account with{" "}
-                  <strong>{draft.email || "your email"}</strong>. After email
-                  verification, you will land on your application status page.
+                  Create secure login credentials for your provider account. In
+                  the next final step, you will authorize your $50 background
+                  check fee to activate status tracking.
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/65 sm:grid-cols-2">
                   <div>
                     <p className="text-xs font-bold uppercase text-white/40">
-                      Applicant
+                      Applicant Name
                     </p>
                     <p className="mt-1 font-bold text-white">
                       {[draft.firstName, draft.lastName]
@@ -1480,10 +1624,10 @@ export default function EarnOnboarding() {
                   </div>
                   <div>
                     <p className="text-xs font-bold uppercase text-white/40">
-                      Path
+                      Email
                     </p>
                     <p className="mt-1 font-bold text-white">
-                      {selectedPlan.label}
+                      {draft.email || "Email pending"}
                     </p>
                   </div>
                 </div>
@@ -1527,8 +1671,17 @@ export default function EarnOnboarding() {
                     }
                   />
                   <span>
-                    I agree to the CastleCare provider terms, customer privacy
-                    expectations, and service quality standards.
+                    I agree to the{" "}
+                    <a
+                      className="font-bold text-lime-300 underline hover:text-lime-200"
+                      href="/terms"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      CastleCare Provider Terms of Service
+                    </a>
+                    , background & MVR check authorization, customer privacy
+                    expectations, and 1099 Independent Contractor Agreement.
                   </span>
                 </label>
                 <FieldError>{errors.termsAccepted}</FieldError>
@@ -1548,7 +1701,7 @@ export default function EarnOnboarding() {
               Back
             </Button>
 
-            {activeStep === "account" ? (
+            {activeStep === "plan" ? (
               <Button
                 className="h-11 rounded-full bg-lime-300 px-6 font-bold text-slate-950 hover:bg-lime-200"
                 disabled={isSubmitting}
@@ -1560,9 +1713,7 @@ export default function EarnOnboarding() {
                     className="size-4 animate-spin"
                   />
                 ) : null}
-                {draft.plan === "pro"
-                  ? "Create Pro account"
-                  : "Create provider account"}
+                Authorize $50 & Create Account
                 <ArrowRight aria-hidden="true" className="size-4" />
               </Button>
             ) : (

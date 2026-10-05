@@ -34,6 +34,7 @@ export const workers = pgTable(
       scale: 8,
     }),
     email: text("email").notNull(),
+    equipmentJson: jsonb("equipment_json"),
     firstName: text("first_name").notNull(),
     id: serial("id").primaryKey(),
     isActive: boolean("is_active").notNull().default(false),
@@ -51,10 +52,19 @@ export const workers = pgTable(
     phone: text("phone").notNull(),
     serviceRadiusMiles: integer("service_radius_miles").notNull().default(10),
     servicesOffered: text("services_offered").array().notNull().default([]),
+    stripeAccountApiVersion: text("stripe_account_api_version"),
     stripeAccountId: text("stripe_account_id"),
+    stripeAccountMode: text("stripe_account_mode"),
     stripeAccountStatus: text("stripe_account_status")
       .notNull()
       .default("pending"),
+    stripeChargesEnabled: boolean("stripe_charges_enabled")
+      .notNull()
+      .default(false),
+    stripePayoutsEnabled: boolean("stripe_payouts_enabled")
+      .notNull()
+      .default(false),
+    stripeRequirementsJson: jsonb("stripe_requirements_json"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

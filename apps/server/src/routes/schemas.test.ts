@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adminOrderDispatchRequestSchema,
+  adminRouteCreateRequestSchema,
+  adminRouteStatusRequestSchema,
+  adminRouteStopRequestSchema,
+  adminWorkerCreateRequestSchema,
+  adminWorkerStatusRequestSchema,
+  adminWorkerUpdateRequestSchema,
   checkoutPreviewItemSchema,
   checkoutPreviewRequestSchema,
   publicQuoteRequestSchema,
+  sendLoginCodeRequestSchema,
   supportRequestSchema,
 } from "./schemas";
 
@@ -142,5 +150,138 @@ describe("support request schema", () => {
     if (!result.success) {
       expect(result.error.issues[0]?.path).toEqual(["phone"]);
     }
+  });
+});
+
+describe("admin worker schemas", () => {
+  it("accepts a valid staff creation payload with city and state", () => {
+    const result = adminWorkerCreateRequestSchema.safeParse({
+      city: "Little Rock",
+      email: "pro@example.com",
+      firstName: "Marcus",
+      lastName: "Vance",
+      phone: "(501) 555-0144",
+      serviceRadiusMiles: 20,
+      servicesOffered: ["lawncare", "window_washing"],
+      state: "AR",
+      streetAddress: "123 Main St",
+      zip: "72201",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("normalizes hyphenated window-washing service values", () => {
+    const result = adminWorkerCreateRequestSchema.safeParse({
+      email: "pro@example.com",
+      firstName: "Sarah",
+      lastName: "Jenkins",
+      phone: "5015550188",
+      servicesOffered: ["window-washing"],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.servicesOffered).toEqual(["window_washing"]);
+    }
+  });
+
+  it("rejects staff creation without services", () => {
+    const result = adminWorkerCreateRequestSchema.safeParse({
+      email: "pro@example.com",
+      firstName: "Marcus",
+      lastName: "Vance",
+      phone: "(501) 555-0144",
+      servicesOffered: [],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid status transitions", () => {
+    const result = adminWorkerStatusRequestSchema.safeParse({
+      status: "on_leave",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts partial staff updates", () => {
+    const result = adminWorkerUpdateRequestSchema.safeParse({
+      city: "Fayetteville",
+      serviceRadiusMiles: 30,
+      state: "AR",
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("admin dispatch and route schemas", () => {
+  it("accepts a dispatch request with a worker id", () => {
+    expect(
+      adminOrderDispatchRequestSchema.safeParse({ workerId: 7 }).success
+    ).toBe(true);
+    expect(adminOrderDispatchRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      adminOrderDispatchRequestSchema.safeParse({ workerId: 0 }).success
+    ).toBe(false);
+  });
+
+  it("validates route creation dates", () => {
+    expect(
+      adminRouteCreateRequestSchema.safeParse({
+        routeDate: "2026-09-08",
+        workerId: 7,
+      }).success
+    ).toBe(true);
+    expect(
+      adminRouteCreateRequestSchema.safeParse({
+        routeDate: "09/08/2026",
+        workerId: 7,
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts route stops with optional sequencing", () => {
+    const result = adminRouteStopRequestSchema.safeParse({ orderId: 6 });
+    expect(result.success).toBe(true);
+    expect(adminRouteStopRequestSchema.safeParse({ orderId: -2 }).success).toBe(
+      false
+    );
+  });
+
+  it("restricts route statuses to the lifecycle enum", () => {
+    expect(
+      adminRouteStatusRequestSchema.safeParse({ status: "published" }).success
+    ).toBe(true);
+    expect(
+      adminRouteStatusRequestSchema.safeParse({ status: "flying" }).success
+    ).toBe(false);
+  });
+});
+
+describe("send login code schema", () => {
+  it("accepts a Stripe session id", () => {
+    const result = sendLoginCodeRequestSchema.safeParse({
+      sessionId: "cs_test_123",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a checkout access token", () => {
+    const result = sendLoginCodeRequestSchema.safeParse({
+      token: "v1.iv.tag.ciphertext",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects empty payloads", () => {
+    expect(sendLoginCodeRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      sendLoginCodeRequestSchema.safeParse({ sessionId: "", token: "" }).success
+    ).toBe(false);
   });
 });

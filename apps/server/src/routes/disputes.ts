@@ -1,10 +1,11 @@
-import { db, desc, eq } from "@callcastlecare/db";
+import { and, db, desc, eq } from "@callcastlecare/db";
 import { orderDisputes, orders } from "@callcastlecare/db/schema/index";
 import { env } from "@callcastlecare/env/server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { getOrCreateCustomerForUser, requireUser } from "../lib/auth";
 import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
 
@@ -57,12 +58,18 @@ export const disputeRoutes = new Hono<AppEnv>()
     return c.json({ disputes: rows }, 200);
   })
   .post("/", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
     const body = await c.req.json();
     const parsed = createDisputeSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
 
+    const customer = await getOrCreateCustomerForUser(userResult.user);
     const [order] = await db
       .select({
         completedAt: orders.completedAt,
@@ -71,7 +78,12 @@ export const disputeRoutes = new Hono<AppEnv>()
         tipAmountCents: orders.tipAmountCents,
       })
       .from(orders)
-      .where(eq(orders.id, parsed.data.orderId))
+      .where(
+        and(
+          eq(orders.id, parsed.data.orderId),
+          eq(orders.customerId, customer.id)
+        )
+      )
       .limit(1);
 
     if (!order) {
@@ -101,6 +113,7 @@ export const disputeRoutes = new Hono<AppEnv>()
         orderId: order.id,
         requestId: c.get("requestId"),
         tipAmountCents: order.tipAmountCents,
+        userId: userResult.user.id,
       },
       "order:dispute_opened"
     );

@@ -2,6 +2,14 @@ export const STANDARD_DEPOSIT_CENTS = 5000;
 export const HOME_PREORDER_DEPOSIT_CENTS = STANDARD_DEPOSIT_CENTS;
 export const TECHNOLOGY_FEE_CENTS = 500;
 
+/**
+ * Amount due today under the deposit checkout option. Pay-in-full callers
+ * pass the whole total separately; this helper only caps the deposit slice
+ * so the cap lives in exactly one place.
+ */
+export const getCheckoutDepositCents = (totalCents: number) =>
+  Math.min(STANDARD_DEPOSIT_CENTS, totalCents);
+
 export {
   SERVICE_HQ,
   TRAVEL_FEE_CONFIG,

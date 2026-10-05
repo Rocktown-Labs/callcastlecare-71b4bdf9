@@ -11,15 +11,30 @@ import {
   serviceLegs,
   workers,
 } from "@callcastlecare/db/schema/index";
+import { renderProviderApplicationReceivedEmail } from "@callcastlecare/email";
 import { Hono } from "hono";
 import type { Context } from "hono";
 
 import { requireUser, requireWorkerForUser } from "../lib/auth";
+import { sendEmail } from "../lib/integrations/email";
+import { getStripeMode } from "../lib/integrations/stripe-client";
+import {
+  createConnectAccount,
+  createConnectAccountLink,
+  retrieveConnectAccountState,
+} from "../lib/integrations/stripe-connect";
+import { logger } from "../lib/logger";
 import { setOrderStatus } from "../lib/orders";
 import { publishOutboxEvent } from "../lib/outbox";
-import { createCompletionPayoutRecords } from "../lib/payouts";
+import {
+  createCompletionPayoutRecords,
+  releasePendingWorkerPayouts,
+} from "../lib/payouts";
 import type { AppEnv } from "../types";
-import { driverLocationHeartbeatSchema } from "./schemas";
+import {
+  driverLocationHeartbeatSchema,
+  providerProfileRequestSchema,
+} from "./schemas";
 
 const parsePositiveId = (value: string) => {
   const parsed = Number(value);
@@ -33,6 +48,7 @@ class DriverRouteError extends Error {
 
   constructor(message: string, statusCode: 404 | 409) {
     super(message);
+    this.name = "DriverRouteError";
     this.statusCode = statusCode;
   }
 }
@@ -57,28 +73,62 @@ const orderStatusTimestampPatch = (
   return { completedAt: new Date() };
 };
 
-const hasOrderMediaType = async (orderId: number, mediaType: MediaType) => {
-  const links = await db.query.orderMediaLinks.findMany({
-    columns: {
-      mediaAssetId: true,
-    },
-    where: eq(orderMediaLinks.orderId, orderId),
-  });
+const propertyPhotoTypes = [
+  "property_front",
+  "property_back",
+  "property_left",
+  "property_right",
+] as const;
 
+const hasRequiredOrderPhaseMedia = async (input: {
+  orderId: number;
+  phase: "after" | "before";
+  serviceType: string;
+}) => {
+  const links = await db.query.orderMediaLinks.findMany({
+    columns: { mediaAssetId: true },
+    where: eq(orderMediaLinks.orderId, input.orderId),
+  });
   const mediaIds = links.map((link) => link.mediaAssetId);
   if (mediaIds.length === 0) {
     return false;
   }
-
   const assets = await db.query.mediaAssets.findMany({
-    columns: {
-      id: true,
-      mediaType: true,
-    },
+    columns: { mediaType: true, metadataJson: true },
     where: inArray(mediaAssets.id, mediaIds),
   });
+  const hasPhaseMedia = (asset: (typeof assets)[number]) => {
+    const metadata =
+      asset.metadataJson && typeof asset.metadataJson === "object"
+        ? (asset.metadataJson as Record<string, unknown>)
+        : {};
+    const assetPhase =
+      metadata.phase ??
+      (asset.mediaType.endsWith("_after") ? "after" : "before");
+    return assetPhase === input.phase;
+  };
 
-  return assets.some((asset) => asset.mediaType === mediaType);
+  if (input.serviceType === "lawncare" || input.serviceType === "laundry") {
+    const propertySlotsComplete = propertyPhotoTypes.every((mediaType) =>
+      assets.some(
+        (asset) => asset.mediaType === mediaType && hasPhaseMedia(asset)
+      )
+    );
+    if (propertySlotsComplete) {
+      return true;
+    }
+    const legacyMediaType =
+      input.phase === "before" ? "lawncare_before" : "lawncare_after";
+    return assets.some(
+      (asset) => asset.mediaType === legacyMediaType && hasPhaseMedia(asset)
+    );
+  }
+
+  const mediaType =
+    input.phase === "before" ? "service_before" : "service_after";
+  return assets.some(
+    (asset) => asset.mediaType === mediaType && hasPhaseMedia(asset)
+  );
 };
 
 const hasLegMediaType = async (legId: number, mediaType: MediaType) => {
@@ -130,7 +180,7 @@ const getRequiredMediaForLeg = (
   return null;
 };
 
-const requireWorker = async (c: Context<AppEnv>) => {
+const requireWorkerProfile = async (c: Context<AppEnv>) => {
   const userResult = requireUser(c);
   if (userResult.error) {
     return {
@@ -156,6 +206,24 @@ const requireWorker = async (c: Context<AppEnv>) => {
   };
 };
 
+const requireWorker = async (c: Context<AppEnv>) => {
+  const workerResult = await requireWorkerProfile(c);
+  if (workerResult.error || !workerResult.worker) {
+    return workerResult;
+  }
+  if (
+    workerResult.worker.onboardingStatus !== "approved" ||
+    !workerResult.worker.isActive
+  ) {
+    return {
+      error: c.json({ error: "provider_activation_required" }, 403),
+      user: workerResult.user,
+      worker: null,
+    };
+  }
+  return workerResult;
+};
+
 const withDriverOrder = async (input: {
   orderId: number;
   workerId: number;
@@ -174,7 +242,232 @@ const withDriverOrder = async (input: {
   return order;
 };
 
+const updateWorkerConnectState = async (
+  workerId: number,
+  state: {
+    accountApiVersion: "2026-06-24-v1" | "2026-06-24-v2";
+    chargesEnabled: boolean;
+    mode: "live" | "test";
+    payoutsEnabled: boolean;
+    requirements: unknown;
+    status: string;
+  }
+) => {
+  const current = await db.query.workers.findFirst({
+    where: eq(workers.id, workerId),
+  });
+  const [updated] = await db
+    .update(workers)
+    .set({
+      isActive:
+        state.status === "ready" && current?.onboardingStatus === "approved",
+      stripeAccountApiVersion: state.accountApiVersion,
+      stripeAccountMode: state.mode,
+      stripeAccountStatus: state.status,
+      stripeChargesEnabled: state.chargesEnabled,
+      stripePayoutsEnabled: state.payoutsEnabled,
+      stripeRequirementsJson: state.requirements,
+      updatedAt: new Date(),
+    })
+    .where(eq(workers.id, workerId))
+    .returning();
+  return updated ?? null;
+};
+
 export const driverRoutes = new Hono<AppEnv>()
+  .post("/connect/status", async (c) => {
+    const workerResult = await requireWorkerProfile(c);
+    if (workerResult.error) {
+      return workerResult.error;
+    }
+    if (!workerResult.worker.stripeAccountId) {
+      return c.json(
+        {
+          accountId: null,
+          onboardingStatus: workerResult.worker.onboardingStatus,
+          payoutsEnabled: false,
+          status: "not_started",
+        },
+        200
+      );
+    }
+
+    try {
+      const state = await retrieveConnectAccountState(
+        workerResult.worker.stripeAccountId
+      );
+      const worker = await updateWorkerConnectState(
+        workerResult.worker.id,
+        state
+      );
+      if (worker && state.status === "ready") {
+        await releasePendingWorkerPayouts(worker.id);
+      }
+      return c.json(
+        {
+          accountId: state.accountId,
+          onboardingStatus:
+            worker?.onboardingStatus ?? workerResult.worker.onboardingStatus,
+          payoutsEnabled: state.payoutsEnabled,
+          status: worker?.stripeAccountStatus ?? state.status,
+          transferCapabilityStatus: state.transferCapabilityStatus,
+        },
+        200
+      );
+    } catch (error) {
+      logger.error(
+        {
+          err: error,
+          requestId: c.get("requestId"),
+          workerId: workerResult.worker.id,
+        },
+        "stripe_connect:status_refresh_failed"
+      );
+      return c.json({ error: "Connect status could not be refreshed" }, 502);
+    }
+  })
+  .post("/connect/account-link", async (c) => {
+    const workerResult = await requireWorkerProfile(c);
+    if (workerResult.error) {
+      return workerResult.error;
+    }
+    if (workerResult.worker.onboardingStatus !== "approved") {
+      return c.json(
+        { error: "Connect onboarding unlocks after screening approval" },
+        409
+      );
+    }
+
+    let accountId =
+      workerResult.worker.stripeAccountMode === getStripeMode()
+        ? workerResult.worker.stripeAccountId
+        : null;
+    let accountApiVersion = workerResult.worker.stripeAccountApiVersion as
+      | "2026-06-24-v1"
+      | "2026-06-24-v2"
+      | null;
+    try {
+      if (!accountId) {
+        const created = await createConnectAccount({
+          email: workerResult.worker.email,
+          name: `${workerResult.worker.firstName} ${workerResult.worker.lastName}`.trim(),
+          workerId: workerResult.worker.id,
+        });
+        const {
+          accountApiVersion: createdAccountApiVersion,
+          accountId: createdAccountId,
+        } = created;
+        accountId = createdAccountId;
+        accountApiVersion = createdAccountApiVersion;
+        await db
+          .update(workers)
+          .set({
+            stripeAccountApiVersion: accountApiVersion,
+            stripeAccountId: accountId,
+            stripeAccountMode: getStripeMode(),
+            stripeAccountStatus: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(workers.id, workerResult.worker.id));
+      }
+
+      const { origin } = new URL(c.req.url);
+      const url = await createConnectAccountLink({
+        accountApiVersion: accountApiVersion ?? "2026-06-24-v1",
+        accountId,
+        refreshUrl: `${origin}/dashboard/provider?connect=refresh`,
+        returnUrl: `${origin}/dashboard/provider?connect=complete`,
+      });
+      logger.info(
+        {
+          accountId,
+          requestId: c.get("requestId"),
+          userId: workerResult.user.id,
+          workerId: workerResult.worker.id,
+        },
+        "stripe_connect:onboarding_link_created"
+      );
+      return c.json({ url }, 200);
+    } catch (error) {
+      logger.error(
+        {
+          err: error,
+          requestId: c.get("requestId"),
+          workerId: workerResult.worker.id,
+        },
+        "stripe_connect:onboarding_link_failed"
+      );
+      return c.json({ error: "Connect onboarding could not be started" }, 502);
+    }
+  })
+  .post("/profile", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
+    const body = await c.req.json();
+    const parsed = providerProfileRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+
+    const payload = parsed.data;
+    const rows = await db
+      .insert(workers)
+      .values({
+        applicationFormData: payload.applicationFormData ?? null,
+        email: payload.email.trim().toLowerCase(),
+        equipmentJson: payload.equipmentJson ?? null,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        phone: payload.phone,
+        serviceRadiusMiles: payload.serviceRadiusMiles,
+        servicesOffered: payload.servicesOffered,
+        updatedAt: new Date(),
+        userId: userResult.user.id,
+      })
+      .onConflictDoUpdate({
+        set: {
+          applicationFormData: payload.applicationFormData ?? null,
+          email: payload.email.trim().toLowerCase(),
+          equipmentJson: payload.equipmentJson ?? null,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          phone: payload.phone,
+          serviceRadiusMiles: payload.serviceRadiusMiles,
+          servicesOffered: payload.servicesOffered,
+          updatedAt: new Date(),
+        },
+        target: workers.userId,
+      })
+      .returning();
+
+    const [worker] = rows;
+    if (!worker) {
+      return c.json({ error: "Failed to save provider profile" }, 500);
+    }
+
+    try {
+      const renderedEmail = await renderProviderApplicationReceivedEmail({
+        applicantName: payload.firstName,
+        planName: "Standard Provider",
+        services: payload.servicesOffered,
+      });
+
+      await sendEmail({
+        html: renderedEmail.html,
+        idempotencyKey: `worker-profile/${worker.id}/application-received`,
+        subject: "Your CastleCare Provider Application is Received",
+        text: renderedEmail.text,
+        to: payload.email,
+      });
+    } catch {
+      // Email failure should not block profile response
+    }
+
+    return c.json({ worker }, 200);
+  })
   .post("/location", async (c) => {
     const workerResult = await requireWorker(c);
     if (workerResult.error) {
@@ -511,13 +804,14 @@ export const driverRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order cannot start from current state" }, 409);
     }
 
-    if (order.serviceType === "lawncare") {
-      const hasBeforePhoto = await hasOrderMediaType(
-        order.id,
-        "lawncare_before"
-      );
+    if (order.serviceType === "lawncare" || order.serviceType === "laundry") {
+      const hasBeforePhoto = await hasRequiredOrderPhaseMedia({
+        orderId: order.id,
+        phase: "before",
+        serviceType: order.serviceType,
+      });
       if (!hasBeforePhoto) {
-        return c.json({ error: "Before photo is required" }, 409);
+        return c.json({ error: "Before property photos are required" }, 409);
       }
     }
 
@@ -568,10 +862,17 @@ export const driverRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order cannot stop from current state" }, 409);
     }
 
-    if (order.serviceType === "lawncare") {
-      const hasAfterPhoto = await hasOrderMediaType(order.id, "lawncare_after");
+    if (order.serviceType === "lawncare" || order.serviceType === "laundry") {
+      const hasAfterPhoto = await hasRequiredOrderPhaseMedia({
+        orderId: order.id,
+        phase: "after",
+        serviceType: order.serviceType,
+      });
       if (!hasAfterPhoto) {
-        return c.json({ error: "After photo is required before stop" }, 409);
+        return c.json(
+          { error: "After property photos are required before stop" },
+          409
+        );
       }
     }
 
@@ -608,11 +909,15 @@ export const driverRoutes = new Hono<AppEnv>()
       return c.json({ error: "Order cannot complete from current state" }, 409);
     }
 
-    if (order.serviceType === "lawncare") {
-      const hasAfterPhoto = await hasOrderMediaType(order.id, "lawncare_after");
+    if (order.serviceType === "lawncare" || order.serviceType === "laundry") {
+      const hasAfterPhoto = await hasRequiredOrderPhaseMedia({
+        orderId: order.id,
+        phase: "after",
+        serviceType: order.serviceType,
+      });
       if (!hasAfterPhoto) {
         return c.json(
-          { error: "After photo is required before completion" },
+          { error: "After property photos are required before completion" },
           409
         );
       }

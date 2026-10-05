@@ -9,7 +9,7 @@ export default defineConfig({
     alwaysBundle: [/.*/u],
     onlyBundle: false,
   },
-  entry: "./src/index.ts",
+  entry: ["./src/index.ts", "./src/node-server.ts"],
   format: "esm",
   outDir: "./dist",
 });

@@ -60,5 +60,6 @@ export const enqueueMessage = async <TPayload>(
       },
       "queue:enqueue:failed"
     );
+    return false;
   }
 };

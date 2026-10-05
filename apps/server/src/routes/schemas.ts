@@ -6,12 +6,19 @@ import { z } from "zod";
 
 export const timingTypeSchema = z.enum(["asap", "scheduled"]);
 
+export const updateCheckoutSettingsRequestSchema = z.object({
+  allowCashCheckout: z.boolean(),
+});
+
 export const checkoutPreviewItemSchema = z
   .object({
+    bedding: z.enum(["none", "with-bedding"]).optional(),
     cleanScreens: z.boolean().optional(),
     frequency: z
       .enum(["one_time", "bi_weekly", "weekly", "monthly"])
       .optional(),
+    grassHeight: z.enum(["low", "medium", "tall"]).optional(),
+    hasPets: z.enum(["yes", "no"]).optional(),
     homeQuoteId: z.number().int().positive().optional(),
     isSubscription: z.boolean().optional(),
     itemKind: z.enum([
@@ -21,12 +28,38 @@ export const checkoutPreviewItemSchema = z
       "home_preorder",
     ]),
     livingArea: z.number().int().positive().optional(),
+    obstacles: z.string().trim().max(1000).optional(),
     packageType: z.enum(["EXTERIOR_ONLY", "FULL_SERVICE"]).optional(),
     paneCount: z.number().int().positive().optional(),
+    pickupMode: z.enum(["outside", "knock"]).optional(),
     planId: z.string().min(1).optional(),
     propertyType: z.enum(["residential", "commercial"]).optional(),
     scheduledEndAt: z.string().datetime().optional(),
     scheduledStartAt: z.string().datetime().optional(),
+    serviceDetails: z
+      .object({
+        laundry: z
+          .object({
+            bedding: z.enum(["none", "with-bedding"]).optional(),
+            pickupMode: z.enum(["outside", "knock"]).optional(),
+          })
+          .optional(),
+        lawncare: z
+          .object({
+            grassHeight: z.enum(["low", "medium", "tall"]).optional(),
+            hasPets: z.enum(["yes", "no"]).optional(),
+            obstacles: z.string().trim().max(1000).optional(),
+          })
+          .optional(),
+        window_washing: z
+          .object({
+            cleaningScope: z.enum(["exterior", "both"]).optional(),
+            windowEstimate: z.string().trim().max(80).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    siteNotes: z.string().trim().max(1000).optional(),
     stories: z.number().int().min(1).max(3).optional(),
     timingType: timingTypeSchema.optional(),
     tipAmountCents: z.number().int().nonnegative().optional(),
@@ -100,6 +133,21 @@ export const checkoutConfirmRequestSchema = checkoutPreviewRequestSchema.extend(
 export const checkoutDraftRequestSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
 });
+
+export const sendLoginCodeRequestSchema = z
+  .object({
+    sessionId: z.string().trim().min(1).optional(),
+    token: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.sessionId && !value.token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide a checkout session id or access token.",
+        path: ["sessionId"],
+      });
+    }
+  });
 
 export const quoteRequestStatusSchema = z.enum([
   "draft",
@@ -199,6 +247,19 @@ export const driverLocationHeartbeatSchema = z.object({
   speedMps: z.number().finite().optional().nullable(),
 });
 
+export const providerProfileRequestSchema = z.object({
+  applicationFormData: z.record(z.string(), z.unknown()).optional(),
+  email: z.email(),
+  equipmentJson: z.record(z.string(), z.unknown()).optional().nullable(),
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  phone: phoneSchema,
+  serviceRadiusMiles: z.number().int().positive().max(100).default(20),
+  servicesOffered: z
+    .array(z.enum(["lawncare", "laundry", "window-washing"]))
+    .min(1),
+});
+
 export const homeQuoteRequestSchema = z.object({
   address: z.string().min(5),
 });
@@ -211,6 +272,7 @@ export const mediaUploadUrlRequestSchema = z.object({
     "service_after",
     "lawncare_before",
     "lawncare_after",
+    "provider_equipment",
     "laundry_pickup",
     "laundry_scan",
     "laundry_folded",
@@ -226,6 +288,7 @@ export const mediaAttachRequestSchema = z.object({
     "service_after",
     "lawncare_before",
     "lawncare_after",
+    "provider_equipment",
     "laundry_pickup",
     "laundry_scan",
     "laundry_folded",
@@ -237,11 +300,83 @@ export const mediaAttachRequestSchema = z.object({
   storagePath: z.string().min(1),
 });
 
+export const adminWorkerServiceSchema = z
+  .enum(["lawncare", "laundry", "window_washing", "window-washing"])
+  .transform((value) =>
+    value === "window-washing" ? "window_washing" : value
+  );
+
+export const adminWorkerCreateRequestSchema = z.object({
+  applicationFormData: z.record(z.string(), z.unknown()).optional(),
+  city: z.string().trim().min(1).max(80).optional(),
+  email: z.email(),
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
+  onboardingStatus: z
+    .enum(["pending", "approved", "rejected", "suspended"])
+    .default("pending"),
+  phone: phoneSchema,
+  serviceRadiusMiles: z.number().int().positive().max(100).default(20),
+  servicesOffered: z.array(adminWorkerServiceSchema).min(1),
+  state: z.string().trim().min(1).max(40).optional(),
+  streetAddress: z.string().trim().min(1).max(240).optional(),
+  zip: z.string().trim().min(3).max(20).optional(),
+});
+
+export const adminWorkerStatusRequestSchema = z.object({
+  status: z.enum(["pending", "approved", "rejected", "suspended"]),
+});
+
+export const adminWorkerUpdateRequestSchema = z.object({
+  city: z.string().trim().min(1).max(80).optional(),
+  firstName: z.string().trim().min(1).max(80).optional(),
+  isActive: z.boolean().optional(),
+  lastName: z.string().trim().min(1).max(80).optional(),
+  phone: phoneSchema.optional(),
+  serviceRadiusMiles: z.number().int().positive().max(100).optional(),
+  servicesOffered: z.array(adminWorkerServiceSchema).min(1).optional(),
+  state: z.string().trim().min(1).max(40).optional(),
+  streetAddress: z.string().trim().min(1).max(240).optional(),
+  zip: z.string().trim().min(3).max(20).optional(),
+});
+
 export const adminOrderActionRequestSchema = z.object({
   action: z.enum(["confirm", "arrived", "start", "complete", "cancel", "fail"]),
   note: z.string().trim().max(1000).optional().or(z.literal("")),
 });
 
+export const adminOrderDispatchRequestSchema = z.object({
+  workerId: z.number().int().positive(),
+});
+
+export const adminRouteCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  routeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  workerId: z.number().int().positive(),
+});
+
+export const adminRouteStopRequestSchema = z.object({
+  orderId: z.number().int().positive(),
+  plannedEndAt: z.string().datetime().optional().nullable(),
+  plannedStartAt: z.string().datetime().optional().nullable(),
+  sequence: z.number().int().positive().optional(),
+});
+
+export const adminRouteStatusRequestSchema = z.object({
+  status: z.enum([
+    "draft",
+    "published",
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]),
+});
+
 export const adminOrderNoteRequestSchema = z.object({
   note: z.string().trim().min(1).max(1000),
+});
+
+export const adminRefundRequestSchema = z.object({
+  amountCents: z.number().int().positive().optional(),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
 });

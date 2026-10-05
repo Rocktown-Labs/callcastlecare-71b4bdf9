@@ -10,17 +10,12 @@ import { emailOTP } from "better-auth/plugins/email-otp";
 import StripeSdk from "stripe";
 
 import {
+  getOtpEmailContent,
   sendAdminSignupNotification,
   sendAuthEmail,
   sendAuthOtpEmail,
   sendWelcomeAuthEmail,
 } from "./email";
-
-type AuthOtpType =
-  | "change-email"
-  | "email-verification"
-  | "forget-password"
-  | "sign-in";
 
 export interface AuthConfig {
   ADMIN_EMAIL: string;
@@ -67,33 +62,6 @@ const createStripePlugin = (config: AuthConfig) => {
     stripeClient,
     stripeWebhookSecret: webhookSecret,
   });
-};
-
-const getOtpEmailContent = (type: AuthOtpType) => {
-  if (type === "sign-in") {
-    return {
-      body: "Use this one-time code to sign in to your CastleCare account.",
-      preview: "Your CastleCare sign-in code.",
-      subject: "Your CastleCare sign-in code",
-      title: "Sign in to CastleCare",
-    };
-  }
-
-  if (type === "email-verification") {
-    return {
-      body: "Use this one-time code to verify your CastleCare email address.",
-      preview: "Your CastleCare verification code.",
-      subject: "Verify your CastleCare email",
-      title: "Verify your email",
-    };
-  }
-
-  return {
-    body: "Use this one-time code to reset your CastleCare password.",
-    preview: "Your CastleCare password reset code.",
-    subject: "Reset your CastleCare password",
-    title: "Reset your password",
-  };
 };
 
 const authAllowedHosts = [

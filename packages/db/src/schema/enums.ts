@@ -93,6 +93,7 @@ export const mediaTypeEnum = pgEnum("media_type", [
   "property_right",
   "property_back",
   "property_baseline",
+  "provider_equipment",
   "laundry_front",
   "laundry_pickup",
   "laundry_scan",
@@ -173,4 +174,22 @@ export const homePreorderStatusEnum = pgEnum("home_preorder_status", [
   "paid",
   "cancelled",
   "failed",
+]);
+
+export const routeStatusEnum = pgEnum("route_status", [
+  "draft",
+  "published",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
+
+export const routeStopStatusEnum = pgEnum("route_stop_status", [
+  "planned",
+  "en_route",
+  "arrived",
+  "in_progress",
+  "completed",
+  "skipped",
+  "cancelled",
 ]);

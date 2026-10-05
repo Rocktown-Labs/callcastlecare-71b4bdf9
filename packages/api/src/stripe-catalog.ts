@@ -59,11 +59,173 @@ export const stripeCatalogSyncRequestSchema = z.object({
   items: z.array(stripeCatalogItemSchema).min(1),
 });
 
+export const stripeIntegrationSyncRequestSchema = z.object({
+  planCodes: z.array(z.string().min(1)).optional(),
+  syncWebhooks: z.boolean().default(true),
+});
+
 export type StripeCatalogInterval = z.infer<typeof stripeCatalogIntervalSchema>;
 export type StripeCatalogItemInput = z.infer<typeof stripeCatalogItemSchema>;
+
+export type RecurringServiceType = "laundry" | "lawncare" | "window_washing";
+
+export interface RecurringServiceUnit {
+  serviceType: RecurringServiceType;
+  spacingDays: number;
+  units: number;
+}
+
+const recurringServicePlans: Record<
+  string,
+  { interval: "month" | "year"; units: readonly RecurringServiceUnit[] }
+> = {
+  "bi-weekly-royal-duo-large": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+    ],
+  },
+  "bi-weekly-royal-duo-medium": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+    ],
+  },
+  "bi-weekly-royal-duo-small": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+    ],
+  },
+  "crown-estate-trio-deluxe-large": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "crown-estate-trio-deluxe-medium": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "crown-estate-trio-deluxe-small": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "crown-estate-trio-large": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "crown-estate-trio-medium": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "crown-estate-trio-small": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 14, units: 2 },
+      { serviceType: "laundry", spacingDays: 14, units: 2 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "groundskeeper-bi-weekly": {
+    interval: "month",
+    units: [{ serviceType: "lawncare", spacingDays: 14, units: 2 }],
+  },
+  "groundskeeper-bi-weekly-large": {
+    interval: "month",
+    units: [{ serviceType: "lawncare", spacingDays: 14, units: 2 }],
+  },
+  "groundskeeper-bi-weekly-medium": {
+    interval: "month",
+    units: [{ serviceType: "lawncare", spacingDays: 14, units: 2 }],
+  },
+  "groundskeeper-monthly": {
+    interval: "month",
+    units: [{ serviceType: "lawncare", spacingDays: 0, units: 1 }],
+  },
+  "groundskeeper-monthly-large": {
+    interval: "month",
+    units: [{ serviceType: "lawncare", spacingDays: 0, units: 1 }],
+  },
+  "groundskeeper-monthly-medium": {
+    interval: "month",
+    units: [{ serviceType: "lawncare", spacingDays: 0, units: 1 }],
+  },
+  "monthly-castle-care-large": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 0, units: 1 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "monthly-castle-care-medium": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 0, units: 1 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "monthly-castle-care-small": {
+    interval: "month",
+    units: [
+      { serviceType: "lawncare", spacingDays: 0, units: 1 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "royal-linen-panes-duo": {
+    interval: "month",
+    units: [
+      { serviceType: "laundry", spacingDays: 7, units: 4 },
+      { serviceType: "window_washing", spacingDays: 0, units: 1 },
+    ],
+  },
+  "royal-pane-bi-annual": {
+    interval: "year",
+    units: [{ serviceType: "window_washing", spacingDays: 182, units: 2 }],
+  },
+  "royal-pane-monthly": {
+    interval: "month",
+    units: [{ serviceType: "window_washing", spacingDays: 0, units: 1 }],
+  },
+  "royal-wash-supreme": {
+    interval: "month",
+    units: [{ serviceType: "laundry", spacingDays: 7, units: 4 }],
+  },
+};
+
+export const getRecurringServicePlan = (planCode: string) =>
+  recurringServicePlans[planCode] ?? null;
+
+export const getRecurringServiceUnits = (planCode: string) =>
+  getRecurringServicePlan(planCode)?.units ?? [];
+
 export type StripeCouponInput = z.infer<typeof stripeCouponSchema>;
 export type StripeCatalogSyncRequest = z.infer<
   typeof stripeCatalogSyncRequestSchema
+>;
+export type StripeIntegrationSyncRequest = z.infer<
+  typeof stripeIntegrationSyncRequestSchema
 >;
 
 const productGroupLabels: Record<string, string> = {
@@ -431,6 +593,16 @@ export const defaultStripeCatalogItems = [
   },
   {
     active: true,
+    amountCents: 5000,
+    currency: "usd",
+    description: "Express provider onboarding and screening authorization.",
+    interval: "one_time",
+    name: "Provider Express Verification",
+    serviceType: "fee",
+    slug: "provider-express-verification",
+  },
+  {
+    active: true,
     amountCents: TRAVEL_FEE_CONFIG.flatInStateCents,
     currency: "usd",
     description: `Flat travel fee for Arkansas jobs beyond ${TRAVEL_FEE_CONFIG.includedMiles} miles from HQ.`,
@@ -458,16 +630,6 @@ export const defaultStripeCatalogItems = [
     name: "Technology Fee",
     serviceType: "fee",
     slug: "technology-fee",
-  },
-  {
-    active: true,
-    amountCents: TRAVEL_FEE_CONFIG.flatOutOfStateCents,
-    currency: "usd",
-    description: `Flat travel fee for out-of-state jobs beyond ${TRAVEL_FEE_CONFIG.includedMiles} miles from HQ.`,
-    interval: "one_time",
-    name: "Travel Fee - Out Of State",
-    serviceType: "fee",
-    slug: "travel-fee-out-of-state",
   },
 ] as const satisfies StripeCatalogItemInput[];
 

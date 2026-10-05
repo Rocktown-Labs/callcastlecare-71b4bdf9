@@ -5,9 +5,9 @@
   "scripts": {
     "build": "tsdown",
     "check-types": "tsc -b",
-    "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
+    "compile": "bun build --compile --minify --sourcemap --bytecode ./src/node-server.ts --outfile server",
     "dev": "tsx watch src/dev-server.ts",
-    "start": "node dist/index.mjs",
+    "start": "node dist/node-server.mjs",
     "test": "vitest run"
   },
   "dependencies": {

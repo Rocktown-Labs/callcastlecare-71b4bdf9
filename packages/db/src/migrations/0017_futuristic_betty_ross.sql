@@ -1,0 +1,1 @@
+ALTER TABLE "workers" ADD COLUMN "stripe_account_mode" text;

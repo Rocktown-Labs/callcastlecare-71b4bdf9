@@ -7,8 +7,13 @@ import {
   getSlotStartHour,
 } from "@callcastlecare/api";
 import type { BookingTimeSlot } from "@callcastlecare/api";
-import { and, db, eq, gte, inArray, lt } from "@callcastlecare/db";
-import { markets, orders } from "@callcastlecare/db/schema/index";
+import { and, db, eq, gt, gte, inArray, lt } from "@callcastlecare/db";
+import {
+  checkoutItems,
+  checkoutSessions,
+  markets,
+  orders,
+} from "@callcastlecare/db/schema/index";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -59,19 +64,38 @@ const activeOrderStatuses = [
 
 const getBookedSlots = async (date: string) => {
   const { endsAt, startsAt } = getBookingDateRange(date);
-  const bookedOrders = await db.query.orders.findMany({
-    columns: {
-      scheduledStartAt: true,
-    },
-    where: and(
-      gte(orders.scheduledStartAt, startsAt),
-      lt(orders.scheduledStartAt, endsAt),
-      inArray(orders.status, activeOrderStatuses)
-    ),
-  });
+  const holdCutoff = new Date(Date.now() - 30 * 60 * 1000);
+  const [bookedOrders, heldCheckouts] = await Promise.all([
+    db.query.orders.findMany({
+      columns: {
+        scheduledStartAt: true,
+      },
+      where: and(
+        gte(orders.scheduledStartAt, startsAt),
+        lt(orders.scheduledStartAt, endsAt),
+        inArray(orders.status, activeOrderStatuses)
+      ),
+    }),
+    db
+      .select({ scheduledStartAt: checkoutItems.scheduledStartAt })
+      .from(checkoutItems)
+      .innerJoin(
+        checkoutSessions,
+        eq(checkoutItems.checkoutSessionId, checkoutSessions.id)
+      )
+      .where(
+        and(
+          inArray(checkoutSessions.status, ["pending_payment", "paid"]),
+          gt(checkoutSessions.updatedAt, holdCutoff),
+          gte(checkoutItems.scheduledStartAt, startsAt),
+          lt(checkoutItems.scheduledStartAt, endsAt)
+        )
+      )
+      .limit(100),
+  ]);
 
   const bookedStartHours = new Set(
-    bookedOrders
+    [...bookedOrders, ...heldCheckouts]
       .map((order) =>
         order.scheduledStartAt
           ? getBookingZoneHour(order.scheduledStartAt)
@@ -83,6 +107,49 @@ const getBookedSlots = async (date: string) => {
   return bookingTimeSlots.filter((slot) =>
     bookedStartHours.has(getSlotStartHour(slot))
   );
+};
+
+const getMarketForState = async (stateCode: string) => {
+  try {
+    const rows = await db
+      .select()
+      .from(markets)
+      .where(eq(markets.stateCode, stateCode.toUpperCase()))
+      .limit(1);
+    return rows[0] ?? null;
+  } catch (error) {
+    logger.warn({ err: error, stateCode }, "location:market_lookup_failed");
+    return null;
+  }
+};
+
+const getTravelForAddress = (address: {
+  latitude: number | null;
+  longitude: number | null;
+  state: string;
+}) => {
+  if (address.latitude === null || address.longitude === null) {
+    return null;
+  }
+
+  return buildTravelEstimate({
+    latitude: address.latitude,
+    longitude: address.longitude,
+    stateCode: address.state,
+  });
+};
+
+const enrichAddress = async (input: {
+  address: Awaited<ReturnType<typeof validateRadarAddress>>;
+  includeProperty: boolean;
+}) => {
+  const property = input.includeProperty
+    ? await lookupPropertyWithRentCast(input.address.formattedAddress)
+    : null;
+  const travel = getTravelForAddress(input.address);
+  const market = travel ? await getMarketForState(input.address.state) : null;
+
+  return { market, property, travel };
 };
 
 export const locationRoutes = new Hono<AppEnv>()
@@ -105,41 +172,14 @@ export const locationRoutes = new Hono<AppEnv>()
     }
 
     const address = await validateRadarAddress(parsed.data.address);
-    const property = parsed.data.includeProperty
-      ? await lookupPropertyWithRentCast(
-          address?.formattedAddress ?? parsed.data.address
-        )
-      : null;
-
-    const travel =
-      address.latitude !== null && address.longitude !== null
-        ? buildTravelEstimate({
-            latitude: address.latitude,
-            longitude: address.longitude,
-            stateCode: address.state,
-          })
-        : null;
-
-    let marketRow: {
-      label: string;
-      mode: "on_demand" | "subscription_first" | "paused";
-      stateCode: string;
-    } | null = null;
-    if (travel) {
-      try {
-        const rows = await db
-          .select()
-          .from(markets)
-          .where(eq(markets.stateCode, address.state.toUpperCase()))
-          .limit(1);
-        marketRow = rows[0] ?? null;
-      } catch (error) {
-        logger.warn(
-          { err: error, stateCode: address.state },
-          "location:market_lookup_failed"
-        );
-      }
-    }
+    const {
+      market: marketRow,
+      property,
+      travel,
+    } = await enrichAddress({
+      address,
+      includeProperty: parsed.data.includeProperty,
+    });
 
     logger.info(
       {
@@ -147,6 +187,9 @@ export const locationRoutes = new Hono<AppEnv>()
         feeCents: travel?.feeCents ?? null,
         inState: travel?.inState ?? null,
         marketMode: marketRow?.mode ?? null,
+        propertyFallbackUsed: property?.fallbackUsed ?? null,
+        propertyLotSizeSqft: property?.lotSizeSqft ?? null,
+        propertySource: property?.source ?? null,
         requestId: c.get("requestId"),
         stateCode: address.state,
       },

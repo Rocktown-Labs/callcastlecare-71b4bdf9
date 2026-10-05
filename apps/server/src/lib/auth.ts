@@ -1,3 +1,4 @@
+import { auth } from "@callcastlecare/auth";
 import { db, eq } from "@callcastlecare/db";
 import {
   customers,
@@ -78,6 +79,47 @@ export const getOrCreateCustomerForUser = async (
   return created;
 };
 
+const createCheckoutUser = async (input: { email: string; name: string }) => {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const existingUser = await db.query.user.findFirst({
+    where: eq(authUsers.email, normalizedEmail),
+  });
+
+  if (existingUser) {
+    return existingUser;
+  }
+
+  try {
+    const authContext = await auth.$context;
+    const checkoutUser = await authContext.internalAdapter.createUser({
+      email: normalizedEmail,
+      emailVerified: false,
+      name: input.name.trim(),
+    });
+
+    logger.info(
+      {
+        authMethod: "email_otp",
+        email: normalizedEmail,
+        userId: checkoutUser.id,
+      },
+      "auth:checkout_account_provisioned"
+    );
+
+    return checkoutUser;
+  } catch (error) {
+    const userCreatedConcurrently = await db.query.user.findFirst({
+      where: eq(authUsers.email, normalizedEmail),
+    });
+
+    if (userCreatedConcurrently) {
+      return userCreatedConcurrently;
+    }
+
+    throw error;
+  }
+};
+
 export const getOrCreateCustomerForCheckoutContact = async (input: {
   email: string;
   name: string;
@@ -92,27 +134,7 @@ export const getOrCreateCustomerForCheckoutContact = async (input: {
     return existingCustomer;
   }
 
-  const existingUser = await db.query.user.findFirst({
-    where: eq(authUsers.email, normalizedEmail),
-  });
-  const insertedUsers = existingUser
-    ? []
-    : await db
-        .insert(authUsers)
-        .values({
-          email: normalizedEmail,
-          emailVerified: false,
-          id: `guest_${crypto.randomUUID()}`,
-          name: input.name.trim(),
-        })
-        .returning();
-  const [insertedUser] = insertedUsers;
-  const checkoutUser = existingUser ?? insertedUser;
-
-  if (!checkoutUser) {
-    throw new Error("Failed to create checkout user");
-  }
-
+  const checkoutUser = await createCheckoutUser(input);
   const { firstName, lastName } = parseName(input.name);
   const inserted = await db
     .insert(customers)

@@ -11,6 +11,29 @@ const parseNotificationId = (value: string) => {
 };
 
 export const notificationRoutes = new Hono<AppEnv>()
+  .get("/summary", async (c) => {
+    const userResult = requireUser(c);
+    if (userResult.error) {
+      return userResult.error;
+    }
+
+    const customer = await getOrCreateCustomerForUser(userResult.user);
+    const list = await db.query.notifications.findMany({
+      columns: {
+        id: true,
+        readAt: true,
+      },
+      where: eq(notifications.customerId, customer.id),
+    });
+
+    return c.json(
+      {
+        unreadNotifications: list.filter((notification) => !notification.readAt)
+          .length,
+      },
+      200
+    );
+  })
   .get("/", async (c) => {
     const userResult = requireUser(c);
     if (userResult.error) {

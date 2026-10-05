@@ -89,6 +89,8 @@ describe("createStripeCheckoutSession", () => {
 
     expect(session).toEqual({
       id: "cs_test_123",
+      mode: "payment",
+      subscriptionId: null,
       url: "https://checkout.stripe.com/c/pay/cs_test_123",
     });
     expect(mocks.checkoutCreate).toHaveBeenCalledWith(
@@ -107,7 +109,64 @@ describe("createStripeCheckoutSession", () => {
         },
         success_url:
           "https://callcastlecare.com/checkout/success?session_id={CHECKOUT_SESSION_ID}",
-      })
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) })
+    );
+  });
+
+  it("creates subscription-mode Checkout with synced recurring prices", async () => {
+    mocks.env.STRIPE_SECRET_KEY = "sk_test_real_key";
+    mocks.checkoutCreate.mockResolvedValue({
+      id: "cs_subscription_123",
+      subscription: "sub_123",
+      url: "https://checkout.stripe.com/c/pay/cs_subscription_123",
+    });
+    const { createStripeCheckoutSession } = await import("./stripe-payments");
+
+    const session = await createStripeCheckoutSession({
+      amountDueCents: 25_000,
+      cancelUrl: "https://callcastlecare.com/book?checkout=cancelled",
+      checkoutSessionId: 43,
+      customerEmail: "customer@example.com",
+      lineItems: [
+        {
+          name: "Bi-Weekly Royal Duo",
+          priceId: "price_duo_monthly",
+        },
+      ],
+      metadata: {
+        checkoutMode: "subscription",
+        checkoutSessionId: "43",
+      },
+      mode: "subscription",
+      stripeCustomerId: "cus_123",
+      subscriptionMetadata: {
+        checkoutSessionId: "43",
+        planIds: "bi-weekly-royal-duo-small",
+      },
+      successUrl:
+        "https://callcastlecare.com/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+    });
+
+    expect(session).toEqual({
+      id: "cs_subscription_123",
+      mode: "subscription",
+      subscriptionId: "sub_123",
+      url: "https://checkout.stripe.com/c/pay/cs_subscription_123",
+    });
+    expect(mocks.checkoutCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_123",
+        line_items: [{ price: "price_duo_monthly", quantity: 1 }],
+        mode: "subscription",
+        subscription_data: {
+          metadata: {
+            checkoutSessionId: "43",
+            planIds: "bi-weekly-royal-duo-small",
+          },
+        },
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) })
     );
   });
 

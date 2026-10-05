@@ -525,7 +525,7 @@ export function SignUp({
         </div>
 
         {emailAndPassword?.enabled && (
-          <div className="flex flex-col gap-3 items-center w-full mt-4">
+          <div className="flex flex-col gap-2 items-center w-full mt-4">
             <FieldDescription className="text-center">
               {localization.auth.alreadyHaveAnAccount}{" "}
               <Link
@@ -533,6 +533,15 @@ export function SignUp({
                 className="font-medium text-lime-200 underline underline-offset-4 hover:text-lime-100"
               >
                 {localization.auth.signIn}
+              </Link>
+            </FieldDescription>
+            <FieldDescription className="text-center text-xs text-white/60">
+              Booked recently?{" "}
+              <Link
+                href="/claim-account"
+                className="font-medium text-lime-200 underline underline-offset-4 hover:text-lime-100"
+              >
+                Sign in with a code
               </Link>
             </FieldDescription>
           </div>

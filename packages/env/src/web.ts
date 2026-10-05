@@ -11,6 +11,10 @@ const serverUrlSchema = z.union([
 export const env = createEnv({
   client: {
     VITE_SERVER_URL: serverUrlSchema,
+    VITE_STRIPE_PUBLISHABLE_KEY: z
+      .string()
+      .regex(/^pk_(?:test|live)_[A-Za-z0-9_]+$/u)
+      .optional(),
   },
   clientPrefix: "VITE_",
   emptyStringAsUndefined: true,

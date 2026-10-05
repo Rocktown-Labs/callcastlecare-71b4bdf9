@@ -7,10 +7,14 @@ import {
 } from "@callcastlecare/db/schema/index";
 /* eslint-disable max-statements, sort-keys */
 import {
+  castleCareUrl,
   getEventEmailDefinition,
   getServiceStatusEmailProps,
+  renderActionEmail,
   renderServiceStatusUpdateEmail,
+  renderWelcomeEmail,
 } from "@callcastlecare/email";
+import { env } from "@callcastlecare/env/server";
 
 import { sendEmail } from "./integrations/email";
 import { logger } from "./logger";
@@ -81,6 +85,56 @@ const getCustomerFromPayload = async (
 const getPayloadOrderId = (payload: Record<string, unknown>) =>
   typeof payload.orderId === "number" ? payload.orderId : undefined;
 
+/**
+ * Post-first-payment welcome flow. Published once per customer from
+ * finalizeCheckoutPayment with a stable eventKey, delivered over the
+ * outbox/Vercel-queue pipeline, and sent with Resend idempotency keys so
+ * webhook retries can never double-send.
+ */
+const sendCustomerWelcomeEmails = async (payload: Record<string, unknown>) => {
+  const customer = await getCustomerFromPayload(payload);
+  if (!customer) {
+    logger.warn({ eventName: "customer_welcome" }, "welcome:customer_missing");
+    return;
+  }
+
+  const orderId = getPayloadOrderId(payload);
+  const welcome = await renderWelcomeEmail({
+    customerName: customer.name,
+    dashboardUrl: castleCareUrl("/dashboard"),
+  });
+  await sendEmail({
+    html: welcome.html,
+    idempotencyKey: `customer-welcome/${customer.customerId}`,
+    subject: "Welcome to CastleCare",
+    text: welcome.text,
+    to: customer.email,
+  });
+
+  const adminEmail = env.ADMIN_EMAIL;
+  if (adminEmail) {
+    const alert = await renderActionEmail({
+      body: `A new customer account completed its first booking${orderId ? ` (Order #${orderId})` : ""}: ${customer.name} (${customer.email}).`,
+      buttonLabel: "Open Admin Dashboard",
+      preview: `New customer signup: ${customer.name}`,
+      title: "New Customer Signup",
+      url: castleCareUrl("/admin"),
+    });
+    await sendEmail({
+      html: alert.html,
+      idempotencyKey: `admin-signup/${customer.customerId}`,
+      subject: `New Customer Signup: ${customer.name}`,
+      text: alert.text,
+      to: adminEmail,
+    });
+  }
+
+  logger.info(
+    { customerId: customer.customerId, orderId: orderId ?? null },
+    "welcome:sent"
+  );
+};
+
 export const processOutboxEvent = async (outboxEventId: number) => {
   const event = await db.query.outboxEvents.findFirst({
     where: and(
@@ -106,6 +160,19 @@ export const processOutboxEvent = async (outboxEventId: number) => {
 
   try {
     const payload = (event.payloadJson ?? {}) as Record<string, unknown>;
+
+    if (event.eventName === "customer_welcome") {
+      await sendCustomerWelcomeEmails(payload);
+      await db
+        .update(outboxEvents)
+        .set({
+          processedAt: new Date(),
+          status: "sent",
+        })
+        .where(eq(outboxEvents.id, event.id));
+      return;
+    }
+
     const message = getEventEmailDefinition(event.eventName);
 
     const customer = await getCustomerFromPayload(payload);

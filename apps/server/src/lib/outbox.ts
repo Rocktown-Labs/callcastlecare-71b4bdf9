@@ -38,13 +38,27 @@ export const publishOutboxEvent = async (input: {
     })
     .returning({ id: outboxEvents.id });
 
-  const created = inserted[0];
+  const [created] = inserted;
   if (!created) {
     logger.info({ eventKey, eventName: input.eventName }, "outbox:duplicate");
     return;
   }
 
-  await enqueueMessage(QUEUE_TOPICS.outboxDelivery, {
+  const enqueued = await enqueueMessage(QUEUE_TOPICS.outboxDelivery, {
     outboxEventId: created.id,
   });
+
+  if (!enqueued) {
+    void (async () => {
+      try {
+        const { processOutboxEvent } = await import("./notifications");
+        await processOutboxEvent(created.id);
+      } catch (error) {
+        logger.error(
+          { error, outboxEventId: created.id },
+          "outbox:fallback_processing_failed"
+        );
+      }
+    })();
+  }
 };

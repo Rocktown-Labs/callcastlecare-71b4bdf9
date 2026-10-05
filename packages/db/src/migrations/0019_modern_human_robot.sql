@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "idx_stripe_catalog_items_lookup_key" ON "stripe_catalog_items" USING btree ("lookup_key");

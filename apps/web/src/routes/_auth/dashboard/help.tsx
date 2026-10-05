@@ -14,7 +14,7 @@ interface OrderSummary {
 }
 
 const RouteComponent = () => {
-  const { session } = useRouteContext({ from: "/_auth/dashboard/help" });
+  const { session } = useRouteContext({ from: "/_auth/dashboard" });
   const [orders, setOrders] = useState<OrderSummary[]>([]);
 
   useEffect(() => {
@@ -50,7 +50,7 @@ const RouteComponent = () => {
 
   const orderOptions = orders.map((order) => ({
     id: order.id,
-    label: `#${order.id} · ${order.serviceType.replace("_", " ")} · ${order.status}`,
+    label: `#${order.id} · ${order.serviceType.replaceAll("_", " ")} · ${order.status}`,
   }));
 
   return (

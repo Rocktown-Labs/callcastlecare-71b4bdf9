@@ -281,6 +281,7 @@ const RouteComponent = () => {
                   aspectRatio={1}
                   className="aspect-square rounded-2xl border border-slate-200 object-cover"
                   key={`${link.asset.id}-${link.id}`}
+                  layout="fullWidth"
                   src={getPrivateMediaUrl(link.asset.storagePath)}
                 />
               ) : null

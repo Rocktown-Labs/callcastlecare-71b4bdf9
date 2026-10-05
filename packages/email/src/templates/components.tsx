@@ -87,15 +87,17 @@ export const EmailShell = ({ children, preview, title }: EmailShellProps) => (
                 src={logoUrl}
                 width="32"
               />
-              <Text className="m-0 mt-4 text-[13px] leading-[1.6] text-footerText">
-                CastleCare provides reliable home care from Central Arkansas,
-                with service built to expand wherever customers need a better
-                way to book the work. Questions? Reply to this email or write{" "}
+              <Text className="m-0 mt-4 text-[12px] leading-[1.6] text-footerText">
+                CastleCare will never email you asking to disclose or verify
+                your password, credit card, or banking account number. If you
+                receive a suspicious email with a link to update your account
+                information, do not click the link. For help and support, visit
+                the{" "}
                 <Link
-                  className="font-semibold text-accent"
-                  href={`mailto:${emailTheme.supportEmail}`}
+                  className="font-semibold text-accent underline"
+                  href={emailTheme.supportUrl}
                 >
-                  {emailTheme.supportEmail}
+                  CastleCare Support Center
                 </Link>
                 .
               </Text>

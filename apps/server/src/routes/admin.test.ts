@@ -6,6 +6,8 @@ import type { AppEnv } from "../types";
 import { adminRoutes } from "./admin";
 
 const mocks = vi.hoisted(() => ({
+  checkoutSettingsFindFirst: vi.fn(),
+  insertOnConflictDoUpdate: vi.fn(),
   insertValues: vi.fn(),
   mediaFindMany: vi.fn(),
   orderFindFirst: vi.fn(),
@@ -22,9 +24,13 @@ vi.mock("@callcastlecare/db", async (importOriginal) => {
     ...original,
     db: {
       insert: vi.fn(() => ({
+        onConflictDoUpdate: mocks.insertOnConflictDoUpdate,
         values: mocks.insertValues,
       })),
       query: {
+        checkoutSettings: {
+          findFirst: mocks.checkoutSettingsFindFirst,
+        },
         mediaAssets: {
           findMany: mocks.mediaFindMany,
         },
@@ -113,5 +119,85 @@ describe("admin order field actions", () => {
       toStatus: "in_progress",
       triggeredByUserId: "admin_user",
     });
+  });
+});
+
+describe("admin checkout settings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.insertValues.mockReturnValue({
+      onConflictDoUpdate: mocks.insertOnConflictDoUpdate,
+    });
+    mocks.insertOnConflictDoUpdate.mockResolvedValue([]);
+  });
+
+  it("falls back to defaults when no settings row exists", async () => {
+    mocks.checkoutSettingsFindFirst.mockResolvedValue(null);
+
+    const response = await app.request("/admin/checkout/settings");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ allowCashCheckout: true });
+  });
+
+  it("returns the current checkout settings", async () => {
+    mocks.checkoutSettingsFindFirst.mockResolvedValue({
+      allowCashCheckout: false,
+      id: 1,
+    });
+
+    const response = await app.request("/admin/checkout/settings");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ allowCashCheckout: false });
+  });
+
+  it("updates the cash checkout setting", async () => {
+    const response = await app.request("/admin/checkout/settings", {
+      body: JSON.stringify({ allowCashCheckout: false }),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ allowCashCheckout: false });
+    expect(mocks.insertValues).toHaveBeenCalledWith({
+      allowCashCheckout: false,
+      id: 1,
+    });
+    expect(mocks.insertOnConflictDoUpdate).toHaveBeenCalled();
+  });
+
+  it("rejects an invalid checkout settings payload", async () => {
+    const response = await app.request("/admin/checkout/settings", {
+      body: JSON.stringify({ allowCashCheckout: "yes" }),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("blocks non-admin users from editing checkout settings", async () => {
+    const forbiddenApp = new Hono<AppEnv>()
+      .use("*", async (c, next) => {
+        c.set("user", {
+          email: "user@example.com",
+          id: "normal_user",
+          name: "Normal User",
+          role: null,
+        });
+        c.set("session", { id: "session" });
+        return await next();
+      })
+      .route("/admin", adminRoutes);
+
+    const response = await forbiddenApp.request("/admin/checkout/settings", {
+      body: JSON.stringify({ allowCashCheckout: false }),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(403);
   });
 });

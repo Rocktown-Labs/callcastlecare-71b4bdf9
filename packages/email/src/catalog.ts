@@ -14,7 +14,8 @@ export type CastleCareEmailKey =
   | "service-completed"
   | "service-status-update"
   | "subscription-started"
-  | "tip-request";
+  | "tip-request"
+  | "welcome";
 
 export interface EmailCatalogEntry {
   audience: "admin" | "customer" | "provider";
@@ -170,5 +171,14 @@ export const emailCatalog = [
     subject: "Reset your CastleCare password",
     transactional: true,
     trigger: "Better Auth password reset request",
+  },
+  {
+    audience: "customer",
+    key: "welcome",
+    purpose:
+      "Welcome a newly registered customer and introduce CastleCare services.",
+    subject: "Welcome to CastleCare",
+    transactional: true,
+    trigger: "Customer account creation or verification",
   },
 ] satisfies EmailCatalogEntry[];

@@ -16,15 +16,15 @@ export const sendEmail = async (input: {
 }) => {
   const resendClient = getResendClient();
   if (!resendClient) {
-    logger.info(
+    logger.error(
       {
         idempotencyKey: input.idempotencyKey,
         subject: input.subject,
         to: input.to,
       },
-      "email:skipped:no_api_key"
+      "email:delivery_unavailable"
     );
-    return;
+    throw new Error("Email delivery is not configured");
   }
 
   const result = await resendClient.emails.send(
@@ -51,7 +51,9 @@ export const sendEmail = async (input: {
       },
       "email:send:failed"
     );
-    return;
+    throw new Error("Email provider rejected the message", {
+      cause: result.error,
+    });
   }
 
   logger.info(

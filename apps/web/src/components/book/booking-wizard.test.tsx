@@ -2,7 +2,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { bookingTimeSlots } from "@/lib/scheduling";
+
 import BookingWizard from "./booking-wizard";
+
+const futureDateValue = () => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 7);
+  return date.toISOString().slice(0, 10);
+};
 
 const navigate = vi.hoisted(() => vi.fn());
 
@@ -14,14 +22,42 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-const mockFetch = () => {
-  const fetchMock = vi.fn(() =>
-    Promise.resolve(
+const mockFetch = (options: { allowCashCheckout?: boolean } = {}) => {
+  const { allowCashCheckout = true } = options;
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    let url: string;
+    if (typeof input === "string") {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.href;
+    } else {
+      ({ url } = input);
+    }
+
+    if (url.includes("/api/v1/locations/availability")) {
+      return Promise.resolve(
+        Response.json({
+          availableSlots: [...bookingTimeSlots],
+          bookedSlots: [],
+          nextAvailableSlot: bookingTimeSlots[0] ?? null,
+        })
+      );
+    }
+
+    if (url.includes("/api/v1/checkout/settings")) {
+      return Promise.resolve(
+        Response.json({
+          allowCashCheckout,
+        })
+      );
+    }
+
+    return Promise.resolve(
       Response.json({
         suggestions: [],
       })
-    )
-  );
+    );
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 };
@@ -53,7 +89,7 @@ const seedBookingProperty = (lotSizeSqft: number) => {
         phone: "",
         smsUpdates: false,
       },
-      date: "2026-08-04",
+      date: futureDateValue(),
       paymentOption: "",
       products: {},
       property: {
@@ -72,6 +108,46 @@ const seedBookingProperty = (lotSizeSqft: number) => {
           stories: "",
           washScreens: false,
           windowEstimate: "",
+        },
+      },
+      services: ["lawncare", "laundry", "window-washing"],
+      subscriptionId: "",
+      timeSlot: "10:00 AM - 12:00 PM",
+    })
+  );
+};
+
+const seedCompleteDraft = () => {
+  window.localStorage.setItem(
+    "callcastlecare.booking-draft.v1",
+    JSON.stringify({
+      address: "123 Main St, Little Rock, AR",
+      addressId: null,
+      contact: {
+        email: "customer@example.com",
+        name: "Taylor Customer",
+        phone: "5015550123",
+        smsUpdates: false,
+      },
+      date: futureDateValue(),
+      paymentOption: "",
+      products: {
+        laundry: "royal-wash-basic",
+        lawncare: "groundskeeper-bi-weekly",
+        "window-washing": "royal-pane-detail",
+      },
+      property: { fallbackUsed: false, homeSqft: 2000, lotSizeSqft: 25_000 },
+      serviceDetails: {
+        laundry: { bedding: "none", photoNames: [], pickupMode: "outside" },
+        lawncare: { grassHeight: "low", hasPets: "no", photoNames: [] },
+        "window-washing": {
+          cleaningScope: "both",
+          finalizeOnSite: false,
+          photoNames: [],
+          screenCount: "",
+          stories: "1",
+          washScreens: false,
+          windowEstimate: "20",
         },
       },
       services: ["lawncare", "laundry", "window-washing"],
@@ -107,8 +183,9 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-08-04"
+        initialDate={futureDateValue()}
         initialServices={["laundry"]}
+        initialTimeSlot="10:00 AM - 12:00 PM"
       />
     );
 
@@ -177,8 +254,9 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-08-04"
+        initialDate={futureDateValue()}
         initialServices={["laundry"]}
+        initialTimeSlot="10:00 AM - 12:00 PM"
       />
     );
 
@@ -212,8 +290,9 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-08-04"
+        initialDate={futureDateValue()}
         initialServices={["laundry"]}
+        initialTimeSlot="10:00 AM - 12:00 PM"
       />
     );
 
@@ -230,14 +309,15 @@ describe("BookingWizard", () => {
     ).toBe("(501)-827-1551");
   });
 
-  it("shows the weekly plan and a bedding upgrade CTA when bedding is declined", async () => {
+  it("shows one-time laundry pricing and a bedding upgrade CTA", async () => {
     mockFetch();
 
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-08-04"
+        initialDate={futureDateValue()}
         initialServices={["laundry"]}
+        initialTimeSlot="10:00 AM - 12:00 PM"
       />
     );
 
@@ -264,8 +344,8 @@ describe("BookingWizard", () => {
     clickFirstContinue();
 
     expect(await screen.findByText("Choose products")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
-    expect(screen.getAllByText("$200.00").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /royal wash/iu })).toBeTruthy();
+    expect(screen.getAllByText("$40.00").length).toBeGreaterThan(0);
 
     fireEvent.click(
       screen.getByRole("button", { name: /add bedding for \$20\.00 more/iu })
@@ -277,7 +357,9 @@ describe("BookingWizard", () => {
     expect(
       screen.queryByRole("button", { name: /add bedding for/iu })
     ).toBeNull();
-    expect(screen.getByRole("button", { name: /^weekly/iu })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /royal wash supreme/iu })
+    ).toBeNull();
   });
 
   it("offers the $50 quote deposit for an on-site visit without property data", async () => {
@@ -286,8 +368,9 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-08-04"
+        initialDate={futureDateValue()}
         initialServices={["lawncare"]}
+        initialTimeSlot="10:00 AM - 12:00 PM"
       />
     );
 
@@ -321,6 +404,16 @@ describe("BookingWizard", () => {
     expect(
       screen.queryByRole("button", { name: /groundskeeper small lot/iu })
     ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper medium lot/iu })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper large lot/iu })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /groundskeeper bi-weekly/iu })
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^monthly/iu })).toBeNull();
   });
 
   it("filters product choices and explains monthly trio service units", async () => {
@@ -330,7 +423,7 @@ describe("BookingWizard", () => {
     render(
       <BookingWizard
         initialAddress="123 Main St, Little Rock, AR"
-        initialDate="2026-08-04"
+        initialDate={futureDateValue()}
         initialResumeDraft
         initialServices={["lawncare", "laundry", "window-washing"]}
       />
@@ -399,5 +492,29 @@ describe("BookingWizard", () => {
     expect(screen.getByText("2x Wash & Fold")).toBeTruthy();
     expect(screen.getByText("1x Window Wash")).toBeTruthy();
     expect(screen.queryByText("Estimated plan savings")).toBeNull();
+  });
+
+  it("hides the cash payment option when the admin disables cash checkout", async () => {
+    mockFetch({ allowCashCheckout: false });
+    seedCompleteDraft();
+
+    render(
+      <BookingWizard
+        initialResumeDraft
+        initialServices={["lawncare", "laundry", "window-washing"]}
+        initialStep="invoice"
+      />
+    );
+
+    expect(await screen.findByText("Review and reserve")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /deposit now, cash later/iu })
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /deposit now, invoice later/iu })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /pay in full today/iu })
+    ).toBeTruthy();
   });
 });

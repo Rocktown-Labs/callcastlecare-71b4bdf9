@@ -47,9 +47,9 @@ export default function HeroSection() {
   const [selectedServices, setSelectedServices] = useState<ServiceId[]>([]);
   const [address, setAddress] = useState("");
   const [date, setDate] = useState("");
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<BookingTimeSlot>(
-    bookingTimeSlots[2] ?? "10:00 AM - 12:00 PM"
-  );
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<
+    BookingTimeSlot | ""
+  >("");
   const [availableTimeSlots, setAvailableTimeSlots] = useState<
     BookingTimeSlot[]
   >([...bookingTimeSlots]);
@@ -68,10 +68,10 @@ export default function HeroSection() {
 
         setAvailableTimeSlots(availability.availableSlots);
         if (
-          availability.nextAvailableSlot &&
+          selectedTimeSlot &&
           !availability.availableSlots.includes(selectedTimeSlot)
         ) {
-          setSelectedTimeSlot(availability.nextAvailableSlot);
+          setSelectedTimeSlot("");
         }
       } catch {
         if (isCurrent) {
@@ -220,6 +220,7 @@ export default function HeroSection() {
               isValidated={isAddressValidated}
               onChange={handleAddressChange}
               onSelectSuggestion={handleAddressSelect}
+              tone="dark"
               value={address}
             />
             {errors.address ? (
@@ -266,9 +267,14 @@ export default function HeroSection() {
                   value={selectedTimeSlot}
                 >
                   {availableTimeSlots.length > 0 ? (
-                    availableTimeSlots.map((timeSlot) => (
-                      <option key={timeSlot}>{timeSlot}</option>
-                    ))
+                    <>
+                      <option disabled value="">
+                        Choose A Time
+                      </option>
+                      {availableTimeSlots.map((timeSlot) => (
+                        <option key={timeSlot}>{timeSlot}</option>
+                      ))}
+                    </>
                   ) : (
                     <option>No slots open</option>
                   )}
