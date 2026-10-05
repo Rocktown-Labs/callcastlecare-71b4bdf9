@@ -96,8 +96,11 @@ app.use(requestLogger());
 // is read from process.env.
 // eslint-disable-next-line require-await
 app.use("/*", async (c, next) => {
+  const incomingEnv = c.env as Record<string, unknown> | undefined;
   const runtimeEnv =
-    (c.env as Record<string, string | undefined>) ?? process.env;
+    incomingEnv && typeof incomingEnv.DATABASE_URL === "string"
+      ? (incomingEnv as Record<string, string | undefined>)
+      : process.env;
   const databaseUrl = runtimeEnv.DATABASE_URL;
 
   if (!databaseUrl) {

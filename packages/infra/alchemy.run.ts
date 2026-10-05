@@ -23,6 +23,9 @@ export const server = Cloudflare.Worker("castlecare-server", {
     port: 3000,
   },
   env: {
+    ADMIN_EMAIL: Config.String("ADMIN_EMAIL").pipe(
+      Config.withDefault("cg@rocktownlabs.com")
+    ),
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     CORS_ORIGIN: Config.String("CORS_ORIGIN"),
