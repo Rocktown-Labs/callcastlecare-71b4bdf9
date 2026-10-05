@@ -1,7 +1,6 @@
 import { Button } from "@callcastlecare/ui/components/button";
 import { cn } from "@callcastlecare/ui/lib/utils";
 import { Image } from "@unpic/react";
-import { upload } from "@vercel/blob/client";
 import type { LucideIcon } from "lucide-react";
 import {
   Camera,
@@ -263,10 +262,33 @@ const PhotoCapture = ({
         storagePath: string;
         uploadUrl: string;
       };
-      const blob = await upload(uploadPayload.storagePath, file, {
-        access: "private",
-        handleUploadUrl: uploadPayload.uploadUrl,
-      });
+
+      const formData = new FormData();
+      formData.append("storagePath", uploadPayload.storagePath);
+      formData.append("file", file);
+
+      const uploadResponse = await fetch(
+        new URL(uploadPayload.uploadUrl, getServerUrl()),
+        {
+          body: formData,
+          credentials: "include",
+          method: "POST",
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorPayload = (await uploadResponse
+          .json()
+          .catch(() => ({ error: "Photo upload failed" }))) as {
+          error?: string;
+        };
+        throw new Error(errorPayload.error ?? "Photo upload failed");
+      }
+
+      const uploadResult = (await uploadResponse.json()) as {
+        storagePath: string;
+      };
+
       const attachResponse = await fetch(
         new URL("/api/v1/media/attach", getServerUrl()),
         {
@@ -276,7 +298,7 @@ const PhotoCapture = ({
             orderId,
             requiredForTransition:
               phase === "before" ? "in_progress" : "completed",
-            storagePath: blob.pathname ?? uploadPayload.storagePath,
+            storagePath: uploadResult.storagePath,
           }),
           credentials: "include",
           headers: { "Content-Type": "application/json" },

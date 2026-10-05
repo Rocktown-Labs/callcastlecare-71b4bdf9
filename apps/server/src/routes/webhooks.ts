@@ -9,7 +9,7 @@ import { logger } from "../lib/logger";
 import type { AppEnv } from "../types";
 import { createStripeWebhookHandler } from "./checkout";
 
-const getResendClient = () =>
+const getResend = () =>
   env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
 const getResendWebhookHeaders = (request: Request) => {
@@ -75,7 +75,7 @@ export const handleResendWebhook = async (c: Context<AppEnv>) => {
     return c.json({ error: "Resend webhook secret is not configured" }, 503);
   }
 
-  const resend = getResendClient();
+  const resend = getResend();
   if (!resend) {
     logger.error(
       {
@@ -100,6 +100,11 @@ export const handleResendWebhook = async (c: Context<AppEnv>) => {
   const payload = await c.req.text();
 
   try {
+    const resendClient = getResend();
+    if (!resendClient) {
+      return c.json({ error: "resend_not_configured" }, 503);
+    }
+
     const event = resend.webhooks.verify({
       headers,
       payload,

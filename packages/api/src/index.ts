@@ -23,7 +23,5 @@ export const createApiClient = <TApp extends Hono<any, any, any>>(
   hc<TApp>(baseURL, {
     fetch: options?.customFetch,
     headers: options?.headers,
-    init: {
-      credentials: "include",
-    },
+    init: { credentials: "include" } as unknown as RequestInit,
   });

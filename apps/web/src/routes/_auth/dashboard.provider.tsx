@@ -5,7 +5,6 @@ import {
   useRouteContext,
   useSearch,
 } from "@tanstack/react-router";
-import { upload } from "@vercel/blob/client";
 import {
   ArrowRight,
   BadgeCheck,
@@ -189,10 +188,33 @@ const useProviderEquipmentUpload = () => {
         storagePath: string;
         uploadUrl: string;
       };
-      const blob = await upload(uploadPayload.storagePath, file, {
-        access: "private",
-        handleUploadUrl: uploadPayload.uploadUrl,
-      });
+
+      const formData = new FormData();
+      formData.append("storagePath", uploadPayload.storagePath);
+      formData.append("file", file);
+
+      const uploadResponse = await fetch(
+        new URL(uploadPayload.uploadUrl, getServerUrl()),
+        {
+          body: formData,
+          credentials: "include",
+          method: "POST",
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorPayload = (await uploadResponse
+          .json()
+          .catch(() => ({ error: "Equipment photo upload failed" }))) as {
+          error?: string;
+        };
+        throw new Error(errorPayload.error ?? "Equipment photo upload failed");
+      }
+
+      const uploadResult = (await uploadResponse.json()) as {
+        storagePath: string;
+      };
+
       const attachResponse = await fetch(
         new URL("/api/v1/media/attach", getServerUrl()),
         {
@@ -202,7 +224,7 @@ const useProviderEquipmentUpload = () => {
               originalName: file.name,
               source: "provider_onboarding",
             },
-            storagePath: blob.pathname ?? uploadPayload.storagePath,
+            storagePath: uploadResult.storagePath,
           }),
           credentials: "include",
           headers: { "Content-Type": "application/json" },
